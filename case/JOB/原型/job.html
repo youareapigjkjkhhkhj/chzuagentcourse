@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CareerAgent · 岗位中心</title>
+<link rel="stylesheet" href="styles.css" />
+<style>
+  .job-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  /* 新手引导条 */
+  .onboard {
+    display: flex; align-items: center; gap: 12px;
+    margin: 14px 20px 0; padding: 12px 16px;
+    background: var(--td-brand-color-light); border: 1px solid #d9e4ff;
+    border-radius: var(--td-radius-medium); font-size: 13px; line-height: 1.7;
+  }
+  .onboard .ob-steps { display: flex; gap: 18px; flex: 1; flex-wrap: wrap; }
+  .onboard .ob-step { display: flex; align-items: center; gap: 7px; color: var(--td-text-secondary); }
+  .onboard .ob-step b { color: var(--td-brand-color); font-weight: 600; }
+  .onboard .ob-step .n {
+    width: 18px; height: 18px; border-radius: 50%; background: var(--td-brand-color); color: #fff;
+    font-size: 11px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .onboard .close { color: var(--td-text-placeholder); cursor: pointer; font-size: 16px; padding: 0 4px; }
+  .onboard .close:hover { color: var(--td-text-primary); }
+
+  /* 工具栏 */
+  .job-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 20px 0;
+  }
+  .job-head .t-input { width: 260px; height: 32px; }
+  .job-head .spacer { flex: 1; }
+
+  .job-body { flex: 1; display: flex; min-height: 0; padding: 14px 20px 20px; gap: 16px; }
+
+  /* 左：岗位列表 */
+  .job-list { width: 340px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+  .job-card {
+    background: var(--td-bg-container); border: 1px solid var(--td-component-stroke); border-radius: var(--td-radius-medium);
+    padding: 13px 15px; cursor: pointer; transition: all 0.15s; position: relative;
+  }
+  .job-card:hover { border-color: var(--td-brand-color); }
+  .job-card.is-current { border-color: var(--td-brand-color); box-shadow: 0 0 0 3px var(--td-brand-color-focus); }
+  .job-card .jc-top { display: flex; align-items: center; gap: 8px; }
+  .job-card .jc-title { font-size: 14px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .job-card .jc-co { display: flex; align-items: center; gap: 6px; margin-top: 5px; font-size: 12.5px; color: var(--td-text-secondary); }
+  .job-card .jc-co .t-avatar { width: 18px; height: 18px; font-size: 9px; border-radius: 4px; }
+  .job-card .jc-meta { display: flex; align-items: center; gap: 12px; margin-top: 9px; font-size: 12px; color: var(--td-text-placeholder); }
+  .job-card .jc-meta .sal { color: var(--td-warning-color); font-weight: 500; }
+  .job-card .jc-match {
+    position: absolute; right: 14px; top: 12px; text-align: right;
+    font-family: var(--td-font-mono);
+  }
+  .job-card .jc-match b { font-size: 16px; }
+  .job-card .jc-match span { display: block; font-size: 10px; color: var(--td-text-placeholder); font-family: var(--td-font-family); }
+  .m-good { color: var(--td-success-color); } .m-mid { color: var(--td-warning-color); } .m-low { color: var(--td-text-placeholder); }
+
+  /* 右：岗位详情 */
+  .job-detail { flex: 1; min-width: 0; background: var(--td-bg-container); border: 1px solid var(--td-component-stroke); border-radius: var(--td-radius-medium); display: flex; flex-direction: column; overflow: hidden; }
+  .jd-head { padding: 18px 22px 0; }
+  .jd-head .jd-title-row { display: flex; align-items: center; gap: 10px; }
+  .jd-head h3 { font-size: 17px; font-weight: 600; }
+  .jd-head .jd-sub { margin-top: 8px; font-size: 13px; color: var(--td-text-secondary); display: flex; gap: 14px; flex-wrap: wrap; }
+  .jd-head .jd-sub .sal { color: var(--td-warning-color); font-weight: 600; }
+  .jd-body { flex: 1; overflow-y: auto; padding: 4px 22px 20px; }
+  .jd-sec { padding: 16px 0; border-bottom: 1px dashed var(--td-component-stroke); }
+  .jd-sec:last-child { border-bottom: none; }
+  .jd-sec h5 { font-size: 12px; color: var(--td-text-placeholder); letter-spacing: 1px; margin-bottom: 12px; font-weight: 400; }
+  .jd-sec .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  .match-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .mg-item { background: var(--td-bg-page); border-radius: var(--td-radius-medium); padding: 12px 14px; }
+  .mg-item b { font-size: 19px; font-family: var(--td-font-mono); display: block; }
+  .mg-item span { font-size: 11.5px; color: var(--td-text-placeholder); }
+  .mg-item.weak b { color: var(--td-warning-color); }
+
+  .gap-list { display: flex; flex-direction: column; gap: 8px; }
+  .gap-row { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 9px 12px; background: var(--td-bg-page); border-radius: var(--td-radius-default); }
+  .gap-row .ic { flex-shrink: 0; display: flex; }
+  .gap-row .desc { flex: 1; color: var(--td-text-secondary); font-size: 12.5px; }
+  .gap-row .act { flex-shrink: 0; }
+
+  .jd-quote-box { background: var(--td-bg-page); border-radius: var(--td-radius-medium); padding: 12px 14px; font-size: 13px; line-height: 1.9; color: var(--td-text-secondary); }
+
+  .jd-actions { display: flex; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--td-component-stroke); background: var(--td-bg-container); }
+</style>
+</head>
+<body data-active="job">
+<div class="app-shell">
+  <div class="titlebar">
+    <div class="traffic"><i class="c"></i><i class="m"></i><i class="z"></i></div>
+    <div class="t-title">CareerAgent</div>
+    <div class="t-right"><span class="kbd">⌘ K</span></div>
+  </div>
+
+  <div class="app-body">
+    <!-- 侧边栏由 sidebar.js 注入 -->
+
+    <div class="job-main">
+      <!-- 新手引导 -->
+      <div class="onboard" id="onboard">
+        <div class="ob-steps">
+          <span class="ob-step"><span class="n">1</span><b>粘贴 JD</b>添加岗位</span>
+          <span class="ob-step"><span class="n">2</span>自动<b>分析岗位画像</b></span>
+          <span class="ob-step"><span class="n">3</span>匹配简历，查看<b>差距与优化建议</b></span>
+        </div>
+        <button class="t-btn t-btn--primary t-btn--sm" onclick="location.href='index.html'">去对话区试试 →</button>
+        <span class="close" onclick="document.getElementById('onboard').style.display='none'">×</span>
+      </div>
+
+      <!-- 工具栏 -->
+      <div class="job-head">
+        <input class="t-input" placeholder="搜索公司、职位、技能…" />
+        <div class="t-segmented">
+          <span class="t-segmented__item is-active">全部 12</span>
+          <span class="t-segmented__item" onclick="toast('原型演示：筛选已分析的岗位')">已分析 8</span>
+          <span class="t-segmented__item" onclick="toast('原型演示：筛选待分析岗位')">待分析 4</span>
+          <span class="t-segmented__item" onclick="toast('原型演示：筛选已投递岗位')">已投递 2</span>
+        </div>
+        <span class="spacer"></span>
+        <button class="t-btn t-btn--base" onclick="toast('原型演示：粘贴 JD 文本或拖入岗位截图，JD Analysis Agent 将自动解析')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
+          添加岗位 JD
+        </button>
+      </div>
+
+      <div class="job-body">
+        <!-- 岗位列表 -->
+        <div class="job-list" id="jobList">
+          <div class="job-card is-current" onclick="pickJob(this)">
+            <div class="jc-match"><b class="m-good">89%</b><span>匹配度</span></div>
+            <div class="jc-top"><span class="jc-title">高级后端开发工程师</span></div>
+            <div class="jc-co"><span class="t-avatar" style="background:#3370ff">字</span>字节跳动 · 上海</div>
+            <div class="jc-meta"><span class="sal">40–70K·16薪</span><span>3–5 年</span><span class="t-tag t-tag--success" style="height:19px">已分析</span></div>
+          </div>
+          <div class="job-card" onclick="pickJob(this)">
+            <div class="jc-match"><b class="m-mid">76%</b><span>匹配度</span></div>
+            <div class="jc-top"><span class="jc-title">Java 开发工程师（交易）</span></div>
+            <div class="jc-co"><span class="t-avatar" style="background:#ff6a00">拼</span>拼多多 · 上海</div>
+            <div class="jc-meta"><span class="sal">45–80K</span><span>3–5 年</span><span class="t-tag t-tag--success" style="height:19px">已分析</span></div>
+          </div>
+          <div class="job-card" onclick="pickJob(this)">
+            <div class="jc-match"><b class="m-mid">72%</b><span>匹配度</span></div>
+            <div class="jc-top"><span class="jc-title">资深 Java 工程师</span></div>
+            <div class="jc-co"><span class="t-avatar" style="background:#1677ff">蚂</span>蚂蚁集团 · 杭州</div>
+            <div class="jc-meta"><span class="sal">35–60K·16薪</span><span>3–6 年</span><span class="t-tag t-tag--success" style="height:19px">已分析</span></div>
+          </div>
+          <div class="job-card" onclick="pickJob(this)">
+            <div class="jc-match"><b class="m-mid">68%</b><span>匹配度</span></div>
+            <div class="jc-top"><span class="jc-title">后端开发专家</span></div>
+            <div class="jc-co"><span class="t-avatar" style="background:#00b96b">腾</span>腾讯 · 深圳</div>
+            <div class="jc-meta"><span class="sal">40–65K</span><span>5 年+</span><span class="t-tag t-tag--success" style="height:19px">已分析</span></div>
+          </div>
+          <div class="job-card" onclick="pickJob(this)">
+            <div class="jc-match"><b class="m-low">—</b><span>未分析</span></div>
+            <div class="jc-top"><span class="jc-title">基础架构工程师</span></div>
+            <div class="jc-co"><span class="t-avatar" style="background:#722ed1">网</span>网易 · 杭州</div>
+            <div class="jc-meta"><span class="sal">30–50K</span><span>3–5 年</span><span class="t-tag" style="height:19px">待分析</span></div>
+          </div>
+          <div class="job-card" onclick="pickJob(this)">
+            <div class="jc-match"><b class="m-low">—</b><span>未分析</span></div>
+            <div class="jc-top"><span class="jc-title">分布式存储研发</span></div>
+            <div class="jc-co"><span class="t-avatar" style="background:#00c1de">B</span>B 站 · 上海</div>
+            <div class="jc-meta"><span class="sal">30–55K</span><span>3 年+</span><span class="t-tag" style="height:19px">待分析</span></div>
+          </div>
+        </div>
+
+        <!-- 岗位详情 -->
+        <div class="job-detail">
+          <div class="jd-head">
+            <div class="jd-title-row">
+              <h3>高级后端开发工程师</h3>
+              <span class="t-tag t-tag--primary">字节跳动 · 上海</span>
+              <span class="t-tag t-tag--outline">来源：用户粘贴 JD</span>
+            </div>
+            <div class="jd-sub">
+              <span class="sal">40–70K · 16薪</span><span>经验 3–5 年</span><span>本科及以上</span>
+              <span>由 JD Analysis Agent 解析 · 提取 23 项要求</span>
+            </div>
+          </div>
+
+          <div class="jd-body">
+            <div class="jd-sec">
+              <h5>匹配度分项（基于简历 V2）</h5>
+              <div class="match-grid">
+                <div class="mg-item"><b style="color:var(--td-success-color)">92%</b><span>技术能力 · 权重 30%</span></div>
+                <div class="mg-item"><b style="color:var(--td-success-color)">88%</b><span>项目经验 · 权重 25%</span></div>
+                <div class="mg-item"><b style="color:var(--td-success-color)">93%</b><span>ATS 关键词 · 权重 15%</span></div>
+                <div class="mg-item"><b style="color:var(--td-success-color)">91%</b><span>工作经验 · 权重 20%</span></div>
+                <div class="mg-item weak"><b>68%</b><span>K8s 云原生 · 权重 5%</span></div>
+                <div class="mg-item weak"><b>71%</b><span>软技能 · 权重 5%</span></div>
+              </div>
+              <p style="margin-top:10px;font-size:11.5px;color:var(--td-text-placeholder);line-height:1.7">
+                总分 = 六维加权（92×30% + 88×25% + 93×15% + 91×20% + 68×5% + 71×5% = 88.7 ≈ <b>89%</b>）。
+                权重由 JD Analysis Agent 依据岗位画像动态分配，非固定值。
+              </p>
+            </div>
+
+            <div class="jd-sec">
+              <h5>岗位画像 · 核心要求（JD Analysis Agent 生成）</h5>
+              <div class="tags">
+                <span class="t-tag t-tag--primary">Java ★5</span>
+                <span class="t-tag t-tag--primary">Spring Boot ★5</span>
+                <span class="t-tag t-tag--primary">高并发 ★5</span>
+                <span class="t-tag">Redis ★4</span>
+                <span class="t-tag">MySQL ★4</span>
+                <span class="t-tag">Kafka ★4</span>
+                <span class="t-tag t-tag--warning">Kubernetes ★3</span>
+                <span class="t-tag">性能调优 ★4</span>
+              </div>
+            </div>
+
+            <div class="jd-sec">
+              <h5>差距与建议（Gap Analysis · Resume Optimizer 子流程）</h5>
+              <div class="gap-list">
+                <div class="gap-row">
+                  <span class="ic" style="color:var(--td-warning-color)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.7 3.86a2 2 0 0 0-3.4 0Z"/></svg></span>
+                  <span style="flex-shrink:0">Kubernetes 实战不足</span>
+                  <span class="desc">JD 要求熟悉 K8s，简历仅提及 Docker。建议补充容器编排经验或通过专项训练补齐。</span>
+                  <span class="act"><button class="t-btn t-btn--base t-btn--sm" onclick="location.href='profile.html'">加入训练</button></span>
+                </div>
+                <div class="gap-row">
+                  <span class="ic" style="color:var(--td-success-color)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg></span>
+                  <span style="flex-shrink:0">高并发经验已达标</span>
+                  <span class="desc">简历 V2 已量化交易链路成果（2,000 万日请求 · P99 95ms），面试可主动展开。</span>
+                  <span class="act"><button class="t-btn t-btn--base t-btn--sm" onclick="location.href='interview.html'">模拟面试</button></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="jd-sec">
+              <h5>JD 原文</h5>
+              <div class="jd-quote-box">
+                负责千万级 DAU 产品的核心交易链路设计与开发；参与技术方案评审，输出高质量、可扩展的系统设计；持续优化接口性能与稳定性。要求：精通 Java / Spring Boot，熟悉 Redis、Kafka、MySQL 调优，有高并发系统设计经验，了解 K8s 者优先……
+              </div>
+            </div>
+          </div>
+
+          <div class="jd-actions">
+            <button class="t-btn t-btn--primary" onclick="toast('原型演示：JD Analysis Agent 重新解析该岗位')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+              重新分析
+            </button>
+            <button class="t-btn t-btn--base" onclick="location.href='resume.html'">生成定制简历</button>
+            <button class="t-btn t-btn--base" onclick="location.href='interview.html'">按此 JD 模拟面试</button>
+            <span style="flex:1"></span>
+            <button class="t-btn t-btn--base" onclick="toast('原型演示：已标记为已投递，将在 3 天后提醒跟进')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z"/></svg>
+              标记已投递
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="t-message" id="toast"></div>
+<script src="sidebar.js"></script>
+<script>
+  function pickJob(el) {
+    document.querySelectorAll('.job-card').forEach(function (c) { c.classList.remove('is-current'); });
+    el.classList.add('is-current');
+    toast('原型演示：切换选中岗位（详情面板数据联动）');
+  }
+</script>
+</body>
+</html>

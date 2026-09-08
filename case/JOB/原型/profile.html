@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CareerAgent · 能力中心</title>
+<link rel="stylesheet" href="styles.css" />
+<style>
+  .pf-main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--td-bg-page); overflow-y: auto; }
+  .pf-head { display: flex; align-items: center; gap: 12px; padding: 14px 24px; background: var(--td-bg-container); border-bottom: 1px solid var(--td-component-stroke); position: sticky; top: 0; z-index: 10; }
+  .pf-head h2 { font-size: 16px; font-weight: 600; }
+  .pf-head .spacer { flex: 1; }
+  .pf-body { padding: 20px 24px 32px; display: grid; grid-template-columns: 380px 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 1200px) { .pf-body { grid-template-columns: 1fr; } }
+
+  .pf-card { padding: 20px; }
+  .pf-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+  .pf-card .sub { font-size: 12px; color: var(--td-text-placeholder); margin-bottom: 16px; }
+
+  .radar-wrap { display: flex; justify-content: center; padding: 8px 0 4px; }
+  .dim-list { margin-top: 10px; }
+  .dim-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 13px; }
+  .dim-row .n { width: 64px; color: var(--td-text-secondary); flex-shrink: 0; }
+  .dim-row .t-progress { flex: 1; }
+  .dim-row .v { width: 26px; text-align: right; font-family: var(--td-font-mono); }
+  .dim-row .trend { width: 40px; font-size: 11px; font-family: var(--td-font-mono); text-align: right; }
+  .dim-row .trend.up { color: var(--td-success-color); }
+  .dim-row .trend.down { color: var(--td-error-color); }
+  .dim-row.weak .t-progress__inner { background: var(--td-warning-color); }
+
+  .top3 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+  .top3__box { border-radius: var(--td-radius-medium); padding: 12px 14px; font-size: 12.5px; line-height: 2; }
+  .top3__box.good { background: var(--td-success-color-light); }
+  .top3__box.bad { background: var(--td-warning-color-light); }
+  .top3__box .t { font-weight: 600; margin-bottom: 4px; }
+  .top3__box.good .t { color: var(--td-success-color); }
+  .top3__box.bad .t { color: var(--td-warning-color); }
+
+  /* 趋势图 */
+  .chart-legend { display: flex; gap: 16px; font-size: 12px; color: var(--td-text-secondary); margin-bottom: 8px; }
+  .chart-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+
+  /* 训练计划 */
+  .plan-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .plan-table th { text-align: left; font-size: 12px; color: var(--td-text-placeholder); font-weight: 400; padding: 8px 10px; border-bottom: 1px solid var(--td-component-stroke); }
+  .plan-table td { padding: 11px 10px; border-bottom: 1px solid var(--td-component-stroke); vertical-align: middle; }
+  .plan-table tr:last-child td { border-bottom: none; }
+  .plan-table tr.is-today { background: var(--td-brand-color-light); }
+  .plan-table .day { font-family: var(--td-font-mono); font-weight: 600; width: 64px; }
+  .plan-table tr.is-today .day { color: var(--td-brand-color); }
+  .check-btn { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--td-component-border); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s; color: transparent; }
+  .check-btn:hover { border-color: var(--td-brand-color); }
+  .check-btn.done { background: var(--td-success-color); border-color: var(--td-success-color); color: #fff; }
+
+  /* 记忆洞察 */
+  .mem-item { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px dashed var(--td-component-stroke); font-size: 12.5px; line-height: 1.7; }
+  .mem-item:last-child { border-bottom: none; }
+  .mem-item .m-ic { width: 26px; height: 26px; border-radius: var(--td-radius-default); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .mem-item .m-ic svg { width: 14px; height: 14px; }
+</style>
+</head>
+<body data-active="profile">
+<div class="app-shell">
+  <div class="titlebar">
+    <div class="traffic"><i class="c"></i><i class="m"></i><i class="z"></i></div>
+    <div class="t-title">CareerAgent · 能力中心 — Career Profile（由 5 场面试 + 12 次训练沉淀）</div>
+    <div class="t-right"><span class="kbd">⌘ K</span><span class="text-placeholder" style="font-size:12px">全局唤起</span></div>
+  </div>
+
+  <div class="app-body">
+    <!-- 侧边栏由 sidebar.js 注入 -->
+
+    <main class="pf-main">
+      <div class="pf-head">
+        <h2>能力中心</h2>
+        <span class="t-tag t-tag--primary">Java 后端方向</span>
+        <span class="t-tag">画像更新于 10 分钟前 · Coach Agent</span>
+        <span class="spacer"></span>
+        <button class="t-btn t-btn--base t-btn--sm" onclick="toast('原型演示：导出能力评估报告 PDF')">导出报告</button>
+        <button class="t-btn t-btn--primary t-btn--sm" onclick="location.href='interview.html'">开始今日训练</button>
+      </div>
+
+      <div class="pf-body">
+        <!-- 左列：雷达 + 维度 -->
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <div class="t-card pf-card">
+            <h3>能力雷达</h3>
+            <p class="sub">七维能力模型 · 与目标岗位「字节高级后端」要求对照</p>
+            <div class="radar-wrap">
+              <svg width="100%" viewBox="0 0 360 225">
+                <g fill="none" stroke="#eeeeee">
+                  <polygon points="180,30 248.8,63.1 265.8,137.6 218.2,197.3 141.8,197.3 94.2,137.6 111.2,63.1"/>
+                  <polygon points="180,59 226.1,81.2 237.5,131.1 205.6,171.2 154.4,171.2 122.5,131.1 133.9,81.2"/>
+                  <polygon points="180,88 203.5,99.3 209.2,124.7 193,145 167,145 150.8,124.7 156.5,99.3"/>
+                </g>
+                <g stroke="#e7e7e7" stroke-width="0.5">
+                  <line x1="180" y1="118" x2="180" y2="30"/>
+                  <line x1="180" y1="118" x2="248.8" y2="63.1"/>
+                  <line x1="180" y1="118" x2="265.8" y2="137.6"/>
+                  <line x1="180" y1="118" x2="218.2" y2="197.3"/>
+                  <line x1="180" y1="118" x2="141.8" y2="197.3"/>
+                  <line x1="180" y1="118" x2="94.2" y2="137.6"/>
+                  <line x1="180" y1="118" x2="111.2" y2="63.1"/>
+                </g>
+                <polygon points="180,38.8 238.5,71.4 248.6,133.7 210.5,181.4 151.4,177.5 111.4,133.7 131.8,79.6" fill="none" stroke="#ed7b2f" stroke-width="1.5" stroke-dasharray="5 4"/>
+                <polygon points="180,42.3 236.5,73 243.5,132.5 207.1,174.3 154.1,171.9 112.2,133.5 136.7,83.5" fill="rgba(0,82,217,0.14)" stroke="#0052d9" stroke-width="2"/>
+                <g fill="#0052d9"><circle cx="180" cy="42.3" r="3.5"/><circle cx="236.5" cy="73" r="3.5"/><circle cx="243.5" cy="132.5" r="3.5"/><circle cx="207.1" cy="174.3" r="3.5"/><circle cx="154.1" cy="171.9" r="3.5"/><circle cx="112.2" cy="133.5" r="3.5"/><circle cx="136.7" cy="83.5" r="3.5"/></g>
+                <g font-size="11" fill="rgba(0,0,0,0.6)">
+                  <text x="180" y="16" text-anchor="middle">技术能力 86</text>
+                  <text x="259.8" y="54.4" text-anchor="start">项目能力 82</text>
+                  <text x="279.4" y="140.7" text-anchor="start">架构能力 74</text>
+                  <text x="224.3" y="209.9" text-anchor="middle">系统设计 71</text>
+                  <text x="135.7" y="209.9" text-anchor="middle">表达能力 68</text>
+                  <text x="80.6" y="140.7" text-anchor="end">沟通能力 79</text>
+                  <text x="100.2" y="54.4" text-anchor="end">算法能力 63</text>
+                </g>
+              </svg>
+            </div>
+            <div class="chart-legend" style="justify-content:center">
+              <span><i style="background:#0052d9"></i>我的能力</span>
+              <span><i style="background:transparent;border:1.5px dashed #ed7b2f"></i>岗位要求</span>
+            </div>
+          </div>
+
+          <div class="t-card pf-card">
+            <h3>长期记忆 · 成长洞察</h3>
+            <p class="sub">近 5 场面试：技术 ↑12% · 表达 ↑3% · 系统设计 ↓2%</p>
+            <div class="mem-item">
+              <span class="m-ic" style="background:var(--td-error-color-light);color:var(--td-error-color)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg></span>
+              <div>第 1 场面试「Redis 缓存击穿」回答不佳 → 已记录薄弱点，第 2 场自动增加专项追问，第 3 场掌握改善后自动提高难度。</div>
+            </div>
+            <div class="mem-item">
+              <span class="m-ic" style="background:var(--td-warning-color-light);color:var(--td-warning-color)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg></span>
+              <div>「系统设计」连续 2 场回答结构不完整 → Coach 已将 Day 4 调整为系统设计专项（先修：短链系统拆解）。</div>
+            </div>
+            <div class="mem-item">
+              <span class="m-ic" style="background:var(--td-success-color-light);color:var(--td-success-color)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 6 9 17l-5-5"/></svg></span>
+              <div>「项目表达」经 STAR 训练后显著改善，简历 V2 的量化描述已被两场面试验证有效。</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右列：维度 + 趋势 + 计划 -->
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <div class="t-card pf-card">
+            <h3>能力画像 · Career Profile</h3>
+            <p class="sub">综合 5 场模拟面试、3 版简历与 12 次训练记录生成</p>
+            <div class="dim-list">
+              <div class="dim-row"><span class="n">技术能力</span><div class="t-progress"><div class="t-progress__inner" style="width:86%"></div></div><span class="v">86</span><span class="trend up">↑12%</span></div>
+              <div class="dim-row"><span class="n">项目能力</span><div class="t-progress"><div class="t-progress__inner" style="width:82%"></div></div><span class="v">82</span><span class="trend up">↑6%</span></div>
+              <div class="dim-row"><span class="n">架构能力</span><div class="t-progress"><div class="t-progress__inner" style="width:74%"></div></div><span class="v">74</span><span class="trend up">↑2%</span></div>
+              <div class="dim-row weak"><span class="n">系统设计</span><div class="t-progress"><div class="t-progress__inner" style="width:71%"></div></div><span class="v">71</span><span class="trend down">↓2%</span></div>
+              <div class="dim-row weak"><span class="n">表达能力</span><div class="t-progress"><div class="t-progress__inner" style="width:68%"></div></div><span class="v">68</span><span class="trend up">↑3%</span></div>
+              <div class="dim-row"><span class="n">沟通能力</span><div class="t-progress"><div class="t-progress__inner" style="width:79%"></div></div><span class="v">79</span><span class="trend up">↑5%</span></div>
+              <div class="dim-row weak"><span class="n">算法能力</span><div class="t-progress"><div class="t-progress__inner" style="width:63%"></div></div><span class="v">63</span><span class="trend">—</span></div>
+            </div>
+            <div class="top3">
+              <div class="top3__box good">
+                <div class="t">Top 3 优势</div>
+                ① Java 技术基础<br />② 项目经验<br />③ 数据库能力
+              </div>
+              <div class="top3__box bad">
+                <div class="t">Top 3 短板</div>
+                ① 算法<br />② 系统设计<br />③ 面试表达
+              </div>
+            </div>
+          </div>
+
+          <div class="t-card pf-card">
+            <h3>成长趋势</h3>
+            <p class="sub">近 5 场模拟面试综合评分</p>
+            <svg width="100%" height="180" viewBox="0 0 560 180" preserveAspectRatio="none">
+              <g stroke="#eeeeee"><line x1="40" y1="20" x2="40" y2="150"/><line x1="40" y1="150" x2="540" y2="150"/><line x1="40" y1="107.5" x2="540" y2="107.5" stroke-dasharray="3 3"/><line x1="40" y1="65" x2="540" y2="65" stroke-dasharray="3 3"/></g>
+              <g font-size="10" fill="rgba(0,0,0,0.4)"><text x="30" y="153">60</text><text x="30" y="110">75</text><text x="30" y="68">90</text></g>
+              <path d="M80 118 L180 112 L280 96 L380 84 L480 70" fill="none" stroke="#0052d9" stroke-width="2.5"/>
+              <path d="M80 118 L180 112 L280 96 L380 84 L480 70 L480 150 L80 150 Z" fill="rgba(0,82,217,0.07)"/>
+              <g fill="#fff" stroke="#0052d9" stroke-width="2"><circle cx="80" cy="118" r="4"/><circle cx="180" cy="112" r="4"/><circle cx="280" cy="96" r="4"/><circle cx="380" cy="84" r="4"/><circle cx="480" cy="70" r="4"/></g>
+              <g font-size="11" fill="rgba(0,0,0,0.75)" font-family="monospace"><text x="80" y="105" text-anchor="middle">68</text><text x="180" y="99" text-anchor="middle">70</text><text x="280" y="83" text-anchor="middle">74</text><text x="380" y="71" text-anchor="middle">77</text><text x="480" y="57" text-anchor="middle">82</text></g>
+              <g font-size="10" fill="rgba(0,0,0,0.4)"><text x="80" y="166" text-anchor="middle">第1场</text><text x="180" y="166" text-anchor="middle">第2场</text><text x="280" y="166" text-anchor="middle">第3场</text><text x="380" y="166" text-anchor="middle">第4场</text><text x="480" y="166" text-anchor="middle">第5场</text></g>
+            </svg>
+          </div>
+
+          <div class="t-card pf-card">
+            <h3>7 天个性化训练计划 <span class="t-tag t-tag--primary" style="margin-left:4px">Day 3 / 7</span></h3>
+            <p class="sub">由 Coach Agent 基于能力画像与面试记忆动态生成，每日系统通知打卡提醒</p>
+            <table class="plan-table">
+              <thead><tr><th style="width:36px"></th><th>Day</th><th>训练内容</th><th>来源</th><th style="width:90px">状态</th></tr></thead>
+              <tbody>
+                <tr><td><span class="check-btn done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span></td><td class="day">Day 1</td><td>Redis 专项（击穿 / 雪崩 / 穿透）</td><td><span class="t-tag t-tag--danger">薄弱点</span></td><td><span class="t-tag t-tag--success">已完成</span></td></tr>
+                <tr><td><span class="check-btn done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span></td><td class="day">Day 2</td><td>高并发专项（削峰 / 限流 / 降级）</td><td><span class="t-tag t-tag--warning">岗位差距</span></td><td><span class="t-tag t-tag--success">已完成</span></td></tr>
+                <tr class="is-today"><td><span class="check-btn" onclick="this.classList.toggle('done')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span></td><td class="day">Day 3</td><td>项目表达训练（STAR 法则复述 + Coach 点评）</td><td><span class="t-tag t-tag--primary">今日</span></td><td><button class="t-btn t-btn--primary t-btn--sm" onclick="location.href='interview.html'">去训练</button></td></tr>
+                <tr><td><span class="check-btn"></span></td><td class="day">Day 4</td><td>系统设计（短链系统拆解 → 口述设计）</td><td><span class="t-tag t-tag--danger">薄弱点</span></td><td><span class="t-tag">待解锁</span></td></tr>
+                <tr><td><span class="check-btn"></span></td><td class="day">Day 5</td><td>HR 模拟面试（职业规划 + 离职原因）</td><td><span class="t-tag t-tag--warning">短板</span></td><td><span class="t-tag">待解锁</span></td></tr>
+                <tr><td><span class="check-btn"></span></td><td class="day">Day 6</td><td>综合面试（技术 + HR + 压力 三场连训）</td><td><span class="t-tag">综合</span></td><td><span class="t-tag">待解锁</span></td></tr>
+                <tr><td><span class="check-btn"></span></td><td class="day">Day 7</td><td>最终模拟 + 全量评估报告</td><td><span class="t-tag">评估</span></td><td><span class="t-tag">待解锁</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="t-message" id="toast"></div>
+<script src="sidebar.js"></script>
+</body>
+</html>

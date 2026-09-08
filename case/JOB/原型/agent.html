@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CareerAgent · Agent 团队</title>
+<link rel="stylesheet" href="styles.css" />
+<style>
+  .ag-main { flex: 1; min-width: 0; overflow-y: auto; background: var(--td-bg-page); }
+  .ag-wrap { max-width: 1060px; margin: 0 auto; padding: 20px 28px 48px; }
+
+  /* Runtime 状态条 */
+  .rt-bar {
+    display: flex; align-items: center; gap: 22px; flex-wrap: wrap;
+    background: var(--td-bg-container); border: 1px solid var(--td-component-stroke); border-radius: var(--td-radius-medium);
+    padding: 14px 20px; margin-bottom: 20px; font-size: 13px;
+  }
+  .rt-bar .rt-item { display: flex; align-items: center; gap: 8px; color: var(--td-text-secondary); }
+  .rt-bar .rt-item b { color: var(--td-text-primary); font-weight: 600; }
+  .rt-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--td-success-color); animation: pulse-ring 1.6s infinite; }
+  .rt-bar .spacer { flex: 1; }
+
+  .sec-title { font-size: 15px; font-weight: 600; margin: 4px 0 14px; display: flex; align-items: center; gap: 10px; }
+  .sec-title .t-tag { font-weight: 400; }
+  .sec-title .more { margin-left: auto; font-size: 12.5px; font-weight: 400; color: var(--td-brand-color); cursor: pointer; }
+
+  /* Supervisor 卡 */
+  .sup-card {
+    display: flex; gap: 16px; align-items: flex-start;
+    background: linear-gradient(135deg, #f2f3ff, #fff 65%);
+    border: 1px solid #d9e4ff; border-radius: var(--td-radius-medium);
+    padding: 18px 20px; margin-bottom: 20px;
+  }
+  .sup-card .t-avatar { width: 44px; height: 44px; font-size: 17px; }
+  .sup-card h3 { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .sup-card p { font-size: 13px; color: var(--td-text-secondary); line-height: 1.8; margin-top: 6px; }
+  .sup-card .sup-flow { display: flex; align-items: center; gap: 6px; margin-top: 12px; flex-wrap: wrap; font-size: 12px; color: var(--td-text-placeholder); }
+  .sup-card .sup-flow .t-tag { height: 20px; font-size: 11.5px; }
+
+  /* Agent 网格 */
+  .agent-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 26px; }
+  .agent-card {
+    background: var(--td-bg-container); border: 1px solid var(--td-component-stroke); border-radius: var(--td-radius-medium);
+    padding: 15px 16px; transition: all 0.15s; cursor: pointer;
+  }
+  .agent-card:hover { border-color: var(--td-brand-color); box-shadow: var(--td-shadow-1); }
+  .agent-card .ac-top { display: flex; align-items: center; gap: 10px; }
+  .agent-card .t-avatar { width: 34px; height: 34px; font-size: 13px; }
+  .agent-card .ac-name { font-size: 13.5px; font-weight: 600; }
+  .agent-card .ac-state { display: flex; align-items: center; gap: 5px; font-size: 11px; margin-top: 2px; color: var(--td-text-placeholder); }
+  .agent-card .ac-state i { width: 6px; height: 6px; border-radius: 50%; background: var(--td-text-placeholder); }
+  .agent-card .ac-state.run { color: var(--td-brand-color); }
+  .agent-card .ac-state.run i { background: var(--td-brand-color); animation: pulse-ring 1.4s infinite; }
+  .agent-card .ac-desc { font-size: 12px; color: var(--td-text-secondary); line-height: 1.7; margin: 10px 0; min-height: 40px; }
+  .agent-card .ac-meta { display: flex; gap: 12px; font-size: 11px; color: var(--td-text-placeholder); font-family: var(--td-font-mono); border-top: 1px dashed var(--td-component-stroke); padding-top: 9px; }
+
+  /* 任务队列 */
+  .task-table { background: var(--td-bg-container); border: 1px solid var(--td-component-stroke); border-radius: var(--td-radius-medium); overflow: hidden; margin-bottom: 26px; }
+  .tt-row { display: flex; align-items: center; gap: 14px; padding: 13px 18px; border-bottom: 1px solid var(--td-component-stroke); font-size: 13px; }
+  .tt-row:last-child { border-bottom: none; }
+  .tt-row .tt-what { flex: 1; min-width: 0; }
+  .tt-row .tt-what .n { font-weight: 500; }
+  .tt-row .tt-what .d { font-size: 12px; color: var(--td-text-placeholder); margin-top: 2px; }
+  .tt-row .tt-agents { display: flex; }
+  .tt-row .tt-agents .t-avatar { width: 22px; height: 22px; font-size: 9px; border: 2px solid var(--td-bg-container); margin-left: -6px; }
+  .tt-row .tt-agents .t-avatar:first-child { margin-left: 0; }
+  .tt-row .tt-cost { font-family: var(--td-font-mono); font-size: 12px; color: var(--td-text-placeholder); width: 90px; text-align: right; }
+
+  .mini-step { display: flex; align-items: center; gap: 10px; }
+  .mini-step .dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--td-brand-color-focus); border-top-color: var(--td-brand-color); animation: spin 0.9s linear infinite; }
+  .mini-step .txt { font-size: 12.5px; color: var(--td-brand-color); }
+</style>
+</head>
+<body data-active="agent">
+<div class="app-shell">
+  <div class="titlebar">
+    <div class="traffic"><i class="c"></i><i class="m"></i><i class="z"></i></div>
+    <div class="t-title">CareerAgent</div>
+    <div class="t-right"><span class="kbd">⌘ K</span></div>
+  </div>
+
+  <div class="app-body">
+    <!-- 侧边栏由 sidebar.js 注入 -->
+
+    <main class="ag-main">
+      <div class="ag-wrap">
+
+        <!-- Runtime 状态 -->
+        <div class="rt-bar">
+          <span class="rt-item"><span class="rt-dot"></span><b>Agent Runtime 运行中</b></span>
+          <span class="rt-item">本地 Python Sidecar · <b>PID 4821</b></span>
+          <span class="rt-item">模型 <b>DeepSeek-V3</b></span>
+          <span class="rt-item">今日 <b>4 个任务</b> · 59.8k tokens · <b>¥1.25</b></span>
+          <span class="spacer"></span>
+          <button class="t-btn t-btn--base t-btn--sm" onclick="toast('原型演示：查看 Runtime 日志')">日志</button>
+          <button class="t-btn t-btn--base t-btn--sm" onclick="toast('原型演示：重启本地 Agent Runtime')">重启 Runtime</button>
+        </div>
+
+        <!-- Supervisor -->
+        <div class="sec-title">Agent 团队 <span class="t-tag t-tag--primary">1 主控 + 8 专业</span></div>
+        <div class="sup-card">
+          <span class="t-avatar" style="background:#0052d9">S</span>
+          <div style="flex:1;min-width:0">
+            <h3>Supervisor · 主控智能体 <span class="t-tag t-tag--primary">常驻</span></h3>
+            <p>所有任务的总入口：理解你的求职目标 → 拆解任务 → 调度下方专业 Agent → 汇总结果。你只需要用自然语言下指令，剩下交给它编排。</p>
+            <div class="sup-flow">
+              <span class="t-tag t-tag--primary">任务分解</span>→
+              <span class="t-tag">Agent 调度</span>→
+              <span class="t-tag">工具调用</span>→
+              <span class="t-tag">结果汇总</span>→
+              <span class="t-tag">写入记忆</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 专业 Agent 网格 -->
+        <div class="agent-grid">
+          <div class="agent-card" onclick="toast('原型演示：查看 Career Planner 详情与近期执行记录')">
+            <div class="ac-top"><span class="t-avatar" style="background:#00a870">规</span>
+              <div><div class="ac-name">Career Planner</div><div class="ac-state"><i></i>空闲</div></div>
+            </div>
+            <div class="ac-desc">理解求职目标，生成职业目标画像，作为所有 Agent 的任务上下文。</div>
+            <div class="ac-meta"><span>今日 1 次</span><span>1.2k tok</span></div>
+          </div>
+          <div class="agent-card" onclick="toast('原型演示：查看 JD Analysis Agent 详情')">
+            <div class="ac-top"><span class="t-avatar" style="background:#ed7b2f">岗</span>
+              <div><div class="ac-name">JD Analysis</div><div class="ac-state"><i></i>空闲</div></div>
+            </div>
+            <div class="ac-desc">解析招聘 JD，提取职责、技能、经验与关键词，生成标准化岗位画像。</div>
+            <div class="ac-meta"><span>今日 3 次</span><span>4.8k tok</span></div>
+          </div>
+          <div class="agent-card" onclick="toast('原型演示：查看 Resume Agent 详情')">
+            <div class="ac-top"><span class="t-avatar" style="background:#0052d9">简</span>
+              <div><div class="ac-name">Resume Agent</div><div class="ac-state"><i></i>空闲</div></div>
+            </div>
+            <div class="ac-desc">多格式简历解析（PDF/Word/图片），输出结构与 ATS 关键词诊断。</div>
+            <div class="ac-meta"><span>今日 2 次</span><span>3.9k tok</span></div>
+          </div>
+          <div class="agent-card" onclick="toast('原型演示：查看 Match Agent 详情')">
+            <div class="ac-top"><span class="t-avatar" style="background:#6a5fd0">匹</span>
+              <div><div class="ac-name">Match Agent</div><div class="ac-state"><i></i>空闲</div></div>
+            </div>
+            <div class="ac-desc">岗位画像 × 简历 × 能力画像的多维匹配计算，输出匹配度与差距分析。</div>
+            <div class="ac-meta"><span>今日 3 次</span><span>2.4k tok</span></div>
+          </div>
+          <div class="agent-card" onclick="toast('原型演示：查看 Resume Optimizer 详情')">
+            <div class="ac-top"><span class="t-avatar" style="background:#45526b">优</span>
+              <div><div class="ac-name">Resume Optimizer</div><div class="ac-state"><i></i>空闲</div></div>
+            </div>
+            <div class="ac-desc">受控优化流程：分析 → 规划 → 分维度优化 → 复评，生成带版本管理的简历。</div>
+            <div class="ac-meta"><span>今日 1 次</span><span>12.6k tok</span></div>
+          </div>
+          <div class="agent-card" onclick="toast('原型演示：查看 Interview Agent 详情')">
+            <div class="ac-top"><span class="t-avatar" style="background:#d54941">面</span>
+              <div><div class="ac-name">Interview Agent</div><div class="ac-state run"><i></i>运行中 · 等待回答</div></div>
+            </div>
+            <div class="ac-desc">动态模拟面试：技术 / HR / 压力三类面试官，根据回答实时追问。</div>
+            <div class="ac-meta"><span>今日 1 次</span><span>8.1k tok</span></div>
+          </div>
+          <div class="agent-card" onclick="toast('原型演示：查看 Evaluation Agent 详情')">
+            <div class="ac-top"><span class="t-avatar" style="background:#ed7b2f">评</span>
+              <div><div class="ac-name">Evaluation Agent</div><div class="ac-state"><i></i>空闲</div></div>
+            </div>
+            <div class="ac-desc">面试结束后输出结构化评价：六维评分、薄弱知识点、改进建议。</div>
+            <div class="ac-meta"><span>今日 1 次</span><span>5.2k tok</span></div>
+          </div>
+          <div class="agent-card" onclick="toast('原型演示：查看 Coach Agent 详情')">
+            <div class="ac-top"><span class="t-avatar" style="background:#00a870">C</span>
+              <div><div class="ac-name">Career Coach</div><div class="ac-state run"><i></i>运行中</div></div>
+            </div>
+            <div class="ac-desc">汇总全流程结果，更新能力画像，生成个性化训练计划与打卡任务。</div>
+            <div class="ac-meta"><span>今日 1 次</span><span>3.3k tok</span></div>
+          </div>
+        </div>
+
+        <!-- 任务队列 -->
+        <div class="sec-title">任务队列 <span class="t-tag" style="font-weight:400">近期执行</span><span class="more" onclick="location.href='index.html'">在对话区查看完整 Trace →</span></div>
+        <div class="task-table">
+          <div class="tt-row">
+            <span class="t-tag t-tag--primary" style="width:52px;justify-content:center">运行中</span>
+            <div class="tt-what">
+              <div class="n">技术面试 · 缓存专项（第 6 场）</div>
+              <div class="d">今天 15:20 发起 · 模拟面试进行中，等待用户回答第 3 题</div>
+            </div>
+            <div class="tt-agents">
+              <span class="t-avatar" style="background:#d54941">面</span>
+              <span class="t-avatar" style="background:#ed7b2f">评</span>
+            </div>
+            <span class="tt-cost">8.1k tok</span>
+          </div>
+          <div class="tt-row">
+            <span class="t-tag t-tag--primary" style="width:52px;justify-content:center">运行中</span>
+            <div class="tt-what">
+              <div class="n">更新能力画像 · 第 6 场面试后</div>
+              <div class="mini-step"><span class="dot"></span><span class="txt">Coach Agent 正在汇总 5 场面试趋势…</span></div>
+            </div>
+            <div class="tt-agents"><span class="t-avatar" style="background:#00a870">C</span></div>
+            <span class="tt-cost">3.3k tok</span>
+          </div>
+          <div class="tt-row">
+            <span class="t-tag t-tag--success" style="width:52px;justify-content:center">已完成</span>
+            <div class="tt-what">
+              <div class="n">针对字节 JD 优化简历</div>
+              <div class="d">今天 10:24 发起 · 匹配度 72% → 89% · 生成简历 V2</div>
+            </div>
+            <div class="tt-agents">
+              <span class="t-avatar" style="background:#0052d9">S</span>
+              <span class="t-avatar" style="background:#ed7b2f">岗</span>
+              <span class="t-avatar" style="background:#0052d9">简</span>
+              <span class="t-avatar" style="background:#6a5fd0">匹</span>
+              <span class="t-avatar" style="background:#45526b">优</span>
+            </div>
+            <span class="tt-cost">41.2k tok<br />¥0.86</span>
+          </div>
+          <div class="tt-row">
+            <span class="t-tag t-tag--success" style="width:52px;justify-content:center">已完成</span>
+            <div class="tt-what">
+              <div class="n">解析拼多多「Java 开发（交易）」JD</div>
+              <div class="d">今天 09:12 发起 · 提取 21 项要求，匹配度 76%</div>
+            </div>
+            <div class="tt-agents">
+              <span class="t-avatar" style="background:#ed7b2f">岗</span>
+              <span class="t-avatar" style="background:#6a5fd0">匹</span>
+            </div>
+            <span class="tt-cost">7.2k tok</span>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="t-message" id="toast"></div>
+<script src="sidebar.js"></script>
+</body>
+</html>

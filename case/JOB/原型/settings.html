@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CareerAgent · 设置</title>
+<link rel="stylesheet" href="styles.css" />
+<style>
+  .st-main { flex: 1; min-width: 0; overflow-y: auto; background: var(--td-bg-page); }
+  .st-wrap { max-width: 720px; margin: 0 auto; padding: 24px 28px 48px; display: flex; flex-direction: column; gap: 18px; }
+  .st-card { padding: 20px 24px; }
+  .st-card > h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+  .st-card > .desc { font-size: 12.5px; color: var(--td-text-secondary); margin-bottom: 16px; line-height: 1.7; }
+
+  .row { display: flex; align-items: center; gap: 14px; padding: 11px 0; border-bottom: 1px dashed var(--td-component-stroke); font-size: 13.5px; }
+  .row:last-child { border-bottom: none; }
+  .row .k { flex: 1; min-width: 0; }
+  .row .k .ks { display: block; font-size: 11.5px; color: var(--td-text-placeholder); margin-top: 2px; }
+  .row .v { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .row .path { font-family: var(--td-font-mono); font-size: 12.5px; background: var(--td-bg-secondarycontainer); padding: 4px 10px; border-radius: 4px; }
+  .kbd { margin-right: 4px; }
+
+  .danger-btn { border: 1px solid var(--td-error-color); color: var(--td-error-color); background: var(--td-bg-container); }
+  .danger-btn:hover { background: var(--td-error-color-light); }
+
+  .about-row { display: flex; align-items: center; gap: 14px; }
+  .about-row .logo-mark { width: 44px; height: 44px; border-radius: 10px; background: var(--td-brand-color); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .about-row .ab-name { font-size: 15px; font-weight: 600; }
+  .about-row .ab-ver { font-size: 12px; color: var(--td-text-placeholder); margin-top: 2px; }
+</style>
+</head>
+<body data-active="settings">
+<div class="app-shell">
+  <div class="titlebar">
+    <div class="traffic"><i class="c"></i><i class="m"></i><i class="z"></i></div>
+    <div class="t-title">CareerAgent · 设置</div>
+    <div class="t-right"><span class="kbd">⌘ K</span></div>
+  </div>
+
+  <div class="app-body">
+    <!-- 侧边栏由 sidebar.js 注入 -->
+
+    <main class="st-main">
+      <div class="st-wrap">
+
+        <!-- 外观 -->
+        <div class="t-card st-card">
+          <h3>外观</h3>
+          <div class="row">
+            <div class="k">主题</div>
+            <div class="v">
+              <div class="t-segmented">
+                <span class="t-segmented__item is-active">浅色</span>
+                <span class="t-segmented__item" onclick="toast('原型演示：切换深色主题')">深色</span>
+                <span class="t-segmented__item" onclick="toast('原型演示：跟随系统')">跟随系统</span>
+              </div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="k">字体大小</div>
+            <div class="v">
+              <div class="t-segmented">
+                <span class="t-segmented__item" onclick="toast('原型演示：小字号')">小</span>
+                <span class="t-segmented__item is-active">标准</span>
+                <span class="t-segmented__item" onclick="toast('原型演示：大字号')">大</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 数据与隐私 -->
+        <div class="t-card st-card">
+          <h3>数据与隐私</h3>
+          <p class="desc">简历、面试记录、知识库全部存在你自己的电脑上，CareerAgent 不上传任何个人数据。</p>
+          <div class="row">
+            <div class="k">数据存放位置<span class="ks">可整体搬迁到移动硬盘或网盘同步目录</span></div>
+            <div class="v">
+              <span class="path">~/CareerAgent/data</span>
+              <button class="t-btn t-btn--base t-btn--sm" onclick="toast('原型演示：在文件管理器中打开')">打开</button>
+            </div>
+          </div>
+          <div class="row">
+            <div class="k">面试与训练提醒<span class="ks">系统通知，训练计划每日打卡提醒</span></div>
+            <div class="v"><span class="t-switch is-checked" onclick="this.classList.toggle('is-checked')"></span></div>
+          </div>
+          <div class="row">
+            <div class="k">导出全部数据<span class="ks">Markdown + JSON，可随时迁移备份</span></div>
+            <div class="v"><button class="t-btn t-btn--base t-btn--sm" onclick="toast('原型演示：导出本地数据包')">导出</button></div>
+          </div>
+          <div class="row">
+            <div class="k">清空全部本地数据<span class="ks">删除后不可恢复</span></div>
+            <div class="v"><button class="t-btn t-btn--sm danger-btn" onclick="toast('原型演示：需二次确认后才会清空')">清空</button></div>
+          </div>
+        </div>
+
+        <!-- 快捷键 -->
+        <div class="t-card st-card">
+          <h3>快捷键</h3>
+          <div class="row">
+            <div class="k">全局唤起 / 命令面板</div>
+            <div class="v"><span class="kbd">⌘</span><span class="kbd">K</span></div>
+          </div>
+          <div class="row">
+            <div class="k">快速开始模拟面试</div>
+            <div class="v"><span class="kbd">⌘</span><span class="kbd">⇧</span><span class="kbd">I</span></div>
+          </div>
+          <div class="row">
+            <div class="k">面试中按住说话</div>
+            <div class="v"><span class="kbd">Space</span></div>
+          </div>
+        </div>
+
+        <!-- 关于 -->
+        <div class="t-card st-card">
+          <h3>关于</h3>
+          <div class="about-row" style="margin-bottom:14px">
+            <span class="logo-mark"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="#fff" stroke-width="1.8"/><circle cx="12" cy="12" r="4" stroke="#fff" stroke-width="1.8"/><circle cx="12" cy="12" r="1.2" fill="#fff"/></svg></span>
+            <div>
+              <div class="ab-name">CareerAgent</div>
+              <div class="ab-ver">v0.9.0 · 本地模式 · 数据仅存本机</div>
+            </div>
+            <span style="flex:1"></span>
+            <button class="t-btn t-btn--base" onclick="toast('原型演示：已是最新版本 v0.9.0')">检查更新</button>
+          </div>
+          <div style="font-size:12px;color:var(--td-text-placeholder);line-height:1.8">
+            模型服务与 API Key 在 <a onclick="location.href='model.html'" style="cursor:pointer">模型配置</a> 中管理。
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="t-message" id="toast"></div>
+<script src="sidebar.js"></script>
+</body>
+</html>

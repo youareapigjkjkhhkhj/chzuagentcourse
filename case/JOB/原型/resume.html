@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CareerAgent · 简历优化与版本对比</title>
+<link rel="stylesheet" href="styles.css" />
+<style>
+  .rs-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .rs-head { display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: var(--td-bg-container); border-bottom: 1px solid var(--td-component-stroke); }
+  .rs-head h2 { font-size: 15px; font-weight: 600; }
+  .rs-head .spacer { flex: 1; }
+
+  /* 版本链 */
+  .ver-chain { display: flex; align-items: stretch; gap: 0; padding: 16px 24px; background: var(--td-bg-container); border-bottom: 1px solid var(--td-component-stroke); overflow-x: auto; }
+  .ver-node {
+    flex: 1; min-width: 150px; padding: 12px 14px;
+    border: 1px solid var(--td-component-border); border-radius: var(--td-radius-medium);
+    cursor: pointer; transition: all 0.2s; background: var(--td-bg-container); position: relative;
+  }
+  .ver-node:hover { border-color: var(--td-brand-color); }
+  .ver-node.is-current { border-color: var(--td-brand-color); box-shadow: 0 0 0 3px var(--td-brand-color-focus); }
+  .ver-node .v-tag { font-size: 11px; color: var(--td-text-placeholder); }
+  .ver-node .v-name { font-size: 13.5px; font-weight: 600; margin: 3px 0 6px; }
+  .ver-node .v-score { font-family: var(--td-font-mono); font-size: 12px; }
+  .ver-node .v-score.good { color: var(--td-success-color); }
+  .ver-node .v-score.mid { color: var(--td-warning-color); }
+  .ver-link { display: flex; align-items: center; padding: 0 8px; color: var(--td-text-placeholder); flex-shrink: 0; }
+
+  .rs-body { flex: 1; display: flex; min-height: 0; }
+
+  /* Diff 视图 */
+  .diff-col { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--td-bg-page); }
+  .diff-toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 20px; }
+  .diff-toolbar .t-segmented { background: #e9e9e9; }
+  .diff-scroll { flex: 1; overflow-y: auto; padding: 0 20px 20px; display: flex; gap: 14px; }
+  .diff-pane { flex: 1; min-width: 0; background: var(--td-bg-container); border-radius: var(--td-radius-medium); box-shadow: var(--td-shadow-1); overflow: hidden; height: fit-content; }
+  .diff-pane__head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--td-component-stroke); font-size: 13px; font-weight: 600; }
+  .diff-pane__head .meta { margin-left: auto; font-size: 11px; font-weight: 400; color: var(--td-text-placeholder); font-family: var(--td-font-mono); }
+  .diff-block { padding: 14px 16px; border-bottom: 1px dashed var(--td-component-stroke); font-size: 13px; line-height: 1.9; }
+  .diff-block:last-child { border-bottom: none; }
+  .diff-block .b-label { font-size: 11px; color: var(--td-text-placeholder); letter-spacing: 1px; margin-bottom: 8px; }
+  .del { background: var(--td-error-color-light); color: var(--td-error-color); text-decoration: line-through; text-decoration-color: rgba(213,73,65,0.5); padding: 1px 4px; border-radius: 3px; }
+  .ins { background: var(--td-success-color-light); color: #067a54; padding: 1px 4px; border-radius: 3px; }
+  .ins b { color: var(--td-success-color); }
+  .same { color: var(--td-text-secondary); }
+
+  /* 右侧建议 */
+  .sug-col { width: 320px; flex-shrink: 0; background: var(--td-bg-container); border-left: 1px solid var(--td-component-stroke); overflow-y: auto; }
+  .sug-sec { padding: 16px; border-bottom: 1px solid var(--td-component-stroke); }
+  .sug-sec h5 { font-size: 12px; color: var(--td-text-placeholder); letter-spacing: 1px; margin-bottom: 12px; }
+  .sug-group { margin-bottom: 10px; border: 1px solid var(--td-component-border); border-radius: var(--td-radius-medium); overflow: hidden; }
+  .sug-group__head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .sug-group__head:hover { background: var(--td-bg-container-hover); }
+  .sug-group__head .cnt { margin-left: auto; }
+  .sug-group__body { display: none; border-top: 1px solid var(--td-component-stroke); padding: 8px 12px 12px; }
+  .sug-group.is-open .sug-group__body { display: block; }
+  .sug-item { display: flex; gap: 8px; padding: 7px 0; font-size: 12.5px; line-height: 1.7; color: var(--td-text-secondary); }
+  .sug-item .ic { flex-shrink: 0; margin-top: 2px; display: flex; }
+  .sug-item .apply { margin-left: auto; flex-shrink: 0; color: var(--td-brand-color); cursor: pointer; font-size: 12px; }
+  .sug-item .apply:hover { text-decoration: underline; }
+  .ats-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+</style>
+</head>
+<body data-active="resume">
+<div class="app-shell">
+  <div class="titlebar">
+    <div class="traffic"><i class="c"></i><i class="m"></i><i class="z"></i></div>
+    <div class="t-title">CareerAgent · 简历优化 — 版本对比（原始版 → V2 字节定制版）</div>
+    <div class="t-right"><span class="kbd">⌘ K</span><span class="text-placeholder" style="font-size:12px">全局唤起</span></div>
+  </div>
+
+  <div class="app-body">
+    <!-- 侧边栏由 sidebar.js 注入 -->
+
+    <div class="rs-main">
+      <div class="rs-head">
+        <h2>简历优化 · 版本对比</h2>
+        <span class="t-tag t-tag--primary">受控优化流程：分析 → 规划 → 分维度优化 → 复评</span>
+        <span class="spacer"></span>
+        <button class="t-btn t-btn--base t-btn--sm" onclick="toast('原型演示：导出 V2 PDF（本地生成，不上传）')">导出 PDF</button>
+        <button class="t-btn t-btn--primary t-btn--sm" onclick="toast('原型演示：已将 V2 设为最终版本')">设为最终版本</button>
+      </div>
+
+      <!-- 版本链 -->
+      <div class="ver-chain">
+        <div class="ver-node" onclick="pickVer(this)">
+          <div class="v-tag">V1 · 原始简历</div>
+          <div class="v-name">张三_后端开发.pdf</div>
+          <div class="v-score mid">匹配度 72%</div>
+        </div>
+        <span class="ver-link"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+        <div class="ver-node is-current" onclick="pickVer(this)">
+          <div class="v-tag">V2 · 优化版本</div>
+          <div class="v-name">字节 JD 定向优化</div>
+          <div class="v-score good">匹配度 89% ↑17</div>
+        </div>
+        <span class="ver-link"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+        <div class="ver-node" onclick="pickVer(this)">
+          <div class="v-tag">V3 · 岗位定制版</div>
+          <div class="v-name">阿里 JD 定制（草稿）</div>
+          <div class="v-score mid">匹配度 84%</div>
+        </div>
+        <span class="ver-link"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+        <div class="ver-node" onclick="pickVer(this)">
+          <div class="v-tag">V4 · 最终版本</div>
+          <div class="v-name">尚未生成</div>
+          <div class="v-score" style="color:var(--td-text-placeholder)">—</div>
+        </div>
+      </div>
+
+      <div class="rs-body">
+        <!-- Diff -->
+        <div class="diff-col">
+          <div class="diff-toolbar">
+            <div class="t-segmented">
+              <span class="t-segmented__item is-active">分栏对比</span>
+              <span class="t-segmented__item" onclick="toast('原型演示：切换为统一 Diff 视图')">统一视图</span>
+            </div>
+            <span class="t-tag t-tag--danger">- 5 处删减</span>
+            <span class="t-tag t-tag--success">+ 12 处改写</span>
+            <span class="spacer" style="flex:1"></span>
+            <span class="text-placeholder" style="font-size:12px">由 Resume Optimizer 生成 · 已留痕可回滚</span>
+          </div>
+
+          <div class="diff-scroll">
+            <!-- 原始 -->
+            <div class="diff-pane">
+              <div class="diff-pane__head" style="color:var(--td-error-color)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h8l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/></svg>
+                V1 · 原始简历
+                <span class="meta">72%</span>
+              </div>
+              <div class="diff-block">
+                <div class="b-label">工作经历 · 某电商公司</div>
+                <span class="del">负责公司后台系统开发。</span><br />
+                <span class="del">使用 Java 和 Spring Boot 写接口，做了缓存优化。</span><br />
+                <span class="same">参与订单系统的日常维护与需求迭代。</span>
+              </div>
+              <div class="diff-block">
+                <div class="b-label">项目经历 · 交易系统</div>
+                <span class="del">做了一个交易系统，用到了 Redis 和 Kafka，性能提升明显。</span><br />
+                <span class="same">负责数据库表结构设计与部分模块开发。</span>
+              </div>
+              <div class="diff-block">
+                <div class="b-label">技能清单</div>
+                <span class="same">Java、Spring Boot、MySQL、Redis、Git</span><br />
+                <span class="del">了解 Kubernetes。</span>
+              </div>
+            </div>
+
+            <!-- 优化后 -->
+            <div class="diff-pane">
+              <div class="diff-pane__head" style="color:var(--td-success-color)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h8l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/></svg>
+                V2 · 字节定制版
+                <span class="meta">89%</span>
+              </div>
+              <div class="diff-block">
+                <div class="b-label">工作经历 · 某电商公司</div>
+                <span class="ins">主导交易后台核心链路重构（<b>Spring Boot + Redis + Kafka</b>），通过二级缓存与消息削峰支撑日均 <b>2,000 万</b>请求，接口 P99 延迟从 480ms 降至 <b>95ms</b>。</span><br />
+                <span class="ins">设计订单状态机与幂等方案，大促期间零超卖、零重复扣款。</span><br />
+                <span class="same">参与订单系统的日常维护与需求迭代。</span>
+              </div>
+              <div class="diff-block">
+                <div class="b-label">项目经历 · 交易系统</div>
+                <span class="ins">独立负责交易系统缓存层设计：Redis 热点 Key 互斥锁防击穿、随机过期防雪崩，缓存命中率 <b>99.2%</b>。</span><br />
+                <span class="ins">基于 Kafka 实现流量削峰，峰值 <b>2 万 QPS</b> 平稳写入。</span><br />
+                <span class="same">负责数据库表结构设计与部分模块开发。</span>
+              </div>
+              <div class="diff-block">
+                <div class="b-label">技能清单</div>
+                <span class="same">Java、Spring Boot、MySQL、Redis、Git</span><br />
+                <span class="ins">Kafka、微服务、性能优化、高并发系统设计</span>
+                <span class="ins" style="background:var(--td-warning-color-light);color:#b35c1a">K8s（学习中 · 建议补充实战）</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 优化建议 -->
+        <aside class="sug-col">
+          <div class="sug-sec">
+            <h5>优化方案（Optimization Plan）</h5>
+
+            <div class="sug-group is-open">
+              <div class="sug-group__head" onclick="this.parentNode.classList.toggle('is-open')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0052d9" stroke-width="1.8"><rect x="3" y="4" width="18" height="5" rx="1"/><rect x="3" y="12" width="18" height="8" rx="1"/></svg>
+                结构优化
+                <span class="cnt t-tag t-tag--primary">3 处</span>
+              </div>
+              <div class="sug-group__body">
+                <div class="sug-item"><span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00a870" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></span>「项目经历」上移至「工作经历」之前，匹配字节筛选习惯</div>
+                <div class="sug-item"><span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00a870" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></span>技能清单按 JD 关键词重排序，核心技能置顶</div>
+                <div class="sug-item"><span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00a870" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></span>合并两条重复的日常维护描述</div>
+              </div>
+            </div>
+
+            <div class="sug-group is-open">
+              <div class="sug-group__head" onclick="this.parentNode.classList.toggle('is-open')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0052d9" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+                内容量化改写
+                <span class="cnt t-tag t-tag--primary">7 处</span>
+              </div>
+              <div class="sug-group__body">
+                <div class="sug-item"><span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ed7b2f" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg></span>「性能提升明显」→ 补充 P99 延迟 480ms→95ms<span class="apply" onclick="toast('原型演示：查看改写依据（面试记忆 + 项目记录）')">依据</span></div>
+                <div class="sug-item"><span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ed7b2f" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg></span>「做了缓存优化」→ 拆分为击穿/雪崩两条技术方案</div>
+                <div class="sug-item"><span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00a870" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></span>其余 5 处已自动改写完成</div>
+              </div>
+            </div>
+
+            <div class="sug-group">
+              <div class="sug-group__head" onclick="this.parentNode.classList.toggle('is-open')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0052d9" stroke-width="1.8"><path d="M20 12 12 20l-8-8V4h8l8 8Z"/><circle cx="8.5" cy="8.5" r="1.5"/></svg>
+                ATS 关键词补全
+                <span class="cnt t-tag t-tag--warning">2 处待确认</span>
+              </div>
+              <div class="sug-group__body">
+                <div class="sug-item">建议补全「微服务」「系统设计」关键词<span class="apply" onclick="toast('原型演示：已应用关键词补全')">应用</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sug-sec" style="border-bottom:none">
+            <h5>ATS 关键词命中（58% → 93%）</h5>
+            <div class="ats-wrap">
+              <span class="t-tag t-tag--success">✓ Java</span>
+              <span class="t-tag t-tag--success">✓ Spring Boot</span>
+              <span class="t-tag t-tag--success">✓ Redis</span>
+              <span class="t-tag t-tag--success">✓ Kafka</span>
+              <span class="t-tag t-tag--success">✓ 高并发</span>
+              <span class="t-tag t-tag--success">✓ MySQL 调优</span>
+              <span class="t-tag t-tag--success">✓ 微服务</span>
+              <span class="t-tag t-tag--warning">○ Kubernetes</span>
+            </div>
+            <p style="font-size:12px;color:var(--td-text-placeholder);line-height:1.8;margin-top:12px">K8s 为 JD「优先项」，建议通过训练计划补充实战后再写入简历，避免面试追问风险。</p>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="t-message" id="toast"></div>
+<script src="sidebar.js"></script>
+<script>
+  function pickVer(el) {
+    document.querySelectorAll('.ver-node').forEach(function(n){ n.classList.remove('is-current'); });
+    el.classList.add('is-current');
+  }
+</script>
+</body>
+</html>

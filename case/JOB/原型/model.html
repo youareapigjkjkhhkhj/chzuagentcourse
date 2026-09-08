@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CareerAgent · 模型配置</title>
+<link rel="stylesheet" href="styles.css" />
+<style>
+  .md-main { flex: 1; min-width: 0; overflow-y: auto; background: var(--td-bg-page); }
+  .md-wrap { max-width: 960px; margin: 0 auto; padding: 24px 28px 48px; }
+  .md-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 10px; }
+  .md-head .sec-h { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+  .md-head .sec-p { font-size: 13px; color: var(--td-text-secondary); line-height: 1.7; max-width: 620px; }
+  .md-head .spacer { flex: 1; }
+
+  .sec-title { font-size: 15px; font-weight: 600; margin: 26px 0 6px; display: flex; align-items: center; gap: 10px; }
+  .sec-title .t-tag { font-weight: 400; }
+
+  /* 模型卡片网格 */
+  .m-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .m-card {
+    background: var(--td-bg-container); border: 1px solid var(--td-component-stroke); border-radius: var(--td-radius-medium);
+    padding: 16px 18px; transition: all 0.15s; position: relative;
+  }
+  .m-card:hover { border-color: var(--td-brand-color); box-shadow: var(--td-shadow-1); }
+  .m-card.is-default { border-color: var(--td-brand-color); background: linear-gradient(135deg,#f2f3ff,#fff 70%); }
+  .m-card .mc-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .m-card .m-logo { width: 34px; height: 34px; border-radius: var(--td-radius-medium); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 12px; flex-shrink: 0; }
+  .m-card .mc-name { font-size: 14px; font-weight: 600; line-height: 1.3; }
+  .m-card .mc-prov { font-size: 11.5px; color: var(--td-text-placeholder); margin-top: 2px; }
+  .m-card .mc-meta { display: flex; gap: 14px; font-size: 11.5px; color: var(--td-text-placeholder); font-family: var(--td-font-mono); border-top: 1px dashed var(--td-component-stroke); padding-top: 10px; margin-top: 4px; }
+  .m-card .mc-actions { position: absolute; right: 14px; top: 14px; display: flex; align-items: center; gap: 6px; }
+  .m-card .mc-actions .set-def { font-size: 11.5px; color: var(--td-brand-color); cursor: pointer; }
+  .m-card .mc-actions .del { color: var(--td-text-placeholder); cursor: pointer; font-size: 14px; line-height: 1; }
+  .m-card .mc-actions .del:hover { color: var(--td-error-color); }
+  .m-card .mc-url { font-family: var(--td-font-mono); font-size: 11px; color: var(--td-text-placeholder); margin: -4px 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* 弹框 */
+  .modal-mask {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100;
+    display: none; align-items: center; justify-content: center;
+  }
+  .modal-mask.is-open { display: flex; }
+  .modal {
+    width: 480px; background: var(--td-bg-container); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.18);
+    padding: 22px 24px;
+  }
+  .modal h3 { font-size: 16px; font-weight: 600; margin-bottom: 2px; }
+  .modal .mo-sub { font-size: 12px; color: var(--td-text-placeholder); margin-bottom: 18px; }
+  .f-row { margin-bottom: 14px; }
+  .f-row > label { display: block; font-size: 12.5px; font-weight: 500; margin-bottom: 7px; }
+  .f-row > label .req { color: var(--td-error-color); margin-left: 2px; }
+  .f-row .k { font-size: 11.5px; color: var(--td-text-placeholder); margin-top: 5px; }
+  .modal .t-input, .modal select.t-input { width: 100%; box-sizing: border-box; }
+  .modal .mo-foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+  .test-line { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; }
+  .test-ok { color: var(--td-success-color); display: flex; align-items: center; gap: 5px; }
+</style>
+</head>
+<body data-active="model">
+<div class="app-shell">
+  <div class="titlebar">
+    <div class="traffic"><i class="c"></i><i class="m"></i><i class="z"></i></div>
+    <div class="t-title">CareerAgent</div>
+    <div class="t-right"><span class="kbd">⌘ K</span></div>
+  </div>
+
+  <div class="app-body">
+    <!-- 侧边栏由 sidebar.js 注入 -->
+
+    <main class="md-main">
+      <div class="md-wrap">
+        <div class="md-head">
+          <div>
+            <div class="sec-h">模型配置</div>
+            <div class="sec-p">像装 App 一样添加模型：点「添加模型」填入 Key 即可。Key 用系统密钥链加密，只存在你自己的电脑上。</div>
+          </div>
+          <span class="spacer"></span>
+          <button class="t-btn t-btn--primary" onclick="openModal('chat')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
+            添加模型
+          </button>
+        </div>
+
+        <!-- 对话模型 -->
+        <div class="sec-title">对话模型 <span class="t-tag">驱动全部 Agent</span></div>
+        <div class="m-grid">
+          <div class="m-card is-default">
+            <div class="mc-actions">
+              <span class="t-tag t-tag--primary" style="height:20px">默认</span>
+            </div>
+            <div class="mc-top">
+              <span class="m-logo" style="background:linear-gradient(135deg,#0052d9,#366ef4)">DS</span>
+              <div><div class="mc-name">DeepSeek-V3</div><div class="mc-prov">DeepSeek 官方 API</div></div>
+            </div>
+            <div class="mc-url">api.deepseek.com/v1</div>
+            <div class="mc-meta"><span>本月 ¥18.62</span><span>892k tokens</span></div>
+          </div>
+
+          <div class="m-card">
+            <div class="mc-actions">
+              <span class="set-def" onclick="toast('原型演示：已设为默认对话模型')">设为默认</span>
+              <span class="del" onclick="toast('原型演示：移除模型配置（不影响已产生的数据）')">×</span>
+            </div>
+            <div class="mc-top">
+              <span class="m-logo" style="background:linear-gradient(135deg,#6a5fd0,#948be0)">QW</span>
+              <div><div class="mc-name">qwen-max</div><div class="mc-prov">阿里云百炼</div></div>
+            </div>
+            <div class="mc-url">dashscope.aliyuncs.com</div>
+            <div class="mc-meta"><span>本月 ¥4.10</span><span>96k tokens</span></div>
+          </div>
+
+          <div class="m-card">
+            <div class="mc-actions">
+              <span class="set-def" onclick="toast('原型演示：已设为默认对话模型')">设为默认</span>
+              <span class="del" onclick="toast('原型演示：移除模型配置')">×</span>
+            </div>
+            <div class="mc-top">
+              <span class="m-logo" style="background:#586a86">OL</span>
+              <div><div class="mc-name">qwen2.5:14b</div><div class="mc-prov">本地 Ollama · 离线</div></div>
+            </div>
+            <div class="mc-url">localhost:11434</div>
+            <div class="mc-meta"><span>免费</span><span>本机推理</span></div>
+          </div>
+
+        </div>
+
+        <!-- 向量模型 -->
+        <div class="sec-title">向量模型 <span class="t-tag">知识库向量化用</span></div>
+        <div class="m-grid">
+          <div class="m-card is-default">
+            <div class="mc-actions">
+              <span class="t-tag t-tag--primary" style="height:20px">默认</span>
+            </div>
+            <div class="mc-top">
+              <span class="m-logo" style="background:linear-gradient(135deg,#00a870,#3ec99b)">BG</span>
+              <div><div class="mc-name">bge-m3</div><div class="mc-prov">本地推理 · 免费离线</div></div>
+            </div>
+            <div class="mc-meta"><span>已内置</span><span>1024 维</span></div>
+          </div>
+
+          <div class="m-card">
+            <div class="mc-actions">
+              <span class="set-def" onclick="toast('原型演示：设为默认向量模型，切换后需重建索引')">设为默认</span>
+              <span class="del" onclick="toast('原型演示：移除模型配置')">×</span>
+            </div>
+            <div class="mc-top">
+              <span class="m-logo" style="background:linear-gradient(135deg,#10a37f,#1ac79b)">OA</span>
+              <div><div class="mc-name">text-embedding-3</div><div class="mc-prov">OpenAI API</div></div>
+            </div>
+            <div class="mc-meta"><span>¥0.02 / 百万字符</span><span>1536 维</span></div>
+          </div>
+
+        </div>
+
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- 添加模型弹框 -->
+<div class="modal-mask" id="modalMask" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <h3 id="modalTitle">添加对话模型</h3>
+    <div class="mo-sub">只需选服务商、填 Key，两步完成</div>
+
+    <div class="f-row">
+      <label>模型类型</label>
+      <div class="t-segmented" style="width:fit-content">
+        <span class="t-segmented__item is-active" id="tabChat" onclick="switchType('chat')">对话模型</span>
+        <span class="t-segmented__item" id="tabEmbed" onclick="switchType('embed')">向量模型</span>
+      </div>
+    </div>
+
+    <div class="f-row">
+      <label>服务商<span class="req">*</span></label>
+      <select class="t-input" id="provSel" onchange="fillModel()">
+        <option value="">请选择服务商</option>
+        <optgroup label="对话模型" id="optChat">
+          <option value="deepseek">DeepSeek（深度求索）</option>
+          <option value="qwen">阿里云百炼 · 通义千问</option>
+          <option value="zhipu">智谱 GLM</option>
+          <option value="moonshot">月之暗面 Kimi</option>
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic Claude</option>
+          <option value="ollama">本地 Ollama</option>
+          <option value="vllm">本地 vLLM / LM Studio</option>
+          <option value="custom">自定义（OpenAI 兼容中转）</option>
+        </optgroup>
+        <optgroup label="向量模型" id="optEmbed" style="display:none">
+          <option value="bge-local">BGE 系列 · 本地推理（推荐，免费）</option>
+          <option value="qwen-embed">通义文本向量（百炼）</option>
+          <option value="zhipu-embed">智谱 Embedding</option>
+          <option value="openai-embed">OpenAI text-embedding-3</option>
+          <option value="ollama-embed">本地 Ollama 向量模型</option>
+        </optgroup>
+      </select>
+    </div>
+
+    <div class="f-row">
+      <label>模型<span class="req">*</span></label>
+      <input class="t-input" id="modelInput" placeholder="选择服务商后自动填入，可手动修改" />
+    </div>
+
+    <div class="f-row" id="keyRow">
+      <label>API Key<span class="req">*</span></label>
+      <input class="t-input" type="password" placeholder="sk-…（加密保存到系统密钥链）" />
+      <div class="k">没有 Key？去服务商官网控制台创建一个，粘贴进来即可。</div>
+    </div>
+
+    <div class="f-row" id="urlRow">
+      <label>服务地址 <span id="urlLabel" style="color:var(--td-text-placeholder);font-weight:400">Base URL · 选服务商后自动填入，可修改</span></label>
+      <input class="t-input" id="urlInput" placeholder="选择服务商后自动填入" />
+      <div class="k" id="urlHint">在线模型用官方默认地址即可；本地模型或中转服务填实际地址。</div>
+    </div>
+
+    <div class="f-row">
+      <button class="t-btn t-btn--base" onclick="fakeTest()">测试连通性</button>
+      <span class="test-line" id="testLine" style="display:none">
+        <span class="test-ok"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg>连接正常 · 延迟 420ms</span>
+      </span>
+    </div>
+
+    <div class="mo-foot">
+      <button class="t-btn t-btn--base" onclick="closeModal()">取消</button>
+      <button class="t-btn t-btn--primary" onclick="saveModel()">保存并启用</button>
+    </div>
+  </div>
+</div>
+
+<div class="t-message" id="toast"></div>
+<script src="sidebar.js"></script>
+<script>
+  /* presets: 模型名 + 默认 Base URL + 是否本地（本地无需 Key） */
+  var presets = {
+    deepseek:      ['deepseek-chat', 'https://api.deepseek.com/v1', false],
+    qwen:          ['qwen-max', 'https://dashscope.aliyuncs.com/compatible-mode/v1', false],
+    zhipu:         ['glm-4-plus', 'https://open.bigmodel.cn/api/paas/v4', false],
+    moonshot:      ['moonshot-v1-8k', 'https://api.moonshot.cn/v1', false],
+    openai:        ['gpt-4o', 'https://api.openai.com/v1', false],
+    anthropic:     ['claude-sonnet-4', 'https://api.anthropic.com', false],
+    ollama:        ['qwen2.5:14b', 'http://localhost:11434/v1', true],
+    vllm:          ['', 'http://localhost:8000/v1', true],
+    custom:        ['', '', false],
+    'bge-local':   ['bge-m3（本地）', '', true],
+    'qwen-embed':  ['text-embedding-v3', 'https://dashscope.aliyuncs.com/compatible-mode/v1', false],
+    'zhipu-embed': ['embedding-3', 'https://open.bigmodel.cn/api/paas/v4', false],
+    'openai-embed':['text-embedding-3-large', 'https://api.openai.com/v1', false],
+    'ollama-embed':['nomic-embed-text', 'http://localhost:11434/v1', true]
+  };
+
+  function openModal(type) { switchType(type); document.getElementById('modalMask').classList.add('is-open'); }
+  function closeModal() { document.getElementById('modalMask').classList.remove('is-open'); }
+
+  function switchType(type) {
+    var isChat = type === 'chat';
+    document.getElementById('tabChat').classList.toggle('is-active', isChat);
+    document.getElementById('tabEmbed').classList.toggle('is-active', !isChat);
+    document.getElementById('optChat').style.display = isChat ? '' : 'none';
+    document.getElementById('optEmbed').style.display = isChat ? 'none' : '';
+    document.getElementById('modalTitle').textContent = isChat ? '添加对话模型' : '添加向量模型';
+    /* 切换类型时重置表单 */
+    document.getElementById('provSel').value = '';
+    document.getElementById('modelInput').value = '';
+    document.getElementById('urlInput').value = '';
+    document.getElementById('keyRow').style.display = '';
+    document.getElementById('testLine').style.display = 'none';
+  }
+
+  function fillModel() {
+    var v = document.getElementById('provSel').value;
+    var p = presets[v] || ['', '', false];
+    document.getElementById('modelInput').value = p[0];
+    document.getElementById('modelInput').placeholder = p[0] || '填写模型名，如 qwen2.5:14b';
+    document.getElementById('urlInput').value = p[1];
+    document.getElementById('urlInput').placeholder = p[1] || '如 http://localhost:8000/v1';
+    /* 本地推理无需 Key；自定义中转按需填写 */
+    var noKey = p[2];
+    var keyRow = document.getElementById('keyRow');
+    keyRow.style.display = noKey ? 'none' : '';
+    if (v === 'custom') {
+      document.querySelector('#keyRow .k').textContent = '中转服务通常也需要 Key，按你的服务商要求填写。';
+    } else {
+      document.querySelector('#keyRow .k').textContent = '没有 Key？去服务商官网控制台创建一个，粘贴进来即可。';
+    }
+  }
+
+  function fakeTest() {
+    var line = document.getElementById('testLine');
+    line.style.display = 'none';
+    toast('原型演示：正在测试连通性…');
+    setTimeout(function () { line.style.display = ''; }, 700);
+  }
+
+  function saveModel() {
+    closeModal();
+    toast('原型演示：模型已添加，新卡片出现在列表中');
+  }
+</script>
+</body>
+</html>

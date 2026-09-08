@@ -44,3 +44,6 @@ case/Autocodeagent/源码/apps/desktop/release3/
 
 # ========== 部署输出产物 ==========
 deploy-output/
+
+# ========== 安装程序 ==========
+*.exe
