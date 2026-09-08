@@ -1,0 +1,15 @@
+clickhouse-connect
+deepagents
+fastapi
+fastmcp
+langchain-core
+langchain-openai
+langgraph
+mlflow
+openai
+psycopg2-binary
+pydantic
+python-dotenv
+pytest
+pytest-asyncio
+uvicorn[standard]

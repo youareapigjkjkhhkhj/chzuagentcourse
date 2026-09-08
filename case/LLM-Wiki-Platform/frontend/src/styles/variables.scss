@@ -1,0 +1,115 @@
+// ========================================
+// LLM Wiki — Midnight Editorial Design System
+// Aesthetic: Luxurious dark + warm amber accents
+// ========================================
+
+// Brand palette — warm amber over deep midnight
+$primary-color: #f59e0b;
+$primary-light: #fbbf24;
+$primary-dark: #d97706;
+$primary-gradient: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
+
+// Status colors — jewel tones
+$success-color: #10b981;
+$success-light: #34d399;
+$warning-color: #f59e0b;
+$warning-light: #fbbf24;
+$danger-color: #ef4444;
+$danger-light: #f87171;
+$info-color: #8b5cf6;
+
+// Deep midnight palette
+$dark-900: #08090d;
+$dark-800: #0f1117;
+$dark-700: #181b24;
+$dark-600: #222632;
+$dark-500: #343a4a;
+
+// Muted warm grays
+$light-50: #faf9f7;
+$light-100: #f5f3ef;
+$light-200: #e8e4dd;
+$light-300: #c9c4bb;
+
+// Text hierarchy — warm whites
+$text-primary: #f5f3ef;
+$text-secondary: #a09890;
+$text-muted: #6b6560;
+$text-dark: #0f1117;
+$text-dark-secondary: #343a4a;
+
+// Backgrounds — layered midnight
+$bg-primary: #08090d;
+$bg-secondary: #0f1117;
+$bg-tertiary: #181b24;
+$bg-card: rgba(15, 17, 23, 0.85);
+$bg-card-hover: rgba(24, 27, 36, 0.95);
+$bg-glass: rgba(8, 9, 13, 0.75);
+
+// Borders — subtle warmth
+$border-color: rgba(160, 152, 144, 0.08);
+$border-color-hover: rgba(245, 158, 11, 0.25);
+$border-glow: 0 0 24px rgba(245, 158, 11, 0.15);
+
+// Shadows — deeper, warmer
+$shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
+$shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.6), 0 2px 4px -1px rgba(0, 0, 0, 0.4);
+$shadow-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.7), 0 4px 8px -2px rgba(0, 0, 0, 0.5);
+$shadow-xl: 0 24px 40px -8px rgba(0, 0, 0, 0.8), 0 12px 12px -4px rgba(0, 0, 0, 0.5);
+$shadow-glow: 0 0 40px rgba(245, 158, 11, 0.2);
+$shadow-glow-lg: 0 0 60px rgba(245, 158, 11, 0.3);
+
+// Typography — distinctive pairing
+$font-display: 'Outfit', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+$font-body: 'DM Sans', 'SF Pro Text', -apple-system, BlinkMacSystemFont, sans-serif;
+$font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+
+// Sizing
+$font-size-xs: 0.75rem;
+$font-size-sm: 0.875rem;
+$font-size-base: 1rem;
+$font-size-lg: 1.125rem;
+$font-size-xl: 1.25rem;
+$font-size-2xl: 1.5rem;
+$font-size-3xl: 2rem;
+$font-size-4xl: 2.5rem;
+
+// Spacing
+$space-1: 0.25rem;
+$space-2: 0.5rem;
+$space-3: 0.75rem;
+$space-4: 1rem;
+$space-5: 1.25rem;
+$space-6: 1.5rem;
+$space-8: 2rem;
+$space-10: 2.5rem;
+$space-12: 3rem;
+
+// Radii — slightly softer
+$radius-sm: 6px;
+$radius-md: 10px;
+$radius-lg: 14px;
+$radius-xl: 20px;
+$radius-2xl: 28px;
+$radius-full: 9999px;
+
+// Motion — refined easing
+$transition-fast: 180ms cubic-bezier(0.22, 1, 0.36, 1);
+$transition-base: 300ms cubic-bezier(0.22, 1, 0.36, 1);
+$transition-slow: 450ms cubic-bezier(0.22, 1, 0.36, 1);
+$transition-spring: 600ms cubic-bezier(0.34, 1.56, 0.64, 1);
+
+// Gradients
+$gradient-primary: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
+$gradient-dark: linear-gradient(180deg, #08090d 0%, #0f1117 100%);
+$gradient-card: linear-gradient(135deg, rgba(245, 158, 11, 0.06) 0%, rgba(239, 68, 68, 0.04) 100%);
+$gradient-mesh: radial-gradient(at 30% 20%, rgba(245, 158, 11, 0.08) 0px, transparent 50%),
+                radial-gradient(at 70% 10%, rgba(239, 68, 68, 0.05) 0px, transparent 50%),
+                radial-gradient(at 10% 60%, rgba(139, 92, 246, 0.04) 0px, transparent 50%);
+
+// Breakpoints
+$breakpoint-sm: 640px;
+$breakpoint-md: 768px;
+$breakpoint-lg: 1024px;
+$breakpoint-xl: 1280px;
+$breakpoint-2xl: 1536px;

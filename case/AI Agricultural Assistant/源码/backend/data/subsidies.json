@@ -1,0 +1,222 @@
+[
+  {
+    "id": "pm_kisan",
+    "scheme_name": "Pradhan Mantri Kisan Samman Nidhi (PM-KISAN)",
+    "government_level": "Central",
+    "eligibility": "All land-holding farmer families (subject to some exclusions and conditions).",
+    "benefits": "₹6,000 per year, delivered in three equal instalments of ₹2,000 each. :contentReference[oaicite:0]{index=0}",
+    "application_steps": "Register online via the official portal or through Common Service Centres (CSCs). Provide landholding and bank account details.",
+    "documents": "Aadhaar Card, Land Ownership Papers (or land-holding certificate), Bank Account Details.",
+    "notes": "Institutional land-holders often not eligible; scheme covers small and marginal farmers under certain criteria.",
+    "link_to_apply": "https://pmkisan.gov.in/"
+  },
+  {
+    "id": "pmfby",
+    "scheme_name": "Pradhan Mantri Fasal Bima Yojana (PMFBY)",
+    "government_level": "Central & State",
+    "eligibility": "Farmers growing notified crops in notified areas; loanee and non-loanee farmers under certain conditions. :contentReference[oaicite:1]{index=1}",
+    "benefits": "Crop insurance coverage against natural calamities, pests, diseases, post-harvest losses; premiums are subsidised (e.g., 2% for Kharif, 1.5% for Rabi, 5% for horticultural crops). :contentReference[oaicite:2]{index=2}",
+    "application_steps": "Apply via appointed insurance company/agent in the notified area before the cut-off date; submit crop & area details.",
+    "documents": "Land records, Aadhaar, Bank account, Crop details, Previous yield history (if required).",
+    "notes": "Scheme details (premium rate, notified crops/areas) vary by state and season.",
+    "link_to_apply": "https://pmfby.gov.in/"
+  },
+  {
+    "id": "pmksy_per_drop_more_crop",
+    "scheme_name": "Pradhan Mantri Krishi Sinchai Yojana (PMKSY) – “Per Drop More Crop”",
+    "government_level": "Central & State",
+    "eligibility": "Farmers of all categories; small & marginal farmers given priority. :contentReference[oaicite:3]{index=3}",
+    "benefits": "Support/subsidy for irrigation infrastructure, micro-irrigation systems to improve “crop per drop”. :contentReference[oaicite:4]{index=4}",
+    "application_steps": "Apply via state horticulture/agriculture department portal or the Micro Irrigation Management Information (MIMI) portal; submit project/installation proposal.",
+    "documents": "Land records/chitta/adangal, Aadhaar, Bank passbook, Quotation from registered vendor.",
+    "notes": "State-wise terms (subsidy %age, eligible area) may vary.",
+    "link_to_apply": "https://mimi.icar.gov.in/"
+  },
+  {
+    "id": "soil_health_card_scheme",
+    "scheme_name": "Soil Health Card (SHC) Scheme",
+    "government_level": "Central",
+    "eligibility": "All farmers eligible for soil health card. :contentReference[oaicite:5]{index=5}",
+    "benefits": "Provides soil testing report and recommended fertiliser/dose every 2-3 years to improve soil health and productivity. :contentReference[oaicite:6]{index=6}",
+    "application_steps": "Collect soil sample from field/plot and submit to nearest Soil Testing Lab or Agriculture Office; follow the online submission process if available.",
+    "documents": "Aadhaar, Land details (field/plot), Sample collection requisition form.",
+    "notes": "Helps optimise fertiliser use, thereby improving productivity and reducing cost.",
+    "link_to_apply": "https://soilhealth.dac.gov.in/"
+  },
+  {
+    "id": "kisan_credit_card_scheme",
+    "scheme_name": "Kisan Credit Card (KCC) Scheme",
+    "government_level": "Central",
+    "eligibility": "All farmers, tenant farmers, oral lessees, Self Help Groups (engaged in agriculture) eligible. :contentReference[oaicite:7]{index=7}",
+    "benefits": "Short-term crop loans at concessional interest; interest subvention available if repaid on time. :contentReference[oaicite:8]{index=8}",
+    "application_steps": "Visit the nearest bank branch or apply online (if bank provides) for KCC; submit required documents & land/crop details.",
+    "documents": "Land revenue records, Identity proof, Address proof, Bank account details.",
+    "notes": "Interest subvention scheme may vary state-wise; timely repayment gives additional incentive.",
+    "link_to_apply": "Check with your bank’s agriculture/loan portal (example informational site: https://www.kisancreditcard-cic.com/)"
+  },
+  {
+    "id": "rkvv_raftaar",
+    "scheme_name": "Rashtriya Krishi Vikas Yojana (RKVY) – RAFTAAR",
+    "government_level": "Central & State",
+    "eligibility": "Farmers, farm-based enterprises, states under plan scheme. :contentReference[oaicite:9]{index=9}",
+    "benefits": "Funding for agricultural infrastructure & agri-business, promotes value-chain, risk mitigation. :contentReference[oaicite:10]{index=10}",
+    "application_steps": "States prepare project plans; farmers/farms apply via state/line department.",
+    "documents": "Depends on state project; likely land records, business plan, identity proof.",
+    "notes": "Flexible scheme with state own-plans; covers many allied sectors.",
+    "link_to_apply": "https://agriwelfare.gov.in/en/Major"
+  },
+  {
+    "id": "nbhm",
+    "scheme_name": "National Beekeeping & Honey Mission (NBHM)",
+    "government_level": "Central",
+    "eligibility": "Beekeepers and farmers interested in apiculture. :contentReference[oaicite:11]{index=11}",
+    "benefits": "Training and support for scientific beekeeping, boost to honey production.",
+    "application_steps": "Apply through state horticulture / bee-board portals.",
+    "documents": "Identity proof, land/field details, previous experience (if any).",
+    "notes": "Goal: double honey production by 2025.",
+    "link_to_apply": "See state horticulture / www.nbhm.nic.in (verify)"
+  },
+  {
+    "id": "nmeo_op",
+    "scheme_name": "National Mission on Edible Oils – Oil Palm (NMEO-OP)",
+    "government_level": "Central",
+    "eligibility": "Farmers cultivating oil-palm or oilseeds. :contentReference[oaicite:12]{index=12}",
+    "benefits": "Incentives, improved seeds, processing support for oilseeds & oil-palm cultivation.",
+    "application_steps": "Apply via state agriculture/mission portal for oil-palm cluster.",
+    "documents": "Land records, identity proof, bank details.",
+    "notes": "Part of self-sufficiency push in edible oils.",
+    "link_to_apply": "Check official portal of Ministry of Agriculture (verify)"
+  },
+  {
+    "id": "nm_nf",
+    "scheme_name": "National Mission on Natural Farming (NMNF)",
+    "government_level": "Central",
+    "eligibility": "Farmers who adopt natural/zero-budget farming methods. :contentReference[oaicite:13]{index=13}",
+    "benefits": "Support for training, infrastructure, incentives for natural farming methods.",
+    "application_steps": "Apply via state natural farming mission portal.",
+    "documents": "Land/farm details, identity proof, training enrolment.",
+    "notes": "Sustainable agriculture emphasis.",
+    "link_to_apply": "Check state agriculture dept portal."
+  },
+  {
+    "id": "paramparagat_krishi_vikas_yojana",
+    "scheme_name": "Paramparagat Krishi Vikas Yojana (PKVY)",
+    "government_level": "Central",
+    "eligibility": "Farmers/farmer groups in organic-farming clusters. :contentReference[oaicite:14]{index=14}",
+    "benefits": "Support for organic farming & cluster-based approach; e.g., ~₹31,500/ha over 3 years. :contentReference[oaicite:15]{index=15}",
+    "application_steps": "Form cluster, apply through state organic mission.",
+    "documents": "Cluster registration, land/farm details, identity proof.",
+    "notes": "Encourages transition to organic farming.",
+    "link_to_apply": "Check official MoA-FW organic mission portal."
+  },
+  {
+    "id": "e_nam_scheme",
+    "scheme_name": "e-National Agriculture Market (e-NAM)",
+    "government_level": "Central",
+    "eligibility": "Farmers, FPOs, market participants registered on platform. :contentReference[oaicite:16]{index=16}",
+    "benefits": "Online trading platform for agricultural commodities, improved access to mandi & markets.",
+    "application_steps": "Register on e-NAM portal via mandi or state portal, link bank & Aadhaar.",
+    "documents": "Farmer ID, bank account, Aadhaar, mandi membership.",
+    "notes": "Digital market integration for farmers.",
+    "link_to_apply": "https://enam.gov.in/"
+  },
+  {
+    "id": "green_revolution_krishonnati",
+    "scheme_name": "Green Revolution – Krishonnati Yojana",
+    "government_level": "Central",
+    "eligibility": "Farmers in selected states/areas under foodgrain production mission. :contentReference[oaicite:17]{index=17}",
+    "benefits": "Support for inputs, infrastructure for enhancing food-grain production.",
+    "application_steps": "Apply via state agriculture/dept of food-grains mission.",
+    "documents": "Land/farm details, identity proof.",
+    "notes": "Food-grain productivity emphasis.",
+    "link_to_apply": "Check state agriculture portal."
+  },
+  {
+    "id": "national_scheme_welfare_fishermen",
+    "scheme_name": "National Scheme of Welfare of Fishermen (NSWF)",
+    "government_level": "Central",
+    "eligibility": "Fishermen engaged in marine/inland fishing and allied activities. :contentReference[oaicite:18]{index=18}",
+    "benefits": "Financial assistance, pension, infrastructure support for fishermen.",
+    "application_steps": "Apply via state fisheries department / scheme portal.",
+    "documents": "Fishing license, identity proof, bank account.",
+    "notes": "Allied to agriculture/agrarian livelihoods.",
+    "link_to_apply": "Check official Department of Fisheries portal."
+  },
+  {
+    "id": "krishi_kalyan_abhiyan",
+    "scheme_name": "Krishi Kalyan Abhiyan",
+    "government_level": "Central",
+    "eligibility": "Small & marginal farmers in identified districts. :contentReference[oaicite:19]{index=19}",
+    "benefits": "Extension services, demonstration, awareness on agriculture & allied sectors.",
+    "application_steps": "Participation via district agriculture office.",
+    "documents": "Registration as farmer, identity proof.",
+    "notes": "Campaign mode for farmer support & outreach.",
+    "link_to_apply": "Check district agriculture dept."
+  },
+  {
+    "id": "agriculture_infra_fund",
+    "scheme_name": "Agriculture Infrastructure Fund (AIF)",
+    "government_level": "Central",
+    "eligibility": "Farmers, agri-entrepreneurs, start-ups, FPOs. :contentReference[oaicite:20]{index=20}",
+    "benefits": "Credit facility up to ₹2 lakh crore for infrastructure projects in agriculture & allied sector. :contentReference[oaicite:21]{index=21}",
+    "application_steps": "Apply via banks/NABARD/NHM; project proposal for infrastructure.",
+    "documents": "Project proposal, land/farm/enterprise documents, bank account, identity proof.",
+    "notes": "Large-scale infrastructure push for agri value-chain.",
+    "link_to_apply": "https://agriinfra.dac.gov.in/"
+  },
+  {
+    "id": "pm_annadata_aay_sanrakshan_abhiyaan",
+    "scheme_name": "Pradhan Mantri Annadata Aay Sanrakshan Abhiyan (PM-AASHA)",
+    "government_level": "Central",
+    "eligibility": "Farmers producing certain crops under MSP regime. :contentReference[oaicite:22]{index=22}",
+    "benefits": "Price support, procurement infrastructure, market intervention for select crops.",
+    "application_steps": "Registration with procurement/market dept when crop is procured.",
+    "documents": "Farm identity, bank account, crop cultivation evidence.",
+    "notes": "Ensures income stability for farmers via MSP & procurement.",
+    "link_to_apply": "Check food-grains procurement authority portal."
+  },
+  {
+    "id": "pradhan_mantri_krishi_sampada_yojana",
+    "scheme_name": "Pradhan Mantri Kisan Sampada Yojana (PM-KSY)",
+    "government_level": "Central",
+    "eligibility": "Agri-food processing entrepreneurs, farmers allied to processing units. :contentReference[oaicite:23]{index=23}",
+    "benefits": "Support for setting up agro-processing, cold-chains, value-addition of produce.",
+    "application_steps": "Apply via MoFPI or relevant state food-processing dept.",
+    "documents": "Business/enterprise plan, identity proof, land/farm/processing unit details.",
+    "notes": "Focus on value-addition rather than just production.",
+    "link_to_apply": "https://pmksy.gov.in/"
+  },
+  {
+    "id": "national_horticulture_mission",
+    "scheme_name": "National Horticulture Mission (NHM)",
+    "government_level": "Central",
+    "eligibility": "Farmers engaged in horticulture (fruits, vegetables, spices, plantation crops). :contentReference[oaicite:24]{index=24}",
+    "benefits": "Area-based differentiated strategy to increase horticulture output & income of farmers. :contentReference[oaicite:25]{index=25}",
+    "application_steps": "Apply via state horticulture mission / district horticulture office.",
+    "documents": "Farm/horticulture unit details, identity proof, bank account.",
+    "notes": "Promotes horticulture to boost income & nutritional security.",
+    "link_to_apply": "https://nhb.gov.in/"
+  },
+  {
+    "id": "sub_mission_agricultural_mechanisation",
+    "scheme_name": "Sub Mission on Agricultural Mechanisation (SMAM)",
+    "government_level": "Central",
+    "eligibility": "Small & marginal farmers, cooperatives, SHGs for mechanisation equipment subsidy. :contentReference[oaicite:26]{index=26}",
+    "benefits": "Subsidy on tractors, harvesters, farm-machinery for deprived farmers. :contentReference[oaicite:27]{index=27}",
+    "application_steps": "Apply via district agriculture office / state mechanisation cell.",
+    "documents": "Farmer ID, land/farm details, identity proof.",
+    "notes": "To enhance productivity via mechanisation.",
+    "link_to_apply": "Check state agriculture mechanisation portal."
+  },
+  {
+    "id": "national_mission_natural_farming_alt",
+    "scheme_name": "National Mission on Natural Farming (NMNF) – (Alternate entry)",
+    "government_level": "Central",
+    "eligibility": "Farmers shifting to natural/zero-budget/pesticide-free farming. :contentReference[oaicite:28]{index=28}",
+    "benefits": "Incentives + training to promote natural farming methods.",
+    "application_steps": "Apply via state natural-farming mission cell.",
+    "documents": "Farm details, identity proof, training registration.",
+    "notes": "Environment-friendly farming push.",
+    "link_to_apply": "Check state agriculture department."
+  }
+]

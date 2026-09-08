@@ -1,0 +1,31 @@
+# Python 虚拟环境
+venv/
+env/
+.venv/
+.env/
+train_model/
+datasets/
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+uploads/
+*.jpg
+*.png
+*.jpeg
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+# model weights
+*.pth
+*.pt
+*.ckpt
+*.onnx
+*.h5

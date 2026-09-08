@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.xiaoo.kaleido.notice.infrastructure.dao.NoticeTemplateDao">
+
+    <resultMap id="NoticeTemplateMap" type="com.xiaoo.kaleido.notice.infrastructure.dao.po.NoticeTemplatePO">
+        <!-- BasePO字段 -->
+        <result property="id" column="id"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="deleted" column="deleted"/>
+        <result property="lockVersion" column="lock_version"/>
+
+        <!-- NoticeTemplatePO特有字段 -->
+        <result property="templateCode" column="template_code"/>
+        <result property="templateName" column="template_name"/>
+        <result property="templateContent" column="template_content"/>
+    </resultMap>
+
+    <!-- 通知模板表字段列表 -->
+    <sql id="NoticeTemplateColumns">
+        id, template_code, template_name, template_content
+    </sql>
+
+    <!-- 根据模板编码查找模板 -->
+    <select id="findByTemplateCode" resultMap="NoticeTemplateMap">
+        SELECT <include refid="NoticeTemplateColumns"/>
+        FROM t_notice_template
+        WHERE template_code = #{templateCode} AND deleted = 0
+    </select>
+
+    <!-- 检查模板编码是否存在 -->
+    <select id="existsByTemplateCode" resultType="boolean">
+        SELECT COUNT(*) > 0
+        FROM t_notice_template
+        WHERE template_code = #{templateCode} AND deleted = 0
+    </select>
+
+    <!-- 根据通知类型查找模板列表 -->
+    <select id="findByNoticeType" resultMap="NoticeTemplateMap">
+        SELECT <include refid="NoticeTemplateColumns"/>
+        FROM t_notice_template
+        WHERE deleted = 0
+        ORDER BY created_at DESC
+    </select>
+
+    <!-- 根据业务类型查找模板列表 -->
+    <select id="findByBusinessType" resultMap="NoticeTemplateMap">
+        SELECT <include refid="NoticeTemplateColumns"/>
+        FROM t_notice_template
+        WHERE deleted = 0
+        ORDER BY created_at DESC
+    </select>
+
+    <!-- 通知模板查询条件片段 -->
+    <sql id="NoticeTemplateQueryConditions">
+        <if test="req.code != null and req.code != ''">AND template_code LIKE CONCAT('%', #{req.code}, '%')</if>
+        <if test="req.name != null and req.name != ''">AND template_name LIKE CONCAT('%', #{req.name}, '%')</if>
+    </sql>
+
+    <!-- 根据条件分页查询模板 -->
+    <select id="selectByCondition" resultMap="NoticeTemplateMap">
+        SELECT <include refid="NoticeTemplateColumns"/>
+        FROM t_notice_template
+        WHERE deleted = 0
+        <include refid="NoticeTemplateQueryConditions"/>
+        ORDER BY created_at DESC
+    </select>
+
+    <!-- 查找启用的模板列表 -->
+    <select id="findEnabledTemplates" resultMap="NoticeTemplateMap">
+        SELECT <include refid="NoticeTemplateColumns"/>
+        FROM t_notice_template
+        WHERE deleted = 0
+        ORDER BY created_at DESC
+    </select>
+</mapper>

@@ -1,0 +1,46 @@
+# ========== 依赖与虚拟环境（不上传）==========
+node_modules/
+.venv/
+venv/
+*.egg-info/
+
+# ========== 构建产物 ==========
+target/
+dist/
+dist-*/
+build/
+out/
+*.jar
+
+# ========== Python 缓存 ==========
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ========== IDE / 本地工具状态 ==========
+.idea/
+*.iml
+.vscode/
+.workbuddy/
+
+# ========== 日志 / 临时 / 系统文件 ==========
+*.log
+.DS_Store
+Thumbs.db
+
+# ========== 环境配置（保留 .env.example 作参考）==========
+.env
+.env.*
+!.env.example
+
+# ========== 密钥等敏感文件（只此一处）==========
+case/Autocodeagent/api.txt
+
+# ========== 桌面端打包产物（Electron release）==========
+case/Autocodeagent/源码/apps/desktop/release/
+case/Autocodeagent/源码/apps/desktop/release2/
+case/Autocodeagent/源码/apps/desktop/release3/
+
+# ========== 部署输出产物 ==========
+deploy-output/

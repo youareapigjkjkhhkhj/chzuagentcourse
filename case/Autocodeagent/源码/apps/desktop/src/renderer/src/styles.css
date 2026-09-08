@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── 以下与原型 <style> 块逐条一致 ── */
+* { -webkit-font-smoothing: antialiased; }
+html, body { letter-spacing: -0.006em; }
+/* 可读性优化：小字号下 400/450 偏细发虚，基线提至 500（Inter 可变字体支持；回退字体自动就近匹配） */
+body { font-weight: 500; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d8d2c6; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #c2bbab; }
+/* Diff 红绿行（原型同款，P2 任务 3） */
+.diff-del { background: rgba(190, 18, 60, 0.07); color: #be123c; }
+.diff-add { background: rgba(4, 120, 87, 0.07); color: #047857; }
+.tab-active { background: #eae5da; color: #26231e; box-shadow: 0 0 0 1px rgba(28,25,20,.05) inset; }
+.icon { width: 14px; height: 14px; flex-shrink: 0; }
+.icon-lg { width: 16px; height: 16px; flex-shrink: 0; }
+.transition-std { transition: all .15s cubic-bezier(.4,0,.2,1); }
+::selection { background: rgba(201,111,74,.25); }
+input::placeholder, textarea::placeholder { color: #a39c8e; }
+/* 侧栏树形连接线 */
+.tree-line { position: relative; }
+.tree-line::before {
+  content: ''; position: absolute; left: -13px; top: 0; bottom: 0; width: 1px; background: #e2ddd2;
+}
+/* 流式打字光标 */
+.caret {
+  display: inline-block; width: 7px; height: 14px; vertical-align: -2px;
+  background: #c96f4a; animation: blink 1s steps(2) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+/* ── Streaming Text（参考 beautifului.dev StreamText）──
+   流式前沿：尾部字符软模糊消解；细光标流式期间常亮、静止后闪烁 */
+.stream-tail {
+  filter: blur(1.6px);
+  -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,1) 20%, rgba(0,0,0,.2));
+  mask-image: linear-gradient(to right, rgba(0,0,0,1) 20%, rgba(0,0,0,.2));
+}
+.stream-caret {
+  display: inline-block; width: 2px; height: 1.05em; margin-left: 1.5px;
+  translate: 0 -0.5px; border-radius: 1px; background: #26231e;
+  vertical-align: text-bottom; animation: caret-blink 1s step-end infinite;
+}
+.stream-caret.is-streaming { animation: none; }
+@keyframes caret-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .stream-caret { animation: none; }
+  .stream-tail { filter: none; -webkit-mask-image: none; mask-image: none; }
+}
+/* 思考中三点跳动（主流 Agent 等待态） */
+.thinking-dot {
+  width: 5px; height: 5px; border-radius: 9999px; background: #c96f4a;
+  animation: thinking-bounce 1.2s ease-in-out infinite;
+}
+.thinking-dot:nth-child(2) { animation-delay: .15s; }
+.thinking-dot:nth-child(3) { animation-delay: .3s; }
+@keyframes thinking-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: .35; }
+  30% { transform: translateY(-3px); opacity: 1; }
+}
+/* ── Markdown 输出排版（assistant 气泡内） ── */
+.md-body { font-size: 13px; line-height: 1.7; word-break: break-word; }
+.md-body > :first-child { margin-top: 0; }
+.md-body > :last-child { margin-bottom: 0; }
+.md-body h1, .md-body h2, .md-body h3, .md-body h4 { font-weight: 700; color: #26231e; margin: .8em 0 .4em; line-height: 1.4; }
+.md-body h1 { font-size: 15px; } .md-body h2 { font-size: 14px; } .md-body h3 { font-size: 13px; } .md-body h4 { font-size: 12.5px; }
+.md-body p { margin: .45em 0; }
+.md-body ul, .md-body ol { margin: .45em 0; padding-left: 1.4em; }
+.md-body li { margin: .2em 0; }
+.md-body ul li { list-style: disc; } .md-body ol li { list-style: decimal; }
+.md-body a { color: #c96f4a; text-decoration: underline; text-underline-offset: 2px; }
+.md-body blockquote { margin: .6em 0; padding: .2em .8em; border-left: 3px solid #e2ddd2; color: #7c7263; }
+.md-body hr { border: 0; border-top: 1px solid #e2ddd2; margin: .8em 0; }
+.md-body table { border-collapse: collapse; margin: .6em 0; font-size: 11.5px; }
+.md-body th, .md-body td { border: 1px solid #e2ddd2; padding: 4px 10px; }
+.md-body th { background: #f4f0e7; font-weight: 600; }
+.md-body code:not(pre code) {
+  background: rgba(120,113,98,.12); border: 1px solid rgba(120,113,98,.12);
+  padding: 1px 5px; border-radius: 5px; font-size: 11.5px; font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+}
+/* 代码块：头栏（语言 + 复制按钮）+ 深色主体 */
+.md-body .code-block { margin: .7em 0; border-radius: 10px; overflow: hidden; background: #22252b; box-shadow: 0 1px 3px rgba(28,25,20,.08); }
+.md-body .code-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 12px; background: rgba(255,255,255,.06); border-bottom: 1px solid rgba(255,255,255,.07);
+}
+.md-body .code-lang { font-size: 10px; font-family: ui-monospace, Consolas, monospace; color: #9aa3b2; text-transform: lowercase; }
+.md-body .copy-btn {
+  font-size: 10px; color: #9aa3b2; cursor: pointer; padding: 2px 8px; border-radius: 5px;
+  transition: all .15s cubic-bezier(.4,0,.2,1);
+}
+.md-body .copy-btn:hover { color: #fff; background: rgba(255,255,255,.1); }
+.md-body .code-block pre { margin: 0; padding: 11px 14px; overflow-x: auto; }
+.md-body .code-block pre code {
+  font-size: 11.5px; line-height: 1.65; font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; background: transparent;
+}
+.md-body .code-block pre::-webkit-scrollbar-thumb { background: #4a4f5a; }

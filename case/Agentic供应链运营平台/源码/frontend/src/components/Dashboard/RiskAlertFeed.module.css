@@ -1,0 +1,149 @@
+.container {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+
+.feed {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.empty {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.alert {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  border-left: 3px solid transparent;
+  animation: slideIn 0.3s ease-out forwards;
+  opacity: 0;
+}
+
+.alert.critical {
+  border-left-color: var(--accent-red);
+}
+
+.alert.low {
+  border-left-color: var(--accent-amber);
+}
+
+.alert.excess {
+  border-left-color: var(--accent-blue);
+}
+
+.alert.normal {
+  border-left-color: var(--accent-green);
+}
+
+.iconWrapper {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.iconWrapper.critical {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--accent-red);
+}
+
+.iconWrapper.low {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--accent-amber);
+}
+
+.iconWrapper.excess {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--accent-blue);
+}
+
+.iconWrapper.normal {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-green);
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.productName {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.badge.critical {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--accent-red);
+}
+
+.badge.low {
+  background: rgba(245, 158, 11, 0.2);
+  color: var(--accent-amber);
+}
+
+.badge.excess {
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--accent-blue);
+}
+
+.badge.normal {
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--accent-green);
+}
+
+.details {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.sku {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.qty {
+  font-family: 'JetBrains Mono', monospace;
+}

@@ -1,0 +1,203 @@
+.sidebar {
+  width: var(--shell-width);
+  height: 100vh;
+  background: #f5f4ed;
+  border-right: 1px solid var(--border-color);
+  box-shadow: var(--shadow-soft);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 20;
+}
+
+.logoWrap {
+  padding: 24px 20px 18px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.logo {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.logoIcon {
+  width: 46px;
+  height: 46px;
+  background: linear-gradient(135deg, #c96442, #d97757);
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 15px;
+  color: #faf9f5;
+  letter-spacing: 0.08em;
+  box-shadow: none;
+}
+
+.logoText {
+  display: block;
+  font-weight: 600;
+  font-size: 17px;
+}
+
+.logoSubtext {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.missionCard {
+  margin-top: 18px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid var(--border-color);
+  background: #faf9f5;
+}
+
+.missionLabel,
+.sectionLabel {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.missionCard strong {
+  display: block;
+  margin-top: 8px;
+  line-height: 1.4;
+}
+
+.sectionLabel {
+  padding: 16px 20px 0;
+}
+
+.nav {
+  flex: 1;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  border-radius: 14px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.navItem:hover {
+  background: #faf9f5;
+  color: var(--text-primary);
+}
+
+.navItem.active {
+  background: #faf9f5;
+  border: 1px solid #d1cfc5;
+  color: var(--text-primary);
+}
+
+.runtimeCard {
+  margin: 12px 20px 0;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid var(--border-color);
+  background: #faf9f5;
+}
+
+.runtimeRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.runtimeRow + .runtimeRow {
+  margin-top: 10px;
+}
+
+.runtimeRow strong {
+  color: var(--text-primary);
+}
+
+.runtimeBadge {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #9f4d33;
+  font-size: 12px;
+}
+
+.footer {
+  padding: 18px 24px 22px;
+  border-top: 1px solid var(--border-color);
+}
+
+.statusIndicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  background: var(--accent-green);
+  border-radius: 50%;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@media (max-width: 960px) {
+  .sidebar {
+    position: static;
+    width: 100%;
+    height: auto;
+  }
+
+  .logoWrap {
+    padding: 18px 16px;
+  }
+
+  .nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: 14px;
+  }
+
+  .sectionLabel,
+  .runtimeCard,
+  .footer {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .nav {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .navItem {
+    min-width: 0;
+    justify-content: center;
+  }
+
+  .logoSubtext {
+    display: none;
+  }
+}

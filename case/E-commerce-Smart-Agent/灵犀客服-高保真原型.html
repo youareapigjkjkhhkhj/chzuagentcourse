@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>灵犀客服 · AI 购物助手 — 高保真原型</title>
+<style>
+  :root{
+    --td-brand:#0052D9;
+    --td-brand-hover:#366EF4;
+    --td-brand-active:#0034B5;
+    --td-brand-light:#ECF2FE;
+    --td-success:#00A870;
+    --td-success-light:#E3F9E9;
+    --td-warning:#ED7B2F;
+    --td-warning-light:#FEF3E6;
+    --td-error:#D54941;
+    --td-error-light:#FDE9E8;
+    --agent-supervisor:#0052D9;
+    --agent-supervisor-light:#ECF2FE;
+    --agent-product:#0594A8;
+    --agent-product-light:#E1F5F8;
+    --agent-order:#8457E5;
+    --agent-order-light:#F1ECFC;
+    --gray-bg:#F3F3F3;
+    --gray-card:#FFFFFF;
+    --gray-border:#E7E7E7;
+    --gray-border-2:#DCDCDC;
+    --text-primary:rgba(0,0,0,0.90);
+    --text-secondary:rgba(0,0,0,0.60);
+    --text-placeholder:rgba(0,0,0,0.40);
+    --radius-s:3px;
+    --radius-m:6px;
+    --radius-l:9px;
+    --font-body:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
+    --font-mono:"SF Mono","JetBrains Mono",Consolas,"Courier New",monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    font-family:var(--font-body);
+    background:var(--gray-bg);
+    color:var(--text-primary);
+    font-size:14px;
+    line-height:22px;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:var(--td-brand-light);}
+  button{font-family:inherit;cursor:pointer;}
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-thumb{background:#D2D2D2;border-radius:4px;}
+  ::-webkit-scrollbar-thumb:hover{background:#B8B8B8;}
+  ::-webkit-scrollbar-track{background:transparent;}
+
+  a{color:var(--td-brand);text-decoration:none;}
+
+  /* ---------- App Shell ---------- */
+  .app{
+    display:flex;
+    height:100vh;
+    overflow:hidden;
+  }
+
+  /* ---------- Rail (far left icon nav) ---------- */
+  .rail{
+    width:56px;
+    flex:0 0 56px;
+    background:#0A1633;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:16px 0;
+    gap:22px;
+  }
+  .rail .logo-mark{
+    width:32px;height:32px;border-radius:9px;
+    background:linear-gradient(135deg,#0052D9,#5B8DEF);
+    display:flex;align-items:center;justify-content:center;
+    margin-bottom:8px;
+  }
+  .rail .logo-mark svg{width:18px;height:18px;}
+  .rail-btn{
+    width:36px;height:36px;border-radius:var(--radius-m);
+    display:flex;align-items:center;justify-content:center;
+    background:transparent;border:none;color:rgba(255,255,255,0.55);
+    transition:background .15s,color .15s;
+  }
+  .rail-btn svg{width:19px;height:19px;}
+  .rail-btn:hover{background:rgba(255,255,255,0.08);color:#fff;}
+  .rail-btn.active{background:rgba(0,82,217,0.35);color:#fff;}
+  .rail-spacer{flex:1;}
+  .rail-avatar{
+    width:32px;height:32px;border-radius:50%;
+    background:#5B8DEF;color:#fff;font-size:12px;font-weight:600;
+    display:flex;align-items:center;justify-content:center;
+  }
+
+  /* ---------- Sidebar (session list) ---------- */
+  .sidebar{
+    width:280px;flex:0 0 280px;
+    background:var(--gray-card);
+    border-right:1px solid var(--gray-border);
+    display:flex;flex-direction:column;
+    transition:margin-left .2s ease;
+  }
+  .sidebar-header{
+    padding:18px 16px 12px;
+  }
+  .sidebar-header h1{
+    font-size:16px;font-weight:600;margin:0 0 2px;letter-spacing:.2px;
+  }
+  .sidebar-header p{
+    margin:0;font-size:12px;color:var(--text-secondary);
+  }
+  .new-chat-btn{
+    margin:12px 16px 8px;
+    height:36px;
+    border:1px solid var(--td-brand);
+    background:var(--td-brand-light);
+    color:var(--td-brand);
+    border-radius:var(--radius-m);
+    font-size:13px;font-weight:500;
+    display:flex;align-items:center;justify-content:center;gap:6px;
+  }
+  .new-chat-btn:hover{background:#DEEAFE;}
+  .new-chat-btn svg{width:14px;height:14px;}
+
+  .session-search{
+    margin:4px 16px 10px;
+    position:relative;
+  }
+  .session-search input{
+    width:100%;height:32px;border-radius:var(--radius-m);
+    border:1px solid var(--gray-border);background:#FAFAFA;
+    padding:0 10px 0 30px;font-size:13px;color:var(--text-primary);
+    outline:none;
+  }
+  .session-search input:focus{border-color:var(--td-brand);background:#fff;}
+  .session-search svg{position:absolute;left:9px;top:9px;width:14px;height:14px;color:var(--text-placeholder);}
+
+  .session-list{flex:1;overflow-y:auto;padding:2px 8px 12px;}
+  .session-group-label{
+    font-size:11px;color:var(--text-placeholder);
+    padding:10px 8px 4px;font-weight:600;letter-spacing:.4px;
+  }
+  .session-item{
+    display:flex;align-items:flex-start;gap:10px;
+    padding:9px 8px;border-radius:var(--radius-m);
+    cursor:pointer;position:relative;
+  }
+  .session-item:hover{background:#F5F7FA;}
+  .session-item.active{background:var(--td-brand-light);}
+  .session-item.active .session-title{color:var(--td-brand);}
+  .session-avatar{
+    width:32px;height:32px;border-radius:50%;flex:0 0 32px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:14px;color:#fff;font-weight:600;
+  }
+  .session-body{flex:1;min-width:0;}
+  .session-top-row{display:flex;justify-content:space-between;gap:6px;}
+  .session-title{
+    font-size:13.5px;font-weight:500;color:var(--text-primary);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .session-time{font-size:11px;color:var(--text-placeholder);flex:0 0 auto;padding-top:1px;}
+  .session-snippet{
+    font-size:12px;color:var(--text-secondary);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;
+  }
+  .session-dot{
+    position:absolute;right:8px;top:14px;
+    width:7px;height:7px;border-radius:50%;background:var(--td-brand);
+  }
+
+  /* ---------- Main column ---------- */
+  .main{
+    flex:1;display:flex;flex-direction:column;min-width:0;
+    background:var(--gray-bg);
+  }
+  .topbar{
+    height:56px;flex:0 0 56px;
+    background:var(--gray-card);
+    border-bottom:1px solid var(--gray-border);
+    display:flex;align-items:center;
+    padding:0 20px;gap:12px;
+  }
+  .topbar-menu-btn{display:none;background:none;border:none;padding:6px;color:var(--text-secondary);}
+  .topbar-menu-btn svg{width:18px;height:18px;}
+  .topic-title{font-size:15px;font-weight:600;}
+  .topic-sub{font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;margin-top:1px;}
+  .breadcrumb-chip{
+    display:inline-flex;align-items:center;gap:4px;
+    padding:1px 7px;border-radius:999px;font-size:11px;font-weight:600;
+  }
+  .topbar-spacer{flex:1;}
+  .channel-tag{
+    font-size:11px;color:var(--text-secondary);
+    background:#F5F5F5;border:1px solid var(--gray-border);
+    padding:3px 8px;border-radius:999px;
+  }
+  .devtoggle{
+    display:flex;align-items:center;gap:8px;
+    padding:5px 6px 5px 10px;border-radius:var(--radius-m);
+    border:1px solid var(--gray-border);
+  }
+  .devtoggle span{font-size:12px;color:var(--text-secondary);white-space:nowrap;}
+  .switch{
+    width:34px;height:20px;border-radius:999px;background:var(--gray-border-2);
+    position:relative;transition:background .15s;flex:0 0 34px;border:none;padding:0;
+  }
+  .switch::after{
+    content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;
+    border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);
+    transition:left .15s;
+  }
+  .switch.on{background:var(--td-brand);}
+  .switch.on::after{left:16px;}
+
+  /* ---------- Chat column ---------- */
+  .chat-area{flex:1;display:flex;min-height:0;}
+  .chat-scroll{
+    flex:1;overflow-y:auto;padding:24px 0 8px;
+    display:flex;flex-direction:column;align-items:center;
+  }
+  .chat-inner{width:100%;max-width:720px;padding:0 20px;}
+
+  .day-divider{
+    text-align:center;color:var(--text-placeholder);font-size:12px;
+    margin:4px 0 20px;
+  }
+
+  .msg-row{display:flex;gap:10px;margin-bottom:18px;align-items:flex-start;}
+  .msg-row.user{flex-direction:row-reverse;}
+  .avatar{
+    width:32px;height:32px;border-radius:50%;flex:0 0 32px;
+    display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:600;
+    margin-top:2px;
+  }
+  .avatar.customer{background:#5B8DEF;}
+  .avatar.bot{background:#fff;border:1.5px solid var(--gray-border);}
+  .avatar.bot svg{width:17px;height:17px;}
+
+  .msg-col{max-width:78%;display:flex;flex-direction:column;}
+  .msg-row.user .msg-col{align-items:flex-end;}
+
+  .agent-path{
+    display:flex;align-items:center;gap:5px;margin-bottom:6px;font-size:11.5px;color:var(--text-secondary);
+  }
+  .agent-path .arrow{color:var(--text-placeholder);}
+  .agent-chip{
+    display:inline-flex;align-items:center;gap:4px;
+    padding:2px 8px;border-radius:999px;font-weight:600;font-size:11px;
+  }
+  .agent-chip .dot{width:6px;height:6px;border-radius:50%;}
+  .agent-chip.supervisor{background:var(--agent-supervisor-light);color:var(--agent-supervisor);}
+  .agent-chip.supervisor .dot{background:var(--agent-supervisor);}
+  .agent-chip.product{background:var(--agent-product-light);color:var(--agent-product);}
+  .agent-chip.product .dot{background:var(--agent-product);}
+  .agent-chip.order{background:var(--agent-order-light);color:var(--agent-order);}
+  .agent-chip.order .dot{background:var(--agent-order);}
+
+  .bubble{
+    padding:11px 14px;border-radius:var(--radius-l);font-size:14px;line-height:22px;
+    word-wrap:break-word;
+  }
+  .msg-row.user .bubble{
+    background:var(--td-brand);color:#fff;border-bottom-right-radius:3px;
+  }
+  .msg-row.bot .bubble{
+    background:var(--gray-card);border:1px solid var(--gray-border);color:var(--text-primary);
+    border-bottom-left-radius:3px;
+  }
+  .cite{
+    display:inline-flex;align-items:center;justify-content:center;
+    min-width:16px;height:16px;padding:0 3px;border-radius:4px;
+    background:var(--td-brand-light);color:var(--td-brand);
+    font-size:10.5px;font-weight:700;vertical-align:2px;margin-left:2px;
+    cursor:pointer;border:none;font-family:inherit;
+  }
+  .cite:hover{background:#DBE7FD;}
+
+  .msg-time{font-size:11px;color:var(--text-placeholder);margin-top:5px;}
+
+  /* tool-call / thinking card */
+  .tool-card{
+    display:flex;align-items:center;gap:8px;
+    background:var(--gray-card);border:1px dashed var(--gray-border-2);
+    border-radius:var(--radius-m);padding:9px 12px;font-size:12.5px;color:var(--text-secondary);
+    margin-bottom:8px;
+  }
+  .tool-card svg{width:14px;height:14px;flex:0 0 auto;color:var(--agent-order);}
+  .spin{animation:spin 1s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* order result card */
+  .order-card{
+    border:1px solid var(--gray-border);border-radius:var(--radius-l);
+    overflow:hidden;background:#fff;width:340px;max-width:100%;
+  }
+  .order-card-head{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:10px 14px;background:#FAFAFB;border-bottom:1px solid var(--gray-border);
+  }
+  .order-card-head .oid{font-size:12.5px;color:var(--text-secondary);}
+  .status-pill{font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:999px;}
+  .status-pill.transit{background:var(--td-warning-light);color:var(--td-warning);}
+  .status-pill.delivered{background:var(--td-success-light);color:var(--td-success);}
+  .order-card-body{padding:12px 14px;}
+  .order-row{display:flex;justify-content:space-between;font-size:12.5px;padding:4px 0;}
+  .order-row .k{color:var(--text-secondary);}
+  .order-row .v{font-weight:500;text-align:right;}
+  .order-track{
+    margin-top:8px;padding-top:10px;border-top:1px dashed var(--gray-border);
+    display:flex;gap:8px;
+  }
+  .order-track .tdot{width:8px;height:8px;border-radius:50%;background:var(--td-brand);margin-top:5px;flex:0 0 auto;}
+  .order-track .ttext{font-size:12px;}
+  .order-track .ttext .t1{color:var(--text-primary);}
+  .order-track .ttext .t2{color:var(--text-placeholder);font-size:11px;margin-top:1px;}
+
+  /* quick suggestion chips */
+  .quick-chips{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 18px 42px;}
+  .quick-chip{
+    font-size:12.5px;padding:7px 13px;border-radius:999px;
+    border:1px solid var(--gray-border);background:#fff;color:var(--text-primary);
+  }
+  .quick-chip:hover{border-color:var(--td-brand);color:var(--td-brand);background:var(--td-brand-light);}
+
+  .typing-row{display:flex;gap:4px;padding:12px 14px;}
+  .typing-row span{width:6px;height:6px;border-radius:50%;background:var(--text-placeholder);animation:blink 1.1s infinite;}
+  .typing-row span:nth-child(2){animation-delay:.15s;}
+  .typing-row span:nth-child(3){animation-delay:.3s;}
+  @keyframes blink{0%,80%,100%{opacity:.25;}40%{opacity:1;}}
+
+  /* composer */
+  .composer{
+    border-top:1px solid var(--gray-border);background:var(--gray-card);
+    padding:14px 0 18px;display:flex;justify-content:center;
+  }
+  .composer-inner{width:100%;max-width:720px;padding:0 20px;}
+  .composer-box{
+    display:flex;align-items:flex-end;gap:8px;
+    border:1px solid var(--gray-border-2);border-radius:var(--radius-l);
+    padding:8px 8px 8px 14px;background:#fff;
+    transition:border-color .15s,box-shadow .15s;
+  }
+  .composer-box:focus-within{border-color:var(--td-brand);box-shadow:0 0 0 2px var(--td-brand-light);}
+  .composer-box textarea{
+    flex:1;border:none;outline:none;resize:none;font-family:inherit;
+    font-size:14px;line-height:20px;max-height:120px;padding:5px 0;color:var(--text-primary);
+  }
+  .composer-box textarea::placeholder{color:var(--text-placeholder);}
+  .send-btn{
+    width:32px;height:32px;border-radius:var(--radius-m);border:none;
+    background:var(--td-brand);color:#fff;display:flex;align-items:center;justify-content:center;
+    flex:0 0 32px;
+  }
+  .send-btn svg{width:15px;height:15px;}
+  .send-btn:hover{background:var(--td-brand-hover);}
+  .send-btn:disabled{background:var(--gray-border-2);}
+  .composer-hint{font-size:11px;color:var(--text-placeholder);text-align:center;margin-top:8px;}
+
+  /* ---------- Inspector panel ---------- */
+  .inspector{
+    width:340px;flex:0 0 340px;
+    background:var(--gray-card);border-left:1px solid var(--gray-border);
+    display:flex;flex-direction:column;overflow:hidden;
+    transition:margin-right .2s ease, width .2s ease;
+  }
+  .inspector.hidden{width:0;flex:0 0 0;border-left:none;}
+  .inspector-head{
+    padding:16px 18px 12px;border-bottom:1px solid var(--gray-border);
+  }
+  .inspector-head h2{margin:0 0 2px;font-size:14px;font-weight:600;}
+  .inspector-head p{margin:0;font-size:11.5px;color:var(--text-secondary);font-family:var(--font-mono);}
+  .inspector-scroll{flex:1;overflow-y:auto;padding:16px 18px 24px;}
+
+  .insp-section{margin-bottom:22px;}
+  .insp-label{
+    font-size:11px;font-weight:700;color:var(--text-placeholder);
+    text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;align-items:center;gap:6px;
+  }
+  .insp-label .line{flex:1;height:1px;background:var(--gray-border);}
+
+  .kv-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:12.5px;}
+  .kv-row .k{color:var(--text-secondary);}
+  .kv-row .v{font-family:var(--font-mono);font-weight:600;}
+
+  /* flow diagram */
+  .flow-wrap{background:#FBFBFC;border:1px solid var(--gray-border);border-radius:var(--radius-l);padding:10px 6px 6px;}
+  .flow-svg text{font-family:var(--font-body);}
+  .flow-node-box{fill:#fff;stroke:#D8D8D8;stroke-width:1.3;transition:stroke .25s,fill .25s;}
+  .flow-node-label{fill:var(--text-secondary);font-size:9.5px;font-weight:600;transition:fill .25s;}
+  .flow-node.active .flow-node-box{stroke-width:2;}
+  .flow-node.active.n-supervisor .flow-node-box{stroke:var(--agent-supervisor);fill:var(--agent-supervisor-light);}
+  .flow-node.active.n-supervisor .flow-node-label{fill:var(--agent-supervisor);}
+  .flow-node.active.n-product .flow-node-box{stroke:var(--agent-product);fill:var(--agent-product-light);}
+  .flow-node.active.n-product .flow-node-label{fill:var(--agent-product);}
+  .flow-node.active.n-order .flow-node-box{stroke:var(--agent-order);fill:var(--agent-order-light);}
+  .flow-node.active.n-order .flow-node-label{fill:var(--agent-order);}
+  .flow-node.active.n-rag .flow-node-box{stroke:var(--agent-product);fill:var(--agent-product-light);}
+  .flow-node.active.n-rag .flow-node-label{fill:var(--agent-product);}
+  .flow-node.active.n-tool .flow-node-box{stroke:var(--agent-order);fill:var(--agent-order-light);}
+  .flow-node.active.n-tool .flow-node-label{fill:var(--agent-order);}
+  .flow-edge{stroke:#D8D8D8;stroke-width:1.3;fill:none;transition:stroke .25s;}
+  .flow-edge.active{stroke:var(--td-brand);}
+  .pulse-dot{fill:var(--td-brand);opacity:0;}
+  .flow-node.active .pulse-dot{animation:pulseDot 1.6s ease-out infinite;}
+  @keyframes pulseDot{
+    0%{opacity:.9;r:3;}
+    70%{opacity:0;r:11;}
+    100%{opacity:0;r:11;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .pulse-dot{animation:none!important;}
+    .spin{animation:none!important;}
+  }
+
+  .doc-card{
+    border:1px solid var(--gray-border);border-radius:var(--radius-m);
+    padding:10px 12px;margin-bottom:8px;background:#fff;transition:box-shadow .2s,border-color .2s;
+  }
+  .doc-card.flash{border-color:var(--td-brand);box-shadow:0 0 0 3px var(--td-brand-light);}
+  .doc-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+  .doc-title{font-size:12.5px;font-weight:600;line-height:18px;}
+  .doc-num{
+    flex:0 0 auto;width:16px;height:16px;border-radius:4px;background:var(--td-brand-light);color:var(--td-brand);
+    font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;
+  }
+  .doc-snippet{font-size:11.5px;color:var(--text-secondary);margin-top:4px;line-height:16px;}
+  .doc-meta{display:flex;justify-content:space-between;align-items:center;margin-top:7px;}
+  .doc-meta .src{font-size:10.5px;color:var(--text-placeholder);}
+  .score-bar{width:64px;height:4px;border-radius:2px;background:#EEE;overflow:hidden;}
+  .score-bar i{display:block;height:100%;background:var(--agent-product);}
+
+  .order-info-empty, .rag-empty{
+    font-size:12px;color:var(--text-placeholder);padding:14px 0;text-align:center;
+    border:1px dashed var(--gray-border);border-radius:var(--radius-m);
+  }
+
+  .json-toggle{
+    width:100%;text-align:left;background:#FAFAFA;border:1px solid var(--gray-border);
+    border-radius:var(--radius-m);padding:8px 10px;font-size:11.5px;color:var(--text-secondary);
+    display:flex;align-items:center;justify-content:space-between;font-family:var(--font-mono);
+  }
+  .json-toggle svg{width:12px;height:12px;transition:transform .15s;}
+  .json-toggle.open svg{transform:rotate(90deg);}
+  .json-block{
+    display:none;background:#161B22;color:#B9C6D9;border-radius:var(--radius-m);
+    padding:12px;font-family:var(--font-mono);font-size:11px;line-height:17px;margin-top:6px;
+    white-space:pre-wrap;word-break:break-all;
+  }
+  .json-block.open{display:block;}
+  .json-block .jk{color:#7EC1FF;}
+  .json-block .jv{color:#D6C879;}
+  .json-block .jn{color:#79C0FF;}
+
+  /* mobile */
+  .scrim{display:none;}
+  @media (max-width:1180px){
+    .inspector{position:fixed;right:0;top:0;bottom:0;z-index:30;box-shadow:-8px 0 24px rgba(0,0,0,.12);}
+    .inspector.hidden{display:none;}
+  }
+  @media (max-width:860px){
+    .topbar-menu-btn{display:flex;}
+    .sidebar{position:fixed;left:0;top:0;bottom:0;z-index:31;margin-left:-280px;box-shadow:8px 0 24px rgba(0,0,0,.15);}
+    .sidebar.open{margin-left:0;}
+    .rail{display:none;}
+    .scrim{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:29;}
+    .scrim.show{display:block;}
+    .devtoggle span{display:none;}
+    .channel-tag{display:none;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Icon rail -->
+  <nav class="rail">
+    <div class="logo-mark">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 2L14.2 9.2L21 12L14.2 14.8L12 22L9.8 14.8L3 12L9.8 9.2L12 2Z" fill="#fff"/></svg>
+    </div>
+    <button class="rail-btn active" title="对话">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v12H7l-3 3V4z"/></svg>
+    </button>
+    <button class="rail-btn" title="知识库">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16M4 4v16M4 4l16 0M4 12h16M4 20h16"/></svg>
+    </button>
+    <button class="rail-btn" title="工单">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+    </button>
+    <button class="rail-btn" title="数据看板">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M12 20V4M20 20v-7"/></svg>
+    </button>
+    <div class="rail-spacer"></div>
+    <button class="rail-btn" title="设置">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 11-4 0v-.09a1.7 1.7 0 00-1-1.55 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.7 1.7 0 004.6 15a1.7 1.7 0 00-1.55-1H3a2 2 0 110-4h.09A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06A1.7 1.7 0 009 4.6a1.7 1.7 0 001-1.55V3a2 2 0 114 0v.09a1.7 1.7 0 001 1.55 1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06A1.7 1.7 0 0019 9c.2.42.56.74 1 1H21a2 2 0 010 4h-.09a1.7 1.7 0 00-1.55 1z"/></svg>
+    </button>
+    <div class="rail-avatar">客服</div>
+  </nav>
+
+  <div class="scrim" id="scrim"></div>
+
+  <!-- Session list -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h1>灵犀客服</h1>
+      <p>AI 购物助手 · LangGraph 多智能体</p>
+    </div>
+    <button class="new-chat-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      新建对话
+    </button>
+    <div class="session-search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input type="text" placeholder="搜索会话记录">
+    </div>
+    <div class="session-list">
+      <div class="session-group-label">进行中</div>
+      <div class="session-item active">
+        <div class="session-avatar" style="background:#5B8DEF;">王</div>
+        <div class="session-body">
+          <div class="session-top-row">
+            <span class="session-title">耳机连接问题</span>
+            <span class="session-time">14:02</span>
+          </div>
+          <div class="session-snippet">可以，长按侧键即可切换连接设备…</div>
+        </div>
+      </div>
+      <div class="session-item">
+        <div class="session-avatar" style="background:#ED7B2F;">林</div>
+        <div class="session-body">
+          <div class="session-top-row">
+            <span class="session-title">订单 591238 物流</span>
+            <span class="session-time">昨天</span>
+          </div>
+          <div class="session-snippet">预计明天送达，已到本地转运中心</div>
+        </div>
+        <div class="session-dot"></div>
+      </div>
+      <div class="session-group-label">已归档</div>
+      <div class="session-item">
+        <div class="session-avatar" style="background:#00A870;">陈</div>
+        <div class="session-body">
+          <div class="session-top-row">
+            <span class="session-title">退货政策咨询</span>
+            <span class="session-time">3 天前</span>
+          </div>
+          <div class="session-snippet">7 天无理由退货，运费规则已说明</div>
+        </div>
+      </div>
+      <div class="session-item">
+        <div class="session-avatar" style="background:#8457E5;">周</div>
+        <div class="session-body">
+          <div class="session-top-row">
+            <span class="session-title">满减活动咨询</span>
+            <span class="session-time">5 天前</span>
+          </div>
+          <div class="session-snippet">活动截止到本月底，可与优惠券叠加</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <header class="topbar">
+      <button class="topbar-menu-btn" id="sidebarToggle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div>
+        <div class="topic-title">耳机连接问题</div>
+        <div class="topic-sub">
+          <span>会话流转：</span>
+          <span class="breadcrumb-chip" style="background:var(--agent-supervisor-light);color:var(--agent-supervisor);">Supervisor</span>
+          <span>→</span>
+          <span class="breadcrumb-chip" id="breadcrumbAgent" style="background:var(--agent-product-light);color:var(--agent-product);">Product Agent</span>
+        </div>
+      </div>
+      <div class="topbar-spacer"></div>
+      <span class="channel-tag">网页端 · Session #A8F2</span>
+      <div class="devtoggle">
+        <span>开发者视图</span>
+        <button class="switch on" id="devSwitch"></button>
+      </div>
+    </header>
+
+    <div class="chat-area">
+      <div class="chat-scroll" id="chatScroll">
+        <div class="chat-inner">
+          <div class="day-divider">今天 14:00</div>
+
+          <!-- Turn 1 : product question -->
+          <div class="msg-row user">
+            <div class="avatar customer">客</div>
+            <div class="msg-col">
+              <div class="bubble">这款 X1 蓝牙耳机可以同时连接两台手机吗？</div>
+              <div class="msg-time">14:00</div>
+            </div>
+          </div>
+
+          <div class="msg-row bot" data-intent="product" data-agent="product"
+               data-docs='[{"title":"X1无线降噪耳机产品说明书 v2.3 · 连接规格","snippet":"支持蓝牙5.3双设备同时连接，两台已配对设备间可通过双击右耳机柄一键切换…","source":"商品知识库 / spec_x1.md","score":93},{"title":"X1无线降噪耳机产品说明书 v2.3 · 配对指引","snippet":"首次配对需长按两侧耳机3秒进入配对模式，指示灯白色慢闪即为成功…","source":"商品知识库 / spec_x1.md","score":78}]'>
+            <div class="avatar bot" style="border-color:var(--agent-product);color:var(--agent-product);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M9 8V6a3 3 0 016 0v2M9 13v2M15 13v2"/></svg>
+            </div>
+            <div class="msg-col">
+              <div class="agent-path">
+                <span class="agent-chip supervisor"><i class="dot"></i>Supervisor</span>
+                <span class="arrow">→</span>
+                <span class="agent-chip product"><i class="dot"></i>Product Agent</span>
+              </div>
+              <div class="bubble">
+                可以的。X1 支持蓝牙 5.3 双设备同时连接，配对好两台手机后，长按右耳机柄可在两台设备间一键切换<button class="cite" data-doc="0">1</button>。首次配对需长按两侧耳机 3 秒进入配对模式<button class="cite" data-doc="1">2</button>。
+              </div>
+              <div class="msg-time">14:00 · 已生成回答（基于 2 条检索结果）</div>
+            </div>
+          </div>
+
+          <!-- Turn 2 : order question -->
+          <div class="msg-row user">
+            <div class="avatar customer">客</div>
+            <div class="msg-col">
+              <div class="bubble">好的谢谢～另外我的订单 591238 什么时候能到？</div>
+              <div class="msg-time">14:01</div>
+            </div>
+          </div>
+
+          <div class="msg-row bot" data-intent="order" data-agent="order"
+               data-order='{"id":"591238","product":"X1无线降噪耳机 · 曜石黑","status":"运输中","statusClass":"transit","courier":"顺丰速运","trackNo":"SF7719203458X","eta":"8月31日 18:00 前","node1":"已到达【东京都·品川转运中心】","node2":"8月30日 09:24"}'>
+            <div class="avatar bot" style="border-color:var(--agent-order);color:var(--agent-order);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="9" width="13" height="9" rx="1.5"/><path d="M16 12h3l2 3v3h-5z"/><circle cx="7.5" cy="18.5" r="1.5"/><circle cx="17.5" cy="18.5" r="1.5"/></svg>
+            </div>
+            <div class="msg-col">
+              <div class="agent-path">
+                <span class="agent-chip supervisor"><i class="dot"></i>Supervisor</span>
+                <span class="arrow">→</span>
+                <span class="agent-chip order"><i class="dot"></i>Order Agent</span>
+              </div>
+              <div class="tool-card">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
+                已调用工具 <b>order_lookup(order_id="591238")</b>
+              </div>
+              <div class="order-card">
+                <div class="order-card-head">
+                  <span class="oid">订单 #591238</span>
+                  <span class="status-pill transit">运输中</span>
+                </div>
+                <div class="order-card-body">
+                  <div class="order-row"><span class="k">商品</span><span class="v">X1无线降噪耳机 · 曜石黑</span></div>
+                  <div class="order-row"><span class="k">物流公司</span><span class="v">顺丰速运</span></div>
+                  <div class="order-row"><span class="k">运单号</span><span class="v">SF7719203458X</span></div>
+                  <div class="order-row"><span class="k">预计送达</span><span class="v">8月31日 18:00 前</span></div>
+                  <div class="order-track">
+                    <span class="tdot"></span>
+                    <span class="ttext"><span class="t1">已到达【东京都·品川转运中心】</span><span class="t2">8月30日 09:24</span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="bubble" style="margin-top:8px;">订单预计 <b>8月31日 18:00 前</b> 送达，目前已到品川转运中心，正在派送途中，请留意收货哦～</div>
+              <div class="msg-time">14:01</div>
+            </div>
+          </div>
+
+          <!-- Turn 3 : policy question -->
+          <div class="msg-row user">
+            <div class="avatar customer">客</div>
+            <div class="msg-col">
+              <div class="bubble">如果收到不满意，可以退货吗？运费怎么算？</div>
+              <div class="msg-time">14:02</div>
+            </div>
+          </div>
+
+          <div class="msg-row bot" data-intent="knowledge" data-agent="product"
+               data-docs='[{"title":"售后服务政策 v1.4 · 无理由退货","snippet":"自签收之日起7天内，商品保持完好、配件齐全的，可申请无理由退货…","source":"政策知识库 / return_policy.md","score":95},{"title":"售后服务政策 v1.4 · 运费说明","snippet":"因质量问题退货的，往返运费由卖家承担；非质量问题的七天无理由退货，退货运费由买家承担…","source":"政策知识库 / return_policy.md","score":89}]'>
+            <div class="avatar bot" style="border-color:var(--agent-product);color:var(--agent-product);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M9 8V6a3 3 0 016 0v2M9 13v2M15 13v2"/></svg>
+            </div>
+            <div class="msg-col">
+              <div class="agent-path">
+                <span class="agent-chip supervisor"><i class="dot"></i>Supervisor</span>
+                <span class="arrow">→</span>
+                <span class="agent-chip product"><i class="dot"></i>Product Agent</span>
+              </div>
+              <div class="bubble">
+                可以的。自签收之日起 7 天内，保持商品完好、配件齐全即可申请无理由退货<button class="cite" data-doc="0">1</button>。运费方面：若是质量问题，往返运费由我们承担；若是七天无理由退货（非质量问题），退货运费需要买家自行承担<button class="cite" data-doc="1">2</button>。
+              </div>
+              <div class="msg-time">14:02 · 已生成回答（基于 2 条检索结果）</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="quick-chips" id="quickChips" style="padding:0 20px 4px; justify-content:center; display:flex;">
+      <div style="width:100%;max-width:720px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="quick-chip" data-demo="battery">🎧 这款耳机续航多久？</button>
+        <button class="quick-chip" data-demo="order2">📦 帮我查一下订单 733021</button>
+        <button class="quick-chip" data-demo="shipping">↩️ 退货运费到底谁出？</button>
+      </div>
+    </div>
+
+    <footer class="composer">
+      <div class="composer-inner">
+        <div class="composer-box">
+          <textarea id="composerInput" rows="1" placeholder="输入你的问题，例如「耳机防水吗」「查订单 591238」…"></textarea>
+          <button class="send-btn" id="sendBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+          </button>
+        </div>
+        <div class="composer-hint">灵犀客服基于 RAG 检索生成，回答可能存在误差，重要信息请以人工客服为准</div>
+      </div>
+    </footer>
+  </main>
+
+  <!-- Inspector -->
+  <aside class="inspector" id="inspector">
+    <div class="inspector-head">
+      <h2>Agent 状态检查器</h2>
+      <p>LangGraph StateGraph · 实时快照</p>
+    </div>
+    <div class="inspector-scroll" id="inspectorScroll">
+
+      <div class="insp-section">
+        <div class="insp-label">当前状态<span class="line"></span></div>
+        <div class="kv-row"><span class="k">intent</span><span class="v" id="stIntent">product</span></div>
+        <div class="kv-row"><span class="k">current_agent</span><span class="v" id="stAgent">product_agent</span></div>
+        <div class="kv-row"><span class="k">turn</span><span class="v" id="stTurn">3</span></div>
+      </div>
+
+      <div class="insp-section">
+        <div class="insp-label">工作流路由<span class="line"></span></div>
+        <div class="flow-wrap">
+          <svg class="flow-svg" id="flowSvg" viewBox="0 0 300 210" width="100%" height="210">
+            <!-- edges -->
+            <path class="flow-edge" id="edge-s-p" d="M110,42 C90,70 80,80 78,96"/>
+            <path class="flow-edge" id="edge-s-o" d="M190,42 C210,70 220,80 222,96"/>
+            <path class="flow-edge" id="edge-p-r" d="M78,124 L78,150"/>
+            <path class="flow-edge" id="edge-o-t" d="M222,124 L222,150"/>
+
+            <!-- supervisor node -->
+            <g class="flow-node n-supervisor" id="node-supervisor">
+              <rect class="flow-node-box" x="100" y="14" width="100" height="30" rx="8"/>
+              <text class="flow-node-label" x="150" y="33" text-anchor="middle">Supervisor</text>
+              <circle class="pulse-dot" cx="150" cy="14"/>
+            </g>
+
+            <!-- product agent -->
+            <g class="flow-node n-product" id="node-product">
+              <rect class="flow-node-box" x="30" y="96" width="96" height="30" rx="8"/>
+              <text class="flow-node-label" x="78" y="115" text-anchor="middle">Product Agent</text>
+              <circle class="pulse-dot" cx="30" cy="96"/>
+            </g>
+
+            <!-- order agent -->
+            <g class="flow-node n-order" id="node-order">
+              <rect class="flow-node-box" x="176" y="96" width="96" height="30" rx="8"/>
+              <text class="flow-node-label" x="224" y="115" text-anchor="middle">Order Agent</text>
+              <circle class="pulse-dot" cx="272" cy="96"/>
+            </g>
+
+            <!-- rag -->
+            <g class="flow-node n-rag" id="node-rag">
+              <rect class="flow-node-box" x="24" y="150" width="108" height="30" rx="8" stroke-dasharray="3 3"/>
+              <text class="flow-node-label" x="78" y="169" text-anchor="middle" style="font-size:8.5px;">RAG 检索模块</text>
+            </g>
+
+            <!-- tool -->
+            <g class="flow-node n-tool" id="node-tool">
+              <rect class="flow-node-box" x="170" y="150" width="108" height="30" rx="8" stroke-dasharray="3 3"/>
+              <text class="flow-node-label" x="224" y="169" text-anchor="middle" style="font-size:8.5px;">订单查询 Tool</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <div class="insp-section" id="ragSection">
+        <div class="insp-label">retrieved_docs<span class="line"></span></div>
+        <div id="docList"></div>
+      </div>
+
+      <div class="insp-section" id="orderSection" style="display:none;">
+        <div class="insp-label">order_info<span class="line"></span></div>
+        <div id="orderInfoBody"></div>
+      </div>
+
+      <div class="insp-section">
+        <button class="json-toggle" id="jsonToggle">
+          <span>查看原始 AgentState JSON</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+        <div class="json-block" id="jsonBlock"></div>
+      </div>
+
+    </div>
+  </aside>
+
+</div>
+
+<script>
+(function(){
+  const chatScroll = document.getElementById('chatScroll');
+  const inspector = document.getElementById('inspector');
+  const devSwitch = document.getElementById('devSwitch');
+  const docList = document.getElementById('docList');
+  const orderInfoBody = document.getElementById('orderInfoBody');
+  const ragSection = document.getElementById('ragSection');
+  const orderSection = document.getElementById('orderSection');
+  const stIntent = document.getElementById('stIntent');
+  const stAgent = document.getElementById('stAgent');
+  const stTurn = document.getElementById('stTurn');
+  const breadcrumbAgent = document.getElementById('breadcrumbAgent');
+  const jsonToggle = document.getElementById('jsonToggle');
+  const jsonBlock = document.getElementById('jsonBlock');
+  let turnCount = 3;
+
+  function scrollBottom(){ chatScroll.scrollTop = chatScroll.scrollHeight; }
+  scrollBottom();
+
+  /* ---------- Dev view toggle ---------- */
+  devSwitch.addEventListener('click', ()=>{
+    const on = devSwitch.classList.toggle('on');
+    inspector.classList.toggle('hidden', !on);
+  });
+
+  /* ---------- Sidebar mobile ---------- */
+  const sidebar = document.getElementById('sidebar');
+  const scrim = document.getElementById('scrim');
+  document.getElementById('sidebarToggle').addEventListener('click', ()=>{
+    sidebar.classList.add('open'); scrim.classList.add('show');
+  });
+  scrim.addEventListener('click', ()=>{
+    sidebar.classList.remove('open'); scrim.classList.remove('show');
+  });
+
+  /* ---------- Flow diagram control ---------- */
+  const flowNodes = ['supervisor','product','order','rag','tool'];
+  function setFlow(active){
+    flowNodes.forEach(n=>{
+      document.getElementById('node-'+n).classList.toggle('active', active.includes(n));
+    });
+    document.getElementById('edge-s-p').classList.toggle('active', active.includes('product'));
+    document.getElementById('edge-s-o').classList.toggle('active', active.includes('order'));
+    document.getElementById('edge-p-r').classList.toggle('active', active.includes('rag'));
+    document.getElementById('edge-o-t').classList.toggle('active', active.includes('tool'));
+  }
+
+  function renderDocs(docs){
+    docList.innerHTML = '';
+    if(!docs || !docs.length){
+      docList.innerHTML = '<div class="rag-empty">本轮未触发向量检索</div>';
+      return;
+    }
+    docs.forEach((d,i)=>{
+      const el = document.createElement('div');
+      el.className='doc-card';
+      el.id='doc-card-'+i;
+      el.innerHTML = `
+        <div class="doc-card-top">
+          <div class="doc-title">${d.title}</div>
+          <div class="doc-num">${i+1}</div>
+        </div>
+        <div class="doc-snippet">${d.snippet}</div>
+        <div class="doc-meta">
+          <span class="src">${d.source}</span>
+          <div class="score-bar"><i style="width:${d.score}%;"></i></div>
+        </div>`;
+      docList.appendChild(el);
+    });
+  }
+
+  function renderOrder(o){
+    if(!o){ orderInfoBody.innerHTML=''; return; }
+    orderInfoBody.innerHTML = `
+      <div class="order-card" style="width:100%;">
+        <div class="order-card-head">
+          <span class="oid">订单 #${o.id}</span>
+          <span class="status-pill ${o.statusClass}">${o.status}</span>
+        </div>
+        <div class="order-card-body">
+          <div class="order-row"><span class="k">商品</span><span class="v">${o.product}</span></div>
+          <div class="order-row"><span class="k">物流公司</span><span class="v">${o.courier}</span></div>
+          <div class="order-row"><span class="k">运单号</span><span class="v">${o.trackNo}</span></div>
+          <div class="order-row"><span class="k">预计送达</span><span class="v">${o.eta}</span></div>
+          <div class="order-track">
+            <span class="tdot"></span>
+            <span class="ttext"><span class="t1">${o.node1}</span><span class="t2">${o.node2}</span></span>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function updateJson(state){
+    const lines = [];
+    lines.push('{');
+    Object.keys(state).forEach((k,i,arr)=>{
+      let v = state[k];
+      let vs;
+      if(typeof v === 'string') vs = `<span class="jv">"${v}"</span>`;
+      else if(typeof v === 'number') vs = `<span class="jn">${v}</span>`;
+      else vs = `<span class="jv">${JSON.stringify(v)}</span>`;
+      lines.push(`  <span class="jk">"${k}"</span>: ${vs}${i<arr.length-1?',':''}`);
+    });
+    lines.push('}');
+    jsonBlock.innerHTML = lines.join('\n');
+  }
+
+  function applyState(intent, agent, docs, order){
+    stIntent.textContent = intent;
+    stAgent.textContent = agent === 'order' ? 'order_agent' : (agent==='product' ? 'product_agent' : 'supervisor');
+    stTurn.textContent = turnCount;
+
+    if(agent === 'order'){
+      setFlow(['supervisor','order','tool']);
+      ragSection.style.display='none';
+      orderSection.style.display='block';
+      renderOrder(order);
+      breadcrumbAgent.textContent = 'Order Agent';
+      breadcrumbAgent.style.background = 'var(--agent-order-light)';
+      breadcrumbAgent.style.color = 'var(--agent-order)';
+    } else {
+      setFlow(['supervisor','product','rag']);
+      ragSection.style.display='block';
+      orderSection.style.display='none';
+      renderDocs(docs);
+      breadcrumbAgent.textContent = 'Product Agent';
+      breadcrumbAgent.style.background = 'var(--agent-product-light)';
+      breadcrumbAgent.style.color = 'var(--agent-product)';
+    }
+
+    updateJson({
+      intent: intent,
+      current_agent: agent === 'order' ? 'order_agent' : 'product_agent',
+      session_id: 'A8F2-9931',
+      turn: turnCount,
+      retrieved_docs: agent==='order' ? [] : (docs? docs.length : 0),
+      order_info: agent==='order' ? (order? order.id : null) : null
+    });
+  }
+
+  /* click assistant messages to inspect their state */
+  document.querySelectorAll('.msg-row.bot').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      if(inspector.classList.contains('hidden')){
+        devSwitch.classList.add('on'); inspector.classList.remove('hidden');
+      }
+      const intent = row.dataset.intent;
+      const agent = row.dataset.agent;
+      const docs = row.dataset.docs ? JSON.parse(row.dataset.docs) : null;
+      const order = row.dataset.order ? JSON.parse(row.dataset.order) : null;
+      applyState(intent, agent, docs, order);
+    });
+  });
+
+  /* citation click -> open inspector + flash doc */
+  document.querySelectorAll('.cite').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const row = btn.closest('.msg-row');
+      row.dispatchEvent(new Event('click'));
+      const idx = btn.dataset.doc;
+      setTimeout(()=>{
+        const card = document.getElementById('doc-card-'+idx);
+        if(card){
+          card.scrollIntoView({behavior:'smooth', block:'center'});
+          card.classList.add('flash');
+          setTimeout(()=>card.classList.remove('flash'), 1400);
+        }
+      }, 60);
+    });
+  });
+
+  jsonToggle.addEventListener('click', ()=>{
+    jsonToggle.classList.toggle('open');
+    jsonBlock.classList.toggle('open');
+  });
+
+  /* init: show last turn state */
+  applyState('knowledge','product',
+    [{"title":"售后服务政策 v1.4 · 无理由退货","snippet":"自签收之日起7天内，商品保持完好、配件齐全的，可申请无理由退货…","source":"政策知识库 / return_policy.md","score":95},
+     {"title":"售后服务政策 v1.4 · 运费说明","snippet":"因质量问题退货的，往返运费由卖家承担；非质量问题的七天无理由退货，退货运费由买家承担…","source":"政策知识库 / return_policy.md","score":89}],
+    null);
+
+  /* ---------- Composer simulation ---------- */
+  const input = document.getElementById('composerInput');
+  const sendBtn = document.getElementById('sendBtn');
+  const chatInner = document.querySelector('.chat-inner');
+
+  input.addEventListener('input', ()=>{
+    input.style.height='auto';
+    input.style.height = Math.min(input.scrollHeight,120)+'px';
+  });
+  input.addEventListener('keydown', (e)=>{
+    if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); handleSend(); }
+  });
+  sendBtn.addEventListener('click', handleSend);
+
+  document.querySelectorAll('.quick-chip').forEach(chip=>{
+    chip.addEventListener('click', ()=>{
+      const demo = chip.dataset.demo;
+      const texts = {
+        battery: '这款耳机续航多久？',
+        order2: '帮我查一下订单 733021 的状态',
+        shipping: '退货运费到底谁出？'
+      };
+      input.value = texts[demo];
+      handleSend();
+    });
+  });
+
+  function handleSend(){
+    const text = input.value.trim();
+    if(!text) return;
+    appendUserMsg(text);
+    input.value='';
+    input.style.height='auto';
+    turnCount++;
+
+    const classification = classify(text);
+    if(classification.agent==='order'){
+      appendOrderFlow(classification);
+    } else {
+      appendBotTyping(classification);
+    }
+  }
+
+  function appendUserMsg(text){
+    const row = document.createElement('div');
+    row.className='msg-row user';
+    row.innerHTML = `
+      <div class="avatar customer">客</div>
+      <div class="msg-col">
+        <div class="bubble"></div>
+        <div class="msg-time">${nowStr()}</div>
+      </div>`;
+    row.querySelector('.bubble').textContent = text;
+    chatInner.appendChild(row);
+    scrollBottom();
+  }
+
+  function nowStr(){
+    const d=new Date();
+    return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');
+  }
+
+  function classify(text){
+    if(/退货|售后|运费|保修|换货/.test(text)){
+      return {
+        agent:'product', intent:'knowledge',
+        answer:'可以的。自签收之日起 7 天内商品保持完好即可申请无理由退货，非质量问题的退货运费需买家承担，质量问题则由我们承担往返运费。',
+        docs:[{"title":"售后服务政策 v1.4 · 运费说明","snippet":"因质量问题退货的，往返运费由卖家承担；非质量问题的七天无理由退货，退货运费由买家承担…","source":"政策知识库 / return_policy.md","score":91}]
+      };
+    }
+    if(/订单|物流|快递|发货|到货/.test(text) || /\d{5,}/.test(text)){
+      const m = text.match(/\d{4,}/);
+      const oid = m ? m[0] : '733021';
+      const even = parseInt(oid[oid.length-1],10)%2===0;
+      return {
+        agent:'order', intent:'order',
+        order:{
+          id:oid,
+          product:'X1无线降噪耳机 · 曜石黑',
+          status: even?'已签收':'运输中',
+          statusClass: even?'delivered':'transit',
+          courier:'顺丰速运',
+          trackNo:'SF77'+oid+'JP',
+          eta: even? '已于今日 10:12 签收' : '8月31日 18:00 前',
+          node1: even? '已签收，签收人：本人' : '已到达【东京都·品川转运中心】',
+          node2: even? '8月30日 10:12' : '8月30日 09:24'
+        }
+      };
+    }
+    if(/续航|电量|充电|多久|防水|颜色|重量|多少钱|价格|降噪|连接|配对|蓝牙/.test(text)){
+      let title='X1无线降噪耳机产品说明书 v2.3 · 续航参数', snip='单次充满约2.5小时使用，配合充电仓可循环补充4次，总续航约28小时…', ans='单次充电约需 1.5 小时充满，可连续使用约 2.5 小时；配合充电仓可循环补充 4 次电，总续航约 28 小时。';
+      return {
+        agent:'product', intent:'product',
+        answer:ans,
+        docs:[{"title":title,"snippet":snip,"source":"商品知识库 / spec_x1.md","score":88}]
+      };
+    }
+    return {
+      agent:'supervisor', intent:'fallback',
+      answer:'抱歉没太理解您的问题，您是想咨询商品信息、查询订单，还是了解售后政策呢？可以换个说法试试～'
+    };
+  }
+
+  function appendBotTyping(cls){
+    const row = document.createElement('div');
+    row.className='msg-row bot';
+    const agentClass = cls.agent==='product' ? 'product' : (cls.agent==='order' ? 'order' : 'supervisor');
+    const iconColor = cls.agent==='product' ? 'var(--agent-product)' : (cls.agent==='order' ? 'var(--agent-order)' : 'var(--agent-supervisor)');
+    row.innerHTML = `
+      <div class="avatar bot" style="border-color:${iconColor};color:${iconColor};">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M9 8V6a3 3 0 016 0v2M9 13v2M15 13v2"/></svg>
+      </div>
+      <div class="msg-col">
+        <div class="agent-path">
+          <span class="agent-chip supervisor"><i class="dot"></i>Supervisor</span>
+          ${cls.agent!=='supervisor' ? `<span class="arrow">→</span><span class="agent-chip ${agentClass}"><i class="dot"></i>${cls.agent==='product'?'Product Agent':'Order Agent'}</span>` : ''}
+        </div>
+        <div class="bubble"><div class="typing-row"><span></span><span></span><span></span></div></div>
+      </div>`;
+    chatInner.appendChild(row);
+    row.dataset.intent = cls.intent;
+    row.dataset.agent = cls.agent==='supervisor' ? 'product' : cls.agent;
+    if(cls.docs) row.dataset.docs = JSON.stringify(cls.docs);
+    scrollBottom();
+
+    setTimeout(()=>{
+      const bubble = row.querySelector('.bubble');
+      bubble.innerHTML='';
+      streamText(bubble, cls.answer);
+      const timeEl = document.createElement('div');
+      timeEl.className='msg-time';
+      timeEl.textContent = nowStr() + (cls.docs ? ' · 已生成回答（基于 '+cls.docs.length+' 条检索结果）' : '');
+      row.querySelector('.msg-col').appendChild(timeEl);
+      if(cls.agent !== 'supervisor'){
+        row.addEventListener('click', ()=>{
+          if(inspector.classList.contains('hidden')){ devSwitch.classList.add('on'); inspector.classList.remove('hidden'); }
+          applyState(cls.intent, cls.agent, cls.docs||null, null);
+        });
+        row.dispatchEvent(new Event('click'));
+      }
+      scrollBottom();
+    }, 700);
+  }
+
+  function appendOrderFlow(cls){
+    const row = document.createElement('div');
+    row.className='msg-row bot';
+    row.innerHTML = `
+      <div class="avatar bot" style="border-color:var(--agent-order);color:var(--agent-order);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="9" width="13" height="9" rx="1.5"/><path d="M16 12h3l2 3v3h-5z"/><circle cx="7.5" cy="18.5" r="1.5"/><circle cx="17.5" cy="18.5" r="1.5"/></svg>
+      </div>
+      <div class="msg-col">
+        <div class="agent-path">
+          <span class="agent-chip supervisor"><i class="dot"></i>Supervisor</span>
+          <span class="arrow">→</span>
+          <span class="agent-chip order"><i class="dot"></i>Order Agent</span>
+        </div>
+        <div class="tool-card">
+          <svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-3-6.7"/></svg>
+          正在调用工具 order_lookup(order_id="${cls.order.id}")…
+        </div>
+      </div>`;
+    chatInner.appendChild(row);
+    row.dataset.intent='order';
+    row.dataset.agent='order';
+    row.dataset.order = JSON.stringify(cls.order);
+    scrollBottom();
+
+    setTimeout(()=>{
+      const toolCard = row.querySelector('.tool-card');
+      toolCard.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg> 已调用工具 <b>order_lookup(order_id="${cls.order.id}")</b>`;
+      const o = cls.order;
+      const cardWrap = document.createElement('div');
+      cardWrap.className='order-card';
+      cardWrap.innerHTML = `
+        <div class="order-card-head">
+          <span class="oid">订单 #${o.id}</span>
+          <span class="status-pill ${o.statusClass}">${o.status}</span>
+        </div>
+        <div class="order-card-body">
+          <div class="order-row"><span class="k">商品</span><span class="v">${o.product}</span></div>
+          <div class="order-row"><span class="k">物流公司</span><span class="v">${o.courier}</span></div>
+          <div class="order-row"><span class="k">运单号</span><span class="v">${o.trackNo}</span></div>
+          <div class="order-row"><span class="k">预计送达</span><span class="v">${o.eta}</span></div>
+          <div class="order-track">
+            <span class="tdot"></span>
+            <span class="ttext"><span class="t1">${o.node1}</span><span class="t2">${o.node2}</span></span>
+          </div>
+        </div>`;
+      row.querySelector('.msg-col').appendChild(cardWrap);
+
+      const bubble = document.createElement('div');
+      bubble.className='bubble';
+      bubble.style.marginTop='8px';
+      row.querySelector('.msg-col').appendChild(bubble);
+      const summary = o.statusClass==='delivered'
+        ? `订单已于 ${o.node2} 签收啦，如果有任何问题欢迎随时联系我们～`
+        : `订单预计 ${o.eta} 送达，目前${o.node1}，正在派送途中，请留意收货哦～`;
+      streamText(bubble, summary);
+
+      const timeEl = document.createElement('div');
+      timeEl.className='msg-time';
+      timeEl.textContent = nowStr();
+      row.querySelector('.msg-col').appendChild(timeEl);
+
+      row.addEventListener('click', ()=>{
+        if(inspector.classList.contains('hidden')){ devSwitch.classList.add('on'); inspector.classList.remove('hidden'); }
+        applyState('order','order', null, o);
+      });
+      row.dispatchEvent(new Event('click'));
+      scrollBottom();
+    }, 1000);
+  }
+
+  function streamText(el, text){
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if(reduced){ el.textContent = text; return; }
+    let i=0;
+    const speed = 18;
+    function step(){
+      el.textContent = text.slice(0,i);
+      i++;
+      if(i<=text.length){ setTimeout(step, speed); scrollBottom(); }
+    }
+    step();
+  }
+
+})();
+</script>
+</body>
+</html>

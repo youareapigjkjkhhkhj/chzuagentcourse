@@ -1,0 +1,112 @@
+:root {
+  --bg: #f5f7fb;
+  --panel: #ffffff;
+  --ink: #1f2733;
+  --muted: #7a8699;
+  --line: #e6eaf2;
+  --brand: #3b6cff;
+  --brand-2: #6a4bff;
+  --ok: #1faa6b;
+  --warn: #e0892b;
+  --danger: #e0474b;
+  --radius: 14px;
+  --shadow: 0 6px 24px rgba(30, 50, 110, 0.08);
+}
+
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; margin: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 24px; color: #fff;
+  background: linear-gradient(120deg, var(--brand), var(--brand-2));
+  box-shadow: var(--shadow);
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand .logo { font-size: 30px; }
+.brand h1 { font-size: 18px; margin: 0; font-weight: 700; }
+.brand p { margin: 2px 0 0; font-size: 12px; opacity: .85; }
+.status { font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.status .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.status .dot.on { background: #b6ffce; box-shadow: 0 0 8px #b6ffce; }
+.status .dot.off { background: #ffd2a6; }
+.status .muted { opacity: .85; }
+
+.layout {
+  flex: 1; display: grid; grid-template-columns: 380px 1fr; gap: 18px;
+  padding: 18px 24px; overflow: hidden;
+}
+
+.panel {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; overflow: auto;
+}
+.panel h2 { font-size: 16px; margin: 0 0 14px; }
+.panel h3 { font-size: 13px; color: var(--muted); margin: 16px 0 8px; text-transform: uppercase; letter-spacing: .04em; }
+
+.upload { display: flex; flex-direction: column; gap: 10px; }
+.upload input[type=file] {
+  border: 1.5px dashed var(--line); border-radius: 10px; padding: 12px;
+  background: #fbfcff; color: var(--muted); font-size: 13px;
+}
+.actions { margin-top: 12px; }
+
+button {
+  border: none; border-radius: 10px; padding: 9px 14px; font-size: 13px;
+  cursor: pointer; background: #eef1f8; color: var(--ink); transition: .15s;
+}
+button:hover { filter: brightness(.97); }
+button:disabled { opacity: .55; cursor: not-allowed; }
+button.primary { background: linear-gradient(120deg, var(--brand), var(--brand-2)); color: #fff; }
+button.link { background: transparent; color: var(--danger); padding: 4px 8px; }
+
+.hint { font-size: 13px; color: var(--ok); margin: 10px 0 0; }
+.hint.err { color: var(--danger); }
+
+.notes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.notes li {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 13px;
+}
+.notes li.empty { color: var(--muted); justify-content: center; border-style: dashed; }
+
+/* 聊天面板 */
+.chat { background: linear-gradient(180deg, #ffffff, #fbfcff); }
+.messages { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 14px; padding-right: 4px; }
+.msg { max-width: 86%; }
+.msg .role { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.msg.user { align-self: flex-end; text-align: right; }
+.msg.user .text {
+  background: linear-gradient(120deg, var(--brand), var(--brand-2)); color: #fff;
+  padding: 10px 14px; border-radius: 12px 12px 2px 12px; display: inline-block; text-align: left;
+}
+.msg.assistant .text {
+  background: #f1f4fb; padding: 10px 14px; border-radius: 12px 12px 12px 2px;
+  display: inline-block; white-space: pre-wrap; line-height: 1.6;
+}
+.sources { margin-top: 6px; font-size: 11px; color: var(--muted); }
+.chip {
+  display: inline-block; background: #eaf0ff; color: var(--brand);
+  border-radius: 6px; padding: 1px 7px; margin-left: 6px; font-size: 11px;
+}
+
+.composer { display: flex; gap: 10px; margin-top: 12px; align-items: flex-end; }
+.composer textarea {
+  flex: 1; resize: none; height: 64px; border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 12px; font: inherit; outline: none;
+}
+.composer textarea:focus { border-color: var(--brand); }
+
+.toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; overflow: auto; }
+}

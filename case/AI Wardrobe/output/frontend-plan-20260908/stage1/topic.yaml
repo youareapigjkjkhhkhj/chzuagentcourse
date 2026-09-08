@@ -1,0 +1,4 @@
+detected_doc_type: "技术实施方案"
+target_length: 4500
+target_tone: "正式、面向开发团队的工程文档，第二人称对执行者，表格化任务分解"
+research_basis: "本项目代码实测：项目完整性审计报告.md、衣柜系统前端原型.html（接口/DTO 全部来自控制器代码核验）"

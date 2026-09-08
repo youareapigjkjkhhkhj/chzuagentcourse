@@ -1,0 +1,49 @@
+{
+  "version": "1.0.0",
+  "name": "旅行助手",
+  "description": "旅行助手",
+  "steps": [
+    {
+      "id": "step1",
+      "name": "旅行规划主Agent",
+      "agentId": "2018639441152946176",
+      "order": 1
+    },
+    {
+      "id": "step2",
+      "name": "目的地研究Agent",
+      "agentId": "2018641478582255616",
+      "order": 2
+    },
+    {
+      "id": "step3",
+      "name": "行程安排Agent",
+      "agentId": "2018641478737444864",
+      "order": 3
+    },
+    {
+      "id": "step4",
+      "name": "预算管理Agent",
+      "agentId": "2018641478905217024",
+      "order": 4
+    },
+    {
+      "id": "step5",
+      "name": "住宿推荐Agent",
+      "agentId": "2018641479022657536",
+      "order": 5
+    },
+    {
+      "id": "step6",
+      "name": "交通规划Agent",
+      "agentId": "2018641479152680960",
+      "order": 6
+    },
+    {
+      "id": "step7",
+      "name": "旅行总结Agent",
+      "agentId": "2018641479249149952",
+      "order": 7
+    }
+  ]
+}

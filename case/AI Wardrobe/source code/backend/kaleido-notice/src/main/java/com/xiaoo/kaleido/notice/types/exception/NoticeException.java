@@ -1,0 +1,38 @@
+package com.xiaoo.kaleido.notice.types.exception;
+
+import com.xiaoo.kaleido.base.exception.BizException;
+import com.xiaoo.kaleido.base.exception.ErrorCode;
+
+/**
+ * 通知服务业务异常
+ *
+ * @author tomhui
+ * @date 2025/12/17
+ */
+public class NoticeException extends BizException {
+
+    public NoticeException(ErrorCode errorCode) {
+        super(errorCode);
+    }
+
+    public NoticeException(String errorCode, String message) {
+        super(errorCode, message);
+    }
+
+    public static NoticeException of(NoticeErrorCode errorCode) {
+        return new NoticeException(errorCode);
+    }
+
+    public static NoticeException of(String errorCode, String message) {
+        return new NoticeException(errorCode, message);
+    }
+
+    public static NoticeException of(NoticeErrorCode errorCode, String message) {
+        return new NoticeException(errorCode.getCode(), message);
+    }
+
+    public static NoticeException of(NoticeErrorCode errorCode, Throwable cause) {
+        return new NoticeException(errorCode.getCode(), errorCode.getMessage());
+    }
+
+}

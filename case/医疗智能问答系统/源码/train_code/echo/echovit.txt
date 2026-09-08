@@ -1,0 +1,72 @@
+els/pre/jx_vit_base_p16_224-80ecf9dd.pth
+Using: cuda
+Loading pretrained weights from ./models/pre/jx_vit_base_p16_224-80ecf9dd.pth
+Removing mismatched classification head: head.bias
+Removing mismatched classification head: head.weight
+Backbone loaded! Missing 2 keys (normal for new head)
+[Epoch 1] Train Loss: 1.6687 | Val Loss: 1.5395 | Kappa: 0.1369 | Acc: 0.3579
+������ Saved best model (kappa=0.1369)
+[Epoch 2] Train Loss: 1.4174 | Val Loss: 1.3828 | Kappa: 0.5158 | Acc: 0.4481
+������ Saved best model (kappa=0.5158)
+[Epoch 3] Train Loss: 1.2613 | Val Loss: 1.3255 | Kappa: 0.5783 | Acc: 0.5464
+������ Saved best model (kappa=0.5783)
+[Epoch 4] Train Loss: 1.1685 | Val Loss: 1.2316 | Kappa: 0.6037 | Acc: 0.6557
+������ Saved best model (kappa=0.6037)
+[Epoch 5] Train Loss: 1.0794 | Val Loss: 1.1447 | Kappa: 0.6962 | Acc: 0.6421
+������ Saved best model (kappa=0.6962)
+[Epoch 6] Train Loss: 1.0132 | Val Loss: 1.3748 | Kappa: 0.6149 | Acc: 0.6202
+[Epoch 7] Train Loss: 0.9327 | Val Loss: 1.0776 | Kappa: 0.7048 | Acc: 0.6421
+������ Saved best model (kappa=0.7048)
+[Epoch 8] Train Loss: 0.8608 | Val Loss: 1.0851 | Kappa: 0.7684 | Acc: 0.7104
+������ Saved best model (kappa=0.7684)
+[Epoch 9] Train Loss: 0.7575 | Val Loss: 0.9906 | Kappa: 0.8001 | Acc: 0.7213
+������ Saved best model (kappa=0.8001)
+[Epoch 10] Train Loss: 0.6661 | Val Loss: 1.0031 | Kappa: 0.7866 | Acc: 0.7104
+[Epoch 11] Train Loss: 0.9754 | Val Loss: 1.1512 | Kappa: 0.6041 | Acc: 0.5355
+[Epoch 12] Train Loss: 0.8945 | Val Loss: 1.1271 | Kappa: 0.7374 | Acc: 0.6093
+[Epoch 13] Train Loss: 0.8556 | Val Loss: 1.1740 | Kappa: 0.7176 | Acc: 0.6639
+[Epoch 14] Train Loss: 0.8030 | Val Loss: 1.0191 | Kappa: 0.7505 | Acc: 0.6366
+[Epoch 15] Train Loss: 0.7147 | Val Loss: 1.2608 | Kappa: 0.7497 | Acc: 0.7022
+[Epoch 16] Train Loss: 0.6560 | Val Loss: 1.2908 | Kappa: 0.7268 | Acc: 0.7022
+[Epoch 17] Train Loss: 0.6234 | Val Loss: 1.1077 | Kappa: 0.7624 | Acc: 0.6940
+[Epoch 18] Train Loss: 0.5252 | Val Loss: 1.1524 | Kappa: 0.7325 | Acc: 0.6831
+[Epoch 19] Train Loss: 0.4355 | Val Loss: 1.1346 | Kappa: 0.7761 | Acc: 0.7377
+[Epoch 20] Train Loss: 0.3920 | Val Loss: 1.1578 | Kappa: 0.7685 | Acc: 0.7295
+[Epoch 21] Train Loss: 0.6739 | Val Loss: 1.2094 | Kappa: 0.7682 | Acc: 0.6803
+[Epoch 22] Train Loss: 0.7155 | Val Loss: 1.5555 | Kappa: 0.6627 | Acc: 0.6311
+[Epoch 23] Train Loss: 0.6288 | Val Loss: 1.2049 | Kappa: 0.7175 | Acc: 0.6749
+[Epoch 24] Train Loss: 0.6271 | Val Loss: 1.0441 | Kappa: 0.7940 | Acc: 0.7186
+[Epoch 25] Train Loss: 0.5483 | Val Loss: 1.0824 | Kappa: 0.7970 | Acc: 0.7459
+[Epoch 26] Train Loss: 0.4905 | Val Loss: 1.0907 | Kappa: 0.8044 | Acc: 0.7350
+������ Saved best model (kappa=0.8044)
+[Epoch 27] Train Loss: 0.3933 | Val Loss: 1.1023 | Kappa: 0.7739 | Acc: 0.6831
+[Epoch 28] Train Loss: 0.3494 | Val Loss: 1.1786 | Kappa: 0.8064 | Acc: 0.7322
+������ Saved best model (kappa=0.8064)
+[Epoch 29] Train Loss: 0.2983 | Val Loss: 1.2258 | Kappa: 0.7900 | Acc: 0.7295
+[Epoch 30] Train Loss: 0.2733 | Val Loss: 1.2222 | Kappa: 0.8130 | Acc: 0.7432
+������ Saved best model (kappa=0.8130)
+[Epoch 31] Train Loss: 0.5455 | Val Loss: 1.2215 | Kappa: 0.7856 | Acc: 0.7541
+[Epoch 32] Train Loss: 0.5887 | Val Loss: 1.3561 | Kappa: 0.6731 | Acc: 0.6120
+[Epoch 33] Train Loss: 0.5642 | Val Loss: 1.2651 | Kappa: 0.6915 | Acc: 0.6749
+[Epoch 34] Train Loss: 0.5029 | Val Loss: 1.4608 | Kappa: 0.7741 | Acc: 0.7131
+[Epoch 35] Train Loss: 0.4584 | Val Loss: 1.3321 | Kappa: 0.7591 | Acc: 0.6776
+[Epoch 36] Train Loss: 0.4012 | Val Loss: 1.1729 | Kappa: 0.7481 | Acc: 0.6557
+[Epoch 37] Train Loss: 0.3268 | Val Loss: 1.0907 | Kappa: 0.7763 | Acc: 0.7131
+[Epoch 38] Train Loss: 0.2917 | Val Loss: 1.2639 | Kappa: 0.8027 | Acc: 0.7350
+[Epoch 39] Train Loss: 0.2592 | Val Loss: 1.1792 | Kappa: 0.8226 | Acc: 0.7541
+������ Saved best model (kappa=0.8226)
+[Epoch 40] Train Loss: 0.2210 | Val Loss: 1.2508 | Kappa: 0.8239 | Acc: 0.7486
+������ Saved best model (kappa=0.8239)
+[Epoch 41] Train Loss: 0.4585 | Val Loss: 1.2893 | Kappa: 0.7187 | Acc: 0.6257
+[Epoch 42] Train Loss: 0.4640 | Val Loss: 1.3152 | Kappa: 0.7427 | Acc: 0.6448
+[Epoch 43] Train Loss: 0.4546 | Val Loss: 1.3224 | Kappa: 0.7296 | Acc: 0.6803
+[Epoch 44] Train Loss: 0.4204 | Val Loss: 1.1663 | Kappa: 0.7039 | Acc: 0.6749
+[Epoch 45] Train Loss: 0.3790 | Val Loss: 1.2024 | Kappa: 0.7681 | Acc: 0.6803
+[Epoch 46] Train Loss: 0.3225 | Val Loss: 1.3754 | Kappa: 0.7526 | Acc: 0.6831
+[Epoch 47] Train Loss: 0.2861 | Val Loss: 1.2104 | Kappa: 0.7960 | Acc: 0.7432
+[Epoch 48] Train Loss: 0.2284 | Val Loss: 1.3519 | Kappa: 0.8273 | Acc: 0.7432
+������ Saved best model (kappa=0.8273)
+[Epoch 49] Train Loss: 0.2024 | Val Loss: 1.3399 | Kappa: 0.8068 | Acc: 0.7322
+[Epoch 50] Train Loss: 0.1801 | Val Loss: 1.3272 | Kappa: 0.8187 | Acc: 0.7568
+Training done. All figures saved in 'figures/vit_base_patch16_224/'
+(venv) root@node4:/njzk/blindness# 

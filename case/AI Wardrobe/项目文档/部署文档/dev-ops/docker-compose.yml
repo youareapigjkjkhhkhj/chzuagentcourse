@@ -1,0 +1,345 @@
+version: '3.8'
+services:
+  nacos:
+    image: nacos/nacos-server:v2.2.3-slim
+    container_name: nacos
+    restart: always
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+    environment:
+      - PREFER_HOST_MODE=hostname
+      - MODE=standalone
+      - SPRING_DATASOURCE_PLATFORM=mysql
+      - MYSQL_SERVICE_HOST=mysql
+      - MYSQL_SERVICE_DB_NAME=nacos_config
+      - MYSQL_SERVICE_PORT=3306
+      - MYSQL_SERVICE_USER=root
+      - MYSQL_SERVICE_PASSWORD=kaleido123
+      - MYSQL_SERVICE_DB_PARAM=characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true&useSSL=false&allowPublicKeyRetrieval=true
+      - NACOS_AUTH_IDENTITY_KEY=kaleido
+      - NACOS_AUTH_IDENTITY_VALUE=kaleido
+      - NACOS_AUTH_TOKEN=a2FsZWlkbzEyM2thbGVpZG8xMjNrYWxlaWRvMTIza2FsZWlkbzEyMw==
+      - NACOS_AUTH_ENABLE=true
+    networks:
+      - kaleido-env-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.0.32
+    container_name: mysql
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: kaleido123
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql/my.cnf:/etc/mysql/conf.d/mysql.cnf:ro
+      - ./mysql/sql:/docker-entrypoint-initdb.d
+      - ./mysql/data:/var/lib/mysql
+    healthcheck:
+      test: [ "CMD", "mysqladmin" ,"ping", "-h", "localhost" ]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+      start_period: 15s
+    networks:
+      - kaleido-env-network
+
+  # Redis
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    restart: always
+    hostname: redis
+    privileged: true
+    ports:
+      - 6379:6379
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+      - ./redis/data:/data
+    command: redis-server /usr/local/etc/redis/redis.conf
+    networks:
+      - kaleido-env-network
+
+  mongodb:
+    image: mongodb/mongodb-community-server:latest
+    container_name: mongodb-server
+    ports:
+      - "27017:27017"
+    environment:
+      MONGODB_INITDB_ROOT_USERNAME: root
+      MONGODB_INITDB_ROOT_PASSWORD: kaleido123
+      TZ: Asia/Shanghai
+    volumes:
+      - ./mongodb/data:/data/db
+      - ./mongodb/log:/var/log/mongodb
+    restart: always
+    networks:
+      - kaleido-env-network
+
+  rabbitmq:
+    image: rabbitmq:3.12.9
+    container_name: rabbitmq
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: kaleido123
+    command: rabbitmq-server
+    volumes:
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
+    networks:
+      - kaleido-env-network
+
+  xxl-job-admin:
+    image: xuxueli/xxl-job-admin:2.4.1
+    container_name: xxl-job-admin
+    restart: always
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "9099:9090"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/xxl_job?serverTimezone=UTC&characterEncoding=utf8&autoReconnect=true&serverTimezone=Asia/Shanghai
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=kaleido123
+      - SERVER_PORT=9090
+    networks:
+      - kaleido-env-network
+
+  prometheus:
+    image: quay.io/prometheus/prometheus:v2.54.1
+    container_name: prometheus
+    restart: always
+    ports:
+      - 9090:9090
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/data:/prometheus
+    networks:
+      - kaleido-env-network
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: grafana
+    restart: always
+    ports:
+      - 4000:4000
+    depends_on:
+      - prometheus
+    volumes:
+      - ./grafana:/etc/grafana
+      - ./grafana/data:/var/lib/grafana
+    networks:
+      - kaleido-env-network
+
+  skywalking-oap:
+    image: apache/skywalking-oap-server:9.7.0
+    container_name: skywalking-oap
+    restart: always
+    ports:
+      - "11800:11800"
+      - "12800:12800"
+    environment:
+      - SW_STORAGE=elasticsearch
+      - SW_STORAGE_ES_CLUSTER_NODES=elasticsearch:9200
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - kaleido-env-network
+
+  skywalking-ui:
+    image: apache/skywalking-ui:9.7.0
+    container_name: skywalking-ui
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - SW_OAP_ADDRESS=http://skywalking-oap:12800
+    depends_on:
+      - skywalking-oap
+    networks:
+      - kaleido-env-network
+
+  sentinel:
+    image: bladex/sentinel-dashboard:1.8.6
+    container_name: sentinel
+    restart: always
+    ports:
+      - "8858:8858"
+    environment:
+      - JAVA_OPTS=-Dserver.port=8858 -Dsentinel.dashboard.auth.username=sentinel -Dsentinel.dashboard.auth.password=sentinel
+    networks:
+      - kaleido-env-network
+
+  seata:
+    image: seataio/seata-server:1.8.0
+    container_name: seata
+    restart: always
+    ports:
+      - "8091:8091"
+      - "7091:7091"
+    environment:
+      - SEATA_IP=192.168.52.133 # 此处换成你的宿主机ip
+      - SEATA_PORT=8091
+      - SEATA_STORE_MODE=db
+      - SEATA_STORE_DB_TYPE=mysql
+      - SEATA_STORE_DB_DB_TYPE=mysql
+      - SERVER_NODE_ID=1
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/seata?useUnicode=true&characterEncoding=utf8&autoReconnect=true&serverTimezone=Asia/Shanghai
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=kaleido123
+      - SEATA_CONFIG_TYPE=nacos
+      - SEATA_CONFIG_NACOS_SERVER_ADDR=nacos:8848
+      - SEATA_CONFIG_NACOS_GROUP=SEATA_GROUP
+      - SEATA_CONFIG_NACOS_NAMESPACE=
+      - SEATA_CONFIG_NACOS_USERNAME=nacos
+      - SEATA_CONFIG_NACOS_PASSWORD=nacos
+      - SEATA_REGISTRY_TYPE=nacos
+      - SEATA_REGISTRY_NACOS_SERVER_ADDR=nacos:8848
+      - SEATA_REGISTRY_NACOS_GROUP=DEFAULT_GROUP
+      - SEATA_REGISTRY_NACOS_NAMESPACE=30d71fbd-2d24-4757-81f4-679d26f0ed93
+      - SEATA_REGISTRY_NACOS_USERNAME=nacos
+      - SEATA_REGISTRY_NACOS_PASSWORD=nacos
+    depends_on:
+      mysql:
+        condition: service_healthy
+      nacos:
+        condition: service_started
+    networks:
+      - kaleido-env-network
+
+  etcd:
+    container_name: milvus-etcd
+    image: quay.io/coreos/etcd:v3.5.18
+    networks:
+      - kaleido-env-network
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/etcd:/etcd
+    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  minio:
+    container_name: milvus-minio
+    image: minio/minio:RELEASE.2024-05-28T17-19-04Z
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9001:9001"
+      - "9000:9000"
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/minio:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  standalone:
+    container_name: milvus-standalone
+    image: milvusdb/milvus:v2.5.26
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      MINIO_REGION: us-east-1
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/milvus:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      - "etcd"
+      - "minio"
+
+  elasticsearch:
+    image: elasticsearch:7.17.28
+    ports:
+      - '9200:9200'
+      - '9300:9300'
+    container_name: elasticsearch
+    restart: always
+    volumes:
+      - ./elasticsearch/data:/usr/share/elasticsearch/data
+    environment:
+      - 'cluster.name=kaleido-cluster'
+      - 'discovery.type=single-node'
+      - 'ES_JAVA_OPTS=-Xms512m -Xmx512m'
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -vq '\"status\":\"red\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kaleido-env-network
+
+  logstash:
+    image: logstash:7.17.28
+    container_name: logstash
+    restart: always
+    volumes:
+      - ./logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+    ports:
+      - '4560:4560'
+      - '50000:50000/tcp'
+      - '50000:50000/udp'
+      - '9600:9600'
+    environment:
+      LS_JAVA_OPTS: -Xms1024m -Xmx1024m
+      TZ: Asia/Shanghai
+      MONITORING_ENABLED: false
+    networks:
+      - kaleido-env-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  kibana:
+    image: kibana:7.17.28
+    container_name: kibana
+    restart: always
+    volumes:
+      - ./kibana/config/kibana.yml:/usr/share/kibana/config/kibana.yml
+    ports:
+      - '5601:5601'
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - I18N_LOCALE=zh-CN
+    networks:
+      - kaleido-env-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+networks:
+  kaleido-env-network:
+    driver: bridge
+    name: kaleido-env-network

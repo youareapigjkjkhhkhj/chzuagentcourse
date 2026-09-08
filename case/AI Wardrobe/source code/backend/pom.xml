@@ -1,0 +1,563 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.6</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.xiaoo</groupId>
+    <artifactId>kaleido</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+    <name>Kaleido</name>
+    <description>Kaleido</description>
+
+    <modules>
+        <module>kaleido-common</module>
+        <module>kaleido-gateway</module>
+        <module>kaleido-auth</module>
+        <module>kaleido-biz</module>
+        <module>kaleido-notice</module>
+        <module>kaleido-admin</module>
+    </modules>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <spring-cloud.version>2025.0.0</spring-cloud.version>
+        <spring-cloud-alibaba.version>2025.0.0.0</spring-cloud-alibaba.version>
+        <spring-boot.version>3.5.6</spring-boot.version>
+        <spring-ai.version>1.1.2</spring-ai.version>
+        <langchain4j.version>1.11.0</langchain4j.version>
+
+
+        <redisson.version>3.52.0</redisson.version>
+        <caffeine.version>3.2.3</caffeine.version>
+        <jetcache.version>2.7.8</jetcache.version>
+
+        <mybatis-plus.version>3.5.9</mybatis-plus.version>
+        <mybatis-plus-generate.version>3.5.9</mybatis-plus-generate.version>
+        <mysql-connector.version>8.4.0</mysql-connector.version>
+        <druid.version>1.2.24</druid.version>
+
+        <kaleido.version>1.0.0</kaleido.version>
+
+        <lombok.version>1.18.36</lombok.version>
+        <weixin-java-miniapp.version>4.6.0</weixin-java-miniapp.version>
+        <guava.version>32.1.3-jre</guava.version>
+        <sa-token.version>1.39.0</sa-token.version>
+        <commons-pool2.version>2.12.0</commons-pool2.version>
+        <mysql-connector.version>8.4.0</mysql-connector.version>
+        <beetl.version>3.16.2.RELEASE</beetl.version>
+        <mapstruct.version>1.6.3</mapstruct.version>
+        <mybatis-plus-join.version>1.5.2</mybatis-plus-join.version>
+        <hutool.version>5.8.38</hutool.version>
+        <aliyun-captcha.version>1.1.2</aliyun-captcha.version>
+        <aliyun.oss.version>3.18.1</aliyun.oss.version>
+        <dubbo.version>3.3.0</dubbo.version>
+        <pagehelper.version>2.1.1</pagehelper.version>
+        <sa-token.version>1.44.0</sa-token.version>
+        <jsqlparser.version>4.9</jsqlparser.version>
+        <smart-doc.version>2.7.7</smart-doc.version>
+        <xxl-job.version>3.3.2</xxl-job.version>
+        <dynamic-tp.version>1.2.2-x</dynamic-tp.version>
+        <jackson.version>2.17.3</jackson.version>
+        <minio.version>8.6.0</minio.version>
+        <shardingsphere.version>5.5.2</shardingsphere.version>
+        <antlr4.version>4.10.1</antlr4.version>
+        <micrometer.version>1.14.4</micrometer.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+
+            <dependency>
+                <groupId>dev.langchain4j</groupId>
+                <artifactId>langchain4j-bom</artifactId>
+                <version>${langchain4j.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter-actuator</artifactId>
+                <version>${spring-boot.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>io.micrometer</groupId>
+                <artifactId>micrometer-registry-prometheus</artifactId>
+                <version>${micrometer.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter</artifactId>
+                <version>${spring-boot.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter-web</artifactId>
+                <version>${spring-boot.version}</version>
+            </dependency>
+
+            <!--    spring-cloud依赖管理POM -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!--    spring-cloud-alibaba依赖管理POM -->
+            <dependency>
+                <groupId>com.alibaba.cloud</groupId>
+                <artifactId>spring-cloud-alibaba-dependencies</artifactId>
+                <version>${spring-cloud-alibaba.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>org.redisson</groupId>
+                <artifactId>redisson-spring-boot-starter</artifactId>
+                <version>${redisson.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.github.ben-manes.caffeine</groupId>
+                <artifactId>caffeine</artifactId>
+                <version>${caffeine.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.alicp.jetcache</groupId>
+                <artifactId>jetcache-starter-redisson</artifactId>
+                <version>${jetcache.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-jsqlparser</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+
+            <!-- MyBatis-Plus Generator -->
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-generator</artifactId>
+                <version>${mybatis-plus-generate.version}</version>
+            </dependency>
+
+            <!-- MySQL JDBC 驱动 -->
+            <dependency>
+                <groupId>com.mysql</groupId>
+                <artifactId>mysql-connector-j</artifactId>
+                <version>${mysql-connector.version}</version>
+            </dependency>
+
+            <!-- Druid 数据库连接池 -->
+            <dependency>
+                <groupId>com.alibaba</groupId>
+                <artifactId>druid</artifactId>
+                <version>${druid.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.mapstruct</groupId>
+                <artifactId>mapstruct</artifactId>
+                <version>${mapstruct.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.mapstruct</groupId>
+                <artifactId>mapstruct-processor</artifactId>
+                <version>${mapstruct.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-base</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-ds</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-cache</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-nacos</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-web</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-doc</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-api</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-rpc</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-distribute</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-aop</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-sms</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-sa-token</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-job</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-dynamic-tp</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-mq</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-file</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-sentinel</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-limiter</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-seata</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-lock</artifactId>
+                <version>${kaleido.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xiaoo</groupId>
+                <artifactId>kaleido-monitor</artifactId>
+                <version>1.0.0</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.apache.dubbo</groupId>
+                <artifactId>dubbo-spring-boot-starter</artifactId>
+                <version>${dubbo.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.dubbo</groupId>
+                <artifactId>dubbo-registry-nacos</artifactId>
+                <version>${dubbo.version}</version>
+            </dependency>
+
+
+            <dependency>
+                <groupId>cn.hutool</groupId>
+                <artifactId>hutool-all</artifactId>
+                <version>${hutool.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.github.pagehelper</groupId>
+                <artifactId>pagehelper-spring-boot-starter</artifactId>
+                <version>${pagehelper.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>cn.dev33</groupId>
+                <artifactId>sa-token-reactor-spring-boot3-starter</artifactId>
+                <version>${sa-token.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>cn.dev33</groupId>
+                <artifactId>sa-token-redis-jackson</artifactId>
+                <version>${sa-token.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>cn.dev33</groupId>
+                <artifactId>sa-token-spring-boot3-starter</artifactId>
+                <version>${sa-token.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.github.jsqlparser</groupId>
+                <artifactId>jsqlparser</artifactId>
+                <version>${jsqlparser.version}</version>
+            </dependency>
+
+            <!-- smart-doc 核心依赖 -->
+            <dependency>
+                <groupId>com.github.shalousun</groupId>
+                <artifactId>smart-doc</artifactId>
+                <version>${smart-doc.version}</version>
+                <scope>provided</scope>
+            </dependency>
+
+            <!-- smart-doc Maven 插件 -->
+            <dependency>
+                <groupId>com.github.shalousun</groupId>
+                <artifactId>smart-doc-maven-plugin</artifactId>
+                <version>${smart-doc.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.xuxueli</groupId>
+                <artifactId>xxl-job-core</artifactId>
+                <version>${xxl-job.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.dromara.dynamictp</groupId>
+                <artifactId>dynamic-tp-spring-boot-starter-nacos</artifactId>
+                <version>${dynamic-tp.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.fasterxml.jackson.datatype</groupId>
+                <artifactId>jackson-datatype-jsr310</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>io.minio</groupId>
+                <artifactId>minio</artifactId>
+                <version>${minio.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.apache.shardingsphere</groupId>
+                <artifactId>shardingsphere-jdbc</artifactId>
+                <version>${shardingsphere.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.antlr</groupId>
+                <artifactId>antlr4-runtime</artifactId>
+                <version>${antlr4.version}</version>
+            </dependency>
+
+        </dependencies>
+    </dependencyManagement>
+
+    <!--元数据生成器 自动生成`spring-configuration-metadata.json`文件-->
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <version>${spring-boot.version}</version>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <source>21</source>
+                    <target>21</target>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>1.18.30</version>
+                        </path>
+                        <path>
+                            <groupId>org.mapstruct</groupId>
+                            <artifactId>mapstruct-processor</artifactId>
+                            <version>1.5.5.Final</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <nonFilteredFileExtensions>
+                        <nonFilteredFileExtension>p12</nonFilteredFileExtension>
+                        <nonFilteredFileExtension>pem</nonFilteredFileExtension>
+                    </nonFilteredFileExtensions>
+                </configuration>
+            </plugin>
+
+
+            <!-- smart-doc Maven 插件 -->
+            <plugin>
+                <groupId>com.github.shalousun</groupId>
+                <artifactId>smart-doc-maven-plugin</artifactId>
+                <version>${smart-doc.version}</version>
+                <configuration>
+                    <!-- 配置文件路径（相对于模块根目录） -->
+                    <configFile>src/main/resources/smart-doc-config.json</configFile>
+                    <!-- 项目名称 -->
+                    <projectName>${project.name} API 文档</projectName>
+                    <includes>
+                        <!-- 使用了mybatis-plus的Page分页需要include所使用的源码包 -->
+                        <include>com.baomidou:mybatis-plus-extension</include>
+                        <!-- 使用了mybatis-plus的IPage分页需要include mybatis-plus-core-->
+                        <include>com.baomidou:mybatis-plus-core</include>
+                        <!-- 使用了pagehelper的PageInfo分页需要include com.github.pagehelper-->
+                        <include>com.github.pagehelper:pagehelper</include>
+                    </includes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <!--如果不需要在执行编译时启动smart-doc，则将phase注释掉-->
+<!--                        <phase>compile</phase>-->
+                        <goals>
+                            <!--smart-doc提供了html、openapi、markdown等goal，可按需配置-->
+                            <goal>html</goal>
+                            <goal>markdown</goal>
+                            <goal>postman</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <includes>
+                    <include>*/**</include>
+                </includes>
+                <filtering>true</filtering>
+            </resource>
+        </resources>
+    </build>
+
+    <repositories>
+        <repository>
+            <id>spring-milestones</id>
+            <name>Spring Milestones</name>
+            <url>https://repo.spring.io/milestone</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+    <pluginRepositories>
+        <pluginRepository>
+            <id>spring-milestones</id>
+            <name>Spring Milestones</name>
+            <url>https://repo.spring.io/milestone</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </pluginRepository>
+    </pluginRepositories>
+
+</project>

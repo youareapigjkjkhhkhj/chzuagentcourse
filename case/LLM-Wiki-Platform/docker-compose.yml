@@ -1,0 +1,139 @@
+version: '3.8'
+
+services:
+  # 前端服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - wiki-network
+    restart: unless-stopped
+
+  # 后端服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - DATABASE_URL=mysql+pymysql://wiki_user:wiki_password_2024@mysql:3306/wiki_platform
+      - REDIS_URL=redis://redis:6379/0
+      - MILVUS_HOST=milvus
+      - MILVUS_PORT=19530
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    depends_on:
+      - mysql
+      - redis
+      - milvus
+    networks:
+      - wiki-network
+    restart: unless-stopped
+
+  # MySQL数据库
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: wiki_platform
+      MYSQL_USER: wiki_user
+      MYSQL_PASSWORD: wiki_password_2024
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - wiki-network
+    restart: unless-stopped
+
+  # Redis缓存
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - wiki-network
+    restart: unless-stopped
+
+  # Milvus向量数据库
+  milvus:
+    image: milvusdb/milvus:v2.3.0
+    ports:
+      - "19530:19530"
+    volumes:
+      - milvus_data:/var/lib/milvus
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    depends_on:
+      - etcd
+      - minio
+    networks:
+      - wiki-network
+    restart: unless-stopped
+
+  # etcd
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    volumes:
+      - etcd_data:/etcd
+    command: ["etcd", "-advertise-client-urls=http://127.0.0.1:2379", "-listen-client-urls=http://0.0.0.0:2379", "--data-dir=/etcd"]
+    networks:
+      - wiki-network
+    restart: unless-stopped
+
+  # MinIO对象存储
+  minio:
+    image: minio/minio:latest
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    volumes:
+      - minio_data:/minio_data
+    command: ["server", "/minio_data", "--console-address", ":9001"]
+    networks:
+      - wiki-network
+    restart: unless-stopped
+
+  # Celery Worker
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A app.tasks.celery worker --loglevel=info --concurrency=4
+    environment:
+      - DATABASE_URL=mysql+pymysql://wiki_user:wiki_password_2024@mysql:3306/wiki_platform
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    depends_on:
+      - redis
+      - mysql
+    networks:
+      - wiki-network
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  redis_data:
+  milvus_data:
+  etcd_data:
+  minio_data:
+
+networks:
+  wiki-network:
+    driver: bridge

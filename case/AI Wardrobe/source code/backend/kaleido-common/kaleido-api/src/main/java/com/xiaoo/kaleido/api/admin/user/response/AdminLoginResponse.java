@@ -1,0 +1,33 @@
+package com.xiaoo.kaleido.api.admin.user.response;
+
+import com.xiaoo.kaleido.base.response.BaseResp;
+import lombok.*;
+
+/**
+ * 登录响应
+ *
+ * @author tomhui
+ * @date 2025/12/31
+ */
+@Data
+@EqualsAndHashCode(callSuper = true)
+@Builder
+@AllArgsConstructor 
+@NoArgsConstructor
+public class AdminLoginResponse extends BaseResp {
+    
+    /**
+     * 用户ID
+     */
+    private String userId;
+    
+    /**
+     * 认证令牌
+     */
+    private String token;
+    
+    /**
+     * 用户信息
+     */
+    private AdminInfoResponse userInfo;
+}

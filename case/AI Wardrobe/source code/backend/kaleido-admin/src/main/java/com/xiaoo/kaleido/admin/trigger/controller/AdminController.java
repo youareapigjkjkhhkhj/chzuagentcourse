@@ -1,0 +1,160 @@
+package com.xiaoo.kaleido.admin.trigger.controller;
+
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.github.pagehelper.PageInfo;
+import com.xiaoo.kaleido.api.admin.user.command.*;
+import com.xiaoo.kaleido.api.admin.user.request.AdminPageQueryReq;
+import com.xiaoo.kaleido.api.admin.user.response.AdminInfoResponse;
+import com.xiaoo.kaleido.api.admin.user.response.PermissionInfoResponse;
+import com.xiaoo.kaleido.admin.application.command.impl.AdminCommandService;
+import com.xiaoo.kaleido.admin.application.query.IAdminQueryService;
+import com.xiaoo.kaleido.base.result.Result;
+import com.xiaoo.kaleido.satoken.util.StpAdminUtil;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+/**
+ * 管理员API
+ *
+ * @author tomhui
+ * @date 2026/1/4
+ */
+@Slf4j
+@Validated
+@RestController
+@RequestMapping("/admin")
+@RequiredArgsConstructor
+public class AdminController {
+
+    private final AdminCommandService adminCommandService;
+    private final IAdminQueryService adminQueryService;
+
+    /**
+     * 更新管理员信息(用于修改用户自身信息 不需要鉴权)
+     *
+     * @param command 更新管理员信息命令（不包含管理员ID）
+     * @return 操作结果
+     */
+    @PutMapping
+    public Result<Void> updateAdmin(@Valid @RequestBody UpdateAdminCommand command) {
+        String adminId = StpAdminUtil.getLoginId();
+        adminCommandService.updateAdmin(adminId, command);
+        return Result.success();
+    }
+
+    /**
+     * 解冻管理员
+     *
+     * @param adminId 管理员ID
+     * @return 操作结果
+     */
+    @SaCheckPermission(value = "admin:user:enable", type = StpAdminUtil.TYPE)
+    @PutMapping("/{adminId}/enable")
+    public Result<Void> enableAdmin(
+            @PathVariable String adminId) {
+        adminCommandService.enableAdmin(adminId);
+        return Result.success();
+    }
+
+    /**
+     * 冻结管理员
+     *
+     * @param adminId 管理员ID
+     * @return 操作结果
+     */
+    @SaCheckPermission(value = "admin:user:freeze", type = StpAdminUtil.TYPE)
+    @PutMapping("/{adminId}/freeze")
+    public Result<Void> freezeAdmin(
+            @PathVariable String adminId) {
+        adminCommandService.freezeAdmin(adminId);
+        return Result.success();
+    }
+
+    /**
+     * 分配角色给管理员
+     *
+     * @param adminId 管理员ID（从路径参数获取）
+     * @param command 分配角色命令（不包含管理员ID）
+     * @return 操作结果
+     */
+    @SaCheckPermission(value = "admin:user:assign-roles", type = StpAdminUtil.TYPE)
+    @PostMapping("/{adminId}/roles")
+    public Result<Void> assignRoles(
+            @PathVariable String adminId,
+            @Valid @RequestBody AssignRolesToAdminCommand command) {
+        adminCommandService.assignRoles(adminId, command);
+        return Result.success();
+    }
+
+    /**
+     * 根据ID查询管理员信息
+     *
+     * @param adminId 管理员ID
+     * @return 管理员信息
+     */
+    @SaCheckPermission(value = "admin:user:read", type = StpAdminUtil.TYPE)
+    @GetMapping("/{adminId}")
+    public Result<AdminInfoResponse> getAdminById(
+            @PathVariable String adminId) {
+        AdminInfoResponse admin = adminQueryService.findById(adminId);
+        return Result.success(admin);
+    }
+
+    /**
+     * 查询管理员自身信息 不需要鉴权
+     *
+     * @return 管理员信息
+     */
+    @GetMapping
+    public Result<AdminInfoResponse> getAdminInfo() {
+        AdminInfoResponse admin = adminQueryService.findById(StpAdminUtil.getLoginId());
+        return Result.success(admin);
+    }
+
+    /**
+     * 分页查询管理员
+     *
+     * @param pageQueryReq 分页查询条件
+     * @return 分页结果
+     */
+    @SaCheckPermission(value = "admin:user:read", type = StpAdminUtil.TYPE)
+    @GetMapping("/page")
+    public Result<PageInfo<AdminInfoResponse>> pageAdminList(
+            AdminPageQueryReq pageQueryReq) {
+        return Result.success(adminQueryService.pageQuery(pageQueryReq));
+    }
+
+
+    /**
+     * 获取管理员的所有权限
+     *
+     * @param adminId 管理员ID
+     * @return 权限ID列表
+     */
+    @SaCheckPermission(value = "admin:user:read", type = StpAdminUtil.TYPE)
+    @GetMapping("/{adminId}/permissions")
+    public Result<List<String>> getAdminPermissions(
+            @PathVariable String adminId) {
+        List<String> permissions = adminQueryService.getPermissionsByAdminId(adminId);
+        return Result.success(permissions);
+    }
+
+    /**
+     * 获取管理员的目录和菜单树（过滤按钮）
+     *
+     * @param adminId 管理员ID
+     * @return 目录和菜单树
+     */
+    @SaCheckPermission(value = "admin:user:read", type = StpAdminUtil.TYPE)
+    @GetMapping("/{adminId}/directory-menus")
+    public Result<List<PermissionInfoResponse>> getAdminDirectoryAndMenus(
+            @PathVariable String adminId) {
+        List<PermissionInfoResponse> directoryMenus = adminQueryService.getDirectoryAndMenuTreeByAdminId(adminId);
+        return Result.success(directoryMenus);
+    }
+}

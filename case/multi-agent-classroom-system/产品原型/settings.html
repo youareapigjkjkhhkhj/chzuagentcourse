@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>设置 | EduAgentX</title>
+<link rel="stylesheet" href="styles.css" />
+<style>
+  .set-wrap { display: flex; max-width: 1080px; margin: 32px auto; padding: 0 32px; gap: 24px; align-items: flex-start; }
+
+  /* 左侧菜单 */
+  .set-menu { width: 220px; flex-shrink: 0; padding: 8px; position: sticky; top: 92px; }
+  .set-menu__item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; font-size: 14px; color: var(--td-text-secondary);
+    border-radius: var(--td-radius-default); cursor: pointer; transition: all 0.15s; margin-bottom: 2px;
+  }
+  .set-menu__item:hover { background: var(--td-bg-container-hover); color: var(--td-text-primary); }
+  .set-menu__item.is-active { background: var(--td-brand-color-light); color: var(--td-brand-color); font-weight: 600; }
+  .set-menu__item svg { width: 17px; height: 17px; }
+
+  .set-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+  .set-card { padding: 24px 28px; }
+  .set-card > h3 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  .set-card > .desc { font-size: 13px; color: var(--td-text-secondary); margin-bottom: 20px; line-height: 1.7; }
+
+  /* 服务商 */
+  .provider {
+    display: flex; align-items: center; gap: 14px;
+    padding: 16px; border: 1px solid var(--td-component-border);
+    border-radius: var(--td-radius-medium); margin-bottom: 12px; transition: all 0.2s;
+  }
+  .provider:hover { border-color: var(--td-brand-color); box-shadow: var(--td-shadow-1); }
+  .provider__logo {
+    width: 40px; height: 40px; border-radius: var(--td-radius-medium); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 700; color: #fff;
+  }
+  .provider__info { flex: 1; min-width: 0; }
+  .provider__info .name { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .provider__info .meta { font-size: 12px; color: var(--td-text-placeholder); margin-top: 3px; }
+  .provider__actions { display: flex; align-items: center; gap: 12px; }
+
+  /* API 表单 */
+  .api-form { background: var(--td-bg-page); border-radius: var(--td-radius-medium); padding: 20px; }
+  .api-form .row { display: flex; gap: 16px; }
+  .api-form .row > div { flex: 1; }
+  .key-input { position: relative; }
+  .key-input input { padding-right: 60px; font-family: var(--td-font-mono); font-size: 13px; }
+  .key-input .eye {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    color: var(--td-text-placeholder); cursor: pointer; padding: 4px; display: flex;
+  }
+  .key-input .eye:hover { color: var(--td-text-primary); }
+  .key-input .eye svg { width: 16px; height: 16px; }
+
+  /* 音色卡 */
+  .voice-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .voice-card {
+    display: flex; align-items: center; gap: 12px; padding: 14px;
+    border: 1px solid var(--td-component-border); border-radius: var(--td-radius-medium);
+    cursor: pointer; transition: all 0.2s;
+  }
+  .voice-card:hover { border-color: var(--td-brand-color); }
+  .voice-card.is-checked { border-color: var(--td-brand-color); background: var(--td-brand-color-light); }
+  .voice-card .t-avatar { width: 38px; height: 38px; }
+  .voice-card .v-name { font-size: 13.5px; font-weight: 500; }
+  .voice-card .v-desc { font-size: 12px; color: var(--td-text-placeholder); margin-top: 2px; }
+
+  /* 滑杆模拟 */
+  .slider-row { display: flex; align-items: center; gap: 16px; padding: 10px 0; }
+  .slider-row .sl-label { width: 130px; font-size: 13.5px; }
+  .slider-row .sl-track { flex: 1; height: 4px; background: var(--td-component-stroke); border-radius: 2px; position: relative; cursor: pointer; }
+  .slider-row .sl-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--td-brand-color); border-radius: 2px; }
+  .slider-row .sl-thumb {
+    position: absolute; top: 50%; transform: translate(-50%, -50%);
+    width: 14px; height: 14px; background: #fff; border: 2px solid var(--td-brand-color);
+    border-radius: 50%; box-shadow: var(--td-shadow-1);
+  }
+  .slider-row .sl-val { width: 44px; text-align: right; font-family: var(--td-font-mono); font-size: 13px; color: var(--td-brand-color); }
+
+  .set-pane { display: none; }
+  .set-pane.is-active { display: flex; flex-direction: column; gap: 20px; }
+
+  .save-bar {
+    position: sticky; bottom: 24px; display: flex; justify-content: flex-end; gap: 12px;
+    padding: 14px 20px; background: #fff; border-radius: var(--td-radius-medium); box-shadow: var(--td-shadow-2);
+  }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-header__logo" onclick="location.href='index.html'">
+    <div class="logo-mark">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H13l-4 4v-4H5.5A1.5 1.5 0 0 1 4 14.5v-9Z" fill="#fff"/><circle cx="9" cy="10" r="1.2" fill="#0052d9"/><circle cx="12.5" cy="10" r="1.2" fill="#0052d9"/><circle cx="16" cy="10" r="1.2" fill="#0052d9"/></svg>
+    </div>
+    <span class="logo-name">EduAgentX</span>
+    <span class="logo-sub">多智能体互动课堂</span>
+  </div>
+  <nav class="app-header__nav">
+    <div class="nav-item" onclick="location.href='index.html'">首页</div>
+    <div class="nav-item" onclick="location.href='workbench.html'">工作台</div>
+    <div class="nav-item" onclick="location.href='classroom.html'">课堂演示</div>
+    <div class="nav-item is-active">设置</div>
+  </nav>
+  <div class="app-header__right">
+    <span class="t-avatar" style="background:linear-gradient(135deg,#0052d9,#618eff)">我</span>
+  </div>
+</header>
+
+<div class="set-wrap">
+  <!-- 菜单 -->
+  <aside class="t-card set-menu">
+    <div class="set-menu__item is-active" data-pane="model" onclick="switchPane(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg>
+      模型服务
+    </div>
+    <div class="set-menu__item" data-pane="voice" onclick="switchPane(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8.5 21h7"/></svg>
+      语音服务
+    </div>
+    <div class="set-menu__item" data-pane="gen" onclick="switchPane(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h10M18 8h2M4 16h2M10 16h10"/><circle cx="16" cy="8" r="2"/><circle cx="8" cy="16" r="2"/></svg>
+      生成参数
+    </div>
+    <div class="set-menu__item" data-pane="about" onclick="switchPane(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M12 11v5"/></svg>
+      关于
+    </div>
+  </aside>
+
+  <!-- 内容 -->
+  <div class="set-main">
+    <!-- 模型服务 -->
+    <div class="set-pane is-active" id="pane-model">
+      <div class="t-card set-card">
+        <h3>模型服务商</h3>
+        <p class="desc">配置大语言模型来源，课程大纲、讲稿与课堂对话均由所选模型驱动。支持自定义 OpenAI 兼容接口。</p>
+
+        <div class="provider">
+          <span class="provider__logo" style="background:linear-gradient(135deg,#0052d9,#366ef4)">DS</span>
+          <div class="provider__info">
+            <div class="name">DeepSeek <span class="t-tag t-tag--success">已启用</span></div>
+            <div class="meta">deepseek-v3 · 默认用于课程生成与课堂对话</div>
+          </div>
+          <div class="provider__actions">
+            <span class="t-tag t-tag--primary">延迟 320ms</span>
+            <button class="t-btn t-btn--base t-btn--sm" onclick="toast('原型演示：打开 DeepSeek 配置')">配置</button>
+          </div>
+        </div>
+        <div class="provider">
+          <span class="provider__logo" style="background:linear-gradient(135deg,#10a37f,#1ac79b)">OA</span>
+          <div class="provider__info">
+            <div class="name">OpenAI</div>
+            <div class="meta">gpt-4o / gpt-4o-mini · 未配置</div>
+          </div>
+          <div class="provider__actions"><button class="t-btn t-btn--base t-btn--sm" onclick="toast('原型演示：打开 OpenAI 配置')">配置</button></div>
+        </div>
+        <div class="provider">
+          <span class="provider__logo" style="background:linear-gradient(135deg,#6a5fd0,#948be0)">QW</span>
+          <div class="provider__info">
+            <div class="name">通义千问 Qwen</div>
+            <div class="meta">qwen-max / qwen-plus · 未配置</div>
+          </div>
+          <div class="provider__actions"><button class="t-btn t-btn--base t-btn--sm" onclick="toast('原型演示：打开通义千问配置')">配置</button></div>
+        </div>
+        <div class="provider">
+          <span class="provider__logo" style="background:linear-gradient(135deg,#333,#555)">K</span>
+          <div class="provider__info">
+            <div class="name">Kimi</div>
+            <div class="meta">kimi-k2 · 未配置</div>
+          </div>
+          <div class="provider__actions"><button class="t-btn t-btn--base t-btn--sm" onclick="toast('原型演示：打开 Kimi 配置')">配置</button></div>
+        </div>
+        <button class="t-btn t-btn--dashed" style="width:100%" onclick="toast('原型演示：添加自定义 OpenAI 兼容接口')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
+          添加自定义服务商
+        </button>
+      </div>
+
+      <div class="t-card set-card">
+        <h3>DeepSeek 连接配置</h3>
+        <p class="desc">密钥仅保存在本地浏览器，不会上传到任何服务器。</p>
+        <div class="api-form">
+          <div class="row">
+            <div class="t-form-item">
+              <label>API Key</label>
+              <div class="key-input">
+                <input class="t-input" type="password" value="sk-9f2c4a1b7e8d4f6a" id="apiKey" />
+                <span class="eye" onclick="toggleKey(this)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                </span>
+              </div>
+            </div>
+            <div class="t-form-item">
+              <label>默认模型</label>
+              <input class="t-input" value="deepseek-v3" />
+            </div>
+          </div>
+          <div class="t-form-item" style="margin-bottom:0">
+            <label>Base URL</label>
+            <input class="t-input" value="https://api.deepseek.com/v1" />
+            <p class="t-form-help">留空则使用官方默认地址；自定义接口需兼容 OpenAI Chat Completions 协议。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 语音服务 -->
+    <div class="set-pane" id="pane-voice">
+      <div class="t-card set-card">
+        <h3>语音合成（TTS）</h3>
+        <p class="desc">AI 教师与 AI 同学的授课、发言声音。可按角色分别指定音色。</p>
+        <div class="t-form-item">
+          <label>AI 教师默认音色</label>
+          <div class="voice-grid" id="teacherVoices">
+            <div class="voice-card is-checked">
+              <span class="t-avatar" style="background:linear-gradient(135deg,#0052d9,#618eff)">沈</span>
+              <div><div class="v-name">沈老师</div><div class="v-desc">沉稳男声 · 适合理工课程</div></div>
+            </div>
+            <div class="voice-card">
+              <span class="t-avatar" style="background:linear-gradient(135deg,#00a870,#33c68f)">顾</span>
+              <div><div class="v-name">顾老师</div><div class="v-desc">知性女声 · 适合文史课程</div></div>
+            </div>
+            <div class="voice-card">
+              <span class="t-avatar" style="background:linear-gradient(135deg,#ed7b2f,#f5a06b)">陆</span>
+              <div><div class="v-name">陆老师</div><div class="v-desc">活力青年音 · 适合入门科普</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="slider-row">
+          <span class="sl-label">语速</span>
+          <div class="sl-track"><div class="sl-fill" style="width:50%"></div><div class="sl-thumb" style="left:50%"></div></div>
+          <span class="sl-val">1.0x</span>
+        </div>
+        <div class="slider-row">
+          <span class="sl-label">语调起伏</span>
+          <div class="sl-track"><div class="sl-fill" style="width:35%"></div><div class="sl-thumb" style="left:35%"></div></div>
+          <span class="sl-val">自然</span>
+        </div>
+      </div>
+
+      <div class="t-card set-card">
+        <h3>语音识别（ASR）</h3>
+        <p class="desc">学生举手发言时的语音识别服务，用于把语音转为文字进入课堂讨论。</p>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:14px">
+          <span>启用语音发言（按住空格说话）</span>
+          <span class="t-switch is-checked" onclick="this.classList.toggle('is-checked')"></span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:14px">
+          <span>浏览器本地识别（Web Speech API，无需密钥）</span>
+          <span class="t-switch is-checked" onclick="this.classList.toggle('is-checked')"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 生成参数 -->
+    <div class="set-pane" id="pane-gen">
+      <div class="t-card set-card">
+        <h3>课堂生成参数</h3>
+        <p class="desc">控制 AI 生成课程的规模、节奏与互动强度，对之后创建的所有课堂生效。</p>
+        <div class="slider-row">
+          <span class="sl-label">默认课件页数</span>
+          <div class="sl-track"><div class="sl-fill" style="width:48%"></div><div class="sl-thumb" style="left:48%"></div></div>
+          <span class="sl-val">12 页</span>
+        </div>
+        <div class="slider-row">
+          <span class="sl-label">AI 同学数量</span>
+          <div class="sl-track"><div class="sl-fill" style="width:60%"></div><div class="sl-thumb" style="left:60%"></div></div>
+          <span class="sl-val">3 位</span>
+        </div>
+        <div class="slider-row">
+          <span class="sl-label">讨论激烈程度</span>
+          <div class="sl-track"><div class="sl-fill" style="width:45%"></div><div class="sl-thumb" style="left:45%"></div></div>
+          <span class="sl-val">适中</span>
+        </div>
+        <div class="slider-row">
+          <span class="sl-label">讲稿详细程度</span>
+          <div class="sl-track"><div class="sl-fill" style="width:70%"></div><div class="sl-thumb" style="left:70%"></div></div>
+          <span class="sl-val">详细</span>
+        </div>
+        <div style="border-top:1px solid var(--td-component-stroke);margin-top:12px;padding-top:8px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;font-size:14px">
+            <span>自动配图与示意图</span>
+            <span class="t-switch is-checked" onclick="this.classList.toggle('is-checked')"></span>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;font-size:14px">
+            <span>每章结束自动生成随堂测验</span>
+            <span class="t-switch is-checked" onclick="this.classList.toggle('is-checked')"></span>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;font-size:14px">
+            <span>允许课堂中使用白板</span>
+            <span class="t-switch is-checked" onclick="this.classList.toggle('is-checked')"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 关于 -->
+    <div class="set-pane" id="pane-about">
+      <div class="t-card set-card" style="text-align:center;padding:56px 28px">
+        <div class="logo-mark" style="width:56px;height:56px;border-radius:14px;background:var(--td-brand-color);display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H13l-4 4v-4H5.5A1.5 1.5 0 0 1 4 14.5v-9Z" fill="#fff"/><circle cx="9" cy="10" r="1.2" fill="#0052d9"/><circle cx="12.5" cy="10" r="1.2" fill="#0052d9"/><circle cx="16" cy="10" r="1.2" fill="#0052d9"/></svg>
+        </div>
+        <h3 style="font-size:20px;margin-bottom:8px">EduAgentX 高保真原型</h3>
+        <p class="desc" style="margin-bottom:20px">Open Multi-Agent Interactive Classroom · 多智能体互动课堂<br />本页面为产品设计原型（TDesign 风格），数据均为演示用途</p>
+        <div style="display:flex;gap:10px;justify-content:center">
+          <span class="t-tag t-tag--primary">原型 v0.1.0</span>
+          <span class="t-tag t-tag--outline">MIT License</span>
+          <span class="t-tag t-tag--outline">TDesign 风格</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 保存栏 -->
+    <div class="save-bar">
+      <button class="t-btn t-btn--base" onclick="toast('已重置为默认值')">重置</button>
+      <button class="t-btn t-btn--primary" onclick="toast('设置已保存（原型演示）')">保存设置</button>
+    </div>
+  </div>
+</div>
+
+<div class="t-message" id="toast"></div>
+
+<script>
+  function switchPane(el) {
+    document.querySelectorAll('.set-menu__item').forEach(function(i){ i.classList.remove('is-active'); });
+    el.classList.add('is-active');
+    document.querySelectorAll('.set-pane').forEach(function(p){ p.classList.remove('is-active'); });
+    document.getElementById('pane-' + el.dataset.pane).classList.add('is-active');
+  }
+  function toggleKey(eye) {
+    var input = document.getElementById('apiKey');
+    input.type = input.type === 'password' ? 'text' : 'password';
+  }
+  document.querySelectorAll('#teacherVoices .voice-card').forEach(function(c){
+    c.addEventListener('click', function(){
+      document.querySelectorAll('#teacherVoices .voice-card').forEach(function(x){ x.classList.remove('is-checked'); });
+      c.classList.add('is-checked');
+    });
+  });
+  function toast(text) {
+    var el = document.getElementById('toast');
+    el.textContent = text;
+    el.classList.add('is-show');
+    clearTimeout(window.__t);
+    window.__t = setTimeout(function(){ el.classList.remove('is-show'); }, 2200);
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,2120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentBuddy — 本地轻量编程代理（原型 v2.2 · 奶白主题）</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <!-- 字体：界面用 Inter，代码/终端用 JetBrains Mono（对齐 VSCode / Cursor / Claude Code 的主流搭配） -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            // 奶白（Cream）主题：对齐 Claude 桌面端的暖白纸感
+            sidebar: '#f1efe9',
+            main: '#faf9f6',
+            card: '#ffffff',
+            cardHover: '#f5f2ec',
+            surface: '#f3f1ea',
+            border: '#e6e2d9',
+            borderLight: '#d5cfc2',
+            accent: '#c96f4a',
+            accentDim: '#b25a37'
+          },
+          fontFamily: {
+            mono: ['"JetBrains Mono"', '"Fira Code"', 'Consolas', 'monospace'],
+            sans: ['"Inter"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif']
+          },
+          boxShadow: {
+            card: '0 1px 2px rgba(28,25,20,.05), 0 0 0 1px rgba(28,25,20,.02) inset',
+            popover: '0 12px 32px -8px rgba(28,25,20,.16), 0 0 0 1px rgba(28,25,20,.04)',
+            glow: '0 0 0 1px rgba(201,111,74,.30), 0 8px 40px -8px rgba(201,111,74,.22)'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    * { -webkit-font-smoothing: antialiased; }
+    html, body { letter-spacing: -0.006em; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #d8d2c6; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #c2bbab; }
+    .diff-del { background: rgba(190, 18, 60, 0.07); color: #be123c; }
+    .diff-add { background: rgba(4, 120, 87, 0.07); color: #047857; }
+    .modal-overlay { background: rgba(40, 36, 30, 0.32); backdrop-filter: blur(6px); }
+    .tab-active { background: #eae5da; color: #26231e; box-shadow: 0 0 0 1px rgba(28,25,20,.05) inset; }
+    .icon { width: 14px; height: 14px; flex-shrink: 0; }
+    .icon-lg { width: 16px; height: 16px; flex-shrink: 0; }
+    .transition-std { transition: all .15s cubic-bezier(.4,0,.2,1); }
+    ::selection { background: rgba(201,111,74,.25); }
+    input::placeholder, textarea::placeholder { color: #a39c8e; }
+    /* 侧栏树形连接线 */
+    .tree-line { position: relative; }
+    .tree-line::before {
+      content: ''; position: absolute; left: -13px; top: 0; bottom: 0; width: 1px; background: #e2ddd2;
+    }
+  </style>
+</head>
+<body class="bg-main text-stone-800 font-sans antialiased overflow-hidden select-none text-xs">
+  <div id="app" class="flex h-screen w-screen flex-col">
+
+    <!-- ================= 0. 顶部应用标题栏 ================= -->
+    <header class="h-9 bg-sidebar border-b border-border flex items-center justify-between px-3 text-stone-600 select-none drag">
+      <div class="flex items-center gap-3">
+        <span class="font-semibold text-stone-900 tracking-tight flex items-center gap-2">
+          <span class="w-5 h-5 rounded-md bg-gradient-to-br from-accent to-amber-700 flex items-center justify-center text-white shadow-sm" v-html="ico('bolt')"></span>
+          <span>AgentBuddy</span>
+          <span class="text-[10px] text-stone-500 font-normal">v2.2 原型 · 奶白主题</span>
+        </span>
+        <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-700 border border-amber-500/20 no-drag">Demo · 执行均为模拟</span>
+      </div>
+      <div class="flex items-center gap-4 text-stone-500 no-drag text-xs">
+        <span class="hover:text-stone-800 cursor-pointer transition-std">─</span>
+        <span class="hover:text-stone-800 cursor-pointer transition-std">□</span>
+        <span class="hover:text-rose-600 cursor-pointer transition-std">✕</span>
+      </div>
+    </header>
+
+    <!-- 主体容器 -->
+    <div class="flex-1 flex overflow-hidden">
+
+      <!-- ================= 1. 左侧导航与代码空间（项目 → 会话） ================= -->
+      <aside class="w-64 bg-sidebar border-r border-border flex flex-col justify-between shrink-0">
+        <div class="flex-1 overflow-y-auto p-3 space-y-5">
+
+          <div class="flex items-center justify-between px-1 text-stone-600">
+            <span class="font-semibold text-stone-900 tracking-tight">工作台</span>
+            <button class="p-1.5 hover:bg-card rounded-md transition-std" v-html="ico('search')"></button>
+          </div>
+
+          <!-- 新建会话 -->
+          <button @click="resetToHome" class="w-full bg-card hover:bg-cardHover text-stone-900 py-2 px-3 rounded-lg border border-border hover:border-borderLight flex items-center justify-center gap-2 font-medium shadow-card transition-std">
+            <span v-html="ico('plus')"></span>
+            <span>新建会话</span>
+          </button>
+
+          <!-- 核心功能导航（线性图标） -->
+          <div class="space-y-0.5 text-stone-600">
+            <div v-for="nav in navItems" :key="nav.view"
+                 class="relative flex items-center gap-2.5 px-2.5 py-[7px] rounded-md hover:bg-card hover:text-stone-800 cursor-pointer transition-std"
+                 :class="{'bg-card text-stone-900 font-medium shadow-sm': currentView === nav.view}"
+                 @click="goView(nav.view)">
+              <span v-if="currentView === nav.view" class="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-accent"></span>
+              <span :class="currentView === nav.view ? 'text-accent' : ''" v-html="ico(nav.icon)"></span>
+              <span>{{ nav.label }}</span>
+              <span v-if="nav.badge" class="ml-auto text-[10px] bg-emerald-500/10 text-emerald-700 px-1.5 py-0.5 rounded-full border border-emerald-500/20">{{ nav.badge }}</span>
+            </div>
+          </div>
+
+          <!-- 代码空间（项目 → 会话） -->
+          <div class="space-y-1 pt-3 border-t border-border">
+            <div class="flex items-center justify-between px-2 text-[10px] text-stone-500 font-semibold uppercase tracking-wide">
+              <span>代码空间 ({{ workspaces.length }})</span>
+              <button @click="addWorkspace" class="hover:text-stone-700 transition-std" v-html="ico('plus')"></button>
+            </div>
+
+            <div v-for="ws in workspaces" :key="ws.path" class="space-y-0.5">
+              <div @click="ws.open = !ws.open" class="flex items-center gap-1.5 px-2 py-[7px] rounded-md hover:bg-card cursor-pointer text-stone-700 transition-std">
+                <span class="text-stone-400 text-[9px] w-2.5 inline-block transition-transform" :class="ws.open ? 'rotate-90' : ''">▶</span>
+                <span class="text-amber-700/80" v-html="ico('folder')"></span>
+                <span class="truncate font-mono text-[11px]">{{ ws.name }}</span>
+                <span class="ml-auto text-[9px] text-stone-400 font-mono">{{ ws.sessions.length }}</span>
+              </div>
+
+              <!-- 会话列表 -->
+              <div v-if="ws.open" class="pl-4 ml-3.5 space-y-0.5 tree-line">
+                <div v-for="s in ws.sessions" :key="s.id"
+                     @click="openSession(s, ws)"
+                     :class="['px-2 py-[7px] rounded-md text-[11px] cursor-pointer truncate transition-std flex items-center gap-1.5 justify-between', activeSessionId === s.id ? 'bg-accent/10 text-accent border border-accent/25' : 'text-stone-600 hover:text-stone-800 hover:bg-card border border-transparent']">
+                  <span class="flex items-center gap-1.5 truncate">
+                    <span v-html="ico('chat')"></span>
+                    <span class="truncate">{{ s.title }}</span>
+                  </span>
+                  <span class="text-[9px] text-stone-400 font-mono shrink-0">{{ s.time }}</span>
+                </div>
+                <div @click="newSessionIn(ws)" class="px-2 py-1 rounded text-[10px] text-stone-400 hover:text-stone-700 cursor-pointer flex items-center gap-1.5 transition-std">
+                  <span v-html="ico('plus')"></span> 新会话
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 侧栏底部 -->
+        <div class="p-2.5 border-t border-border bg-surface flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <div class="w-6 h-6 rounded-full bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-center text-emerald-700 font-bold text-[10px]">Dev</div>
+            <div class="flex flex-col">
+              <span class="font-medium text-stone-700 text-[11px]">本地开发者模式</span>
+              <span class="text-[9px] text-stone-500">密钥已托管系统钥匙串</span>
+            </div>
+          </div>
+          <button class="text-stone-500 hover:text-stone-700 p-1.5 hover:bg-card rounded-md transition-std" title="用量统计" @click="goView('usage')" v-html="ico('chart')"></button>
+        </div>
+      </aside>
+
+      <!-- ================= 2. 中间主工作区 ================= -->
+      <main class="flex-1 flex flex-col min-w-0 bg-main relative">
+
+        <!-- 顶部二级状态条 -->
+        <div v-if="currentWorkspace" class="h-9 border-b border-border bg-surface/60 px-4 flex items-center justify-between text-[11px] text-stone-600">
+          <div class="flex items-center gap-2 font-mono">
+            <span class="text-amber-700/80" v-html="ico('folder')"></span>
+            <span class="text-stone-800">{{ currentWorkspace.path }}</span>
+            <span class="text-emerald-700 bg-emerald-500/10 px-1.5 py-0.5 rounded-full border border-emerald-500/20 text-[10px]">git:(main*)</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <span>MCP: <strong class="text-emerald-700 font-mono font-medium">{{ mcpSummary }}</strong></span>
+            <span class="text-stone-300">·</span>
+            <span>Skills: <strong class="text-indigo-700 font-mono font-medium">{{ enabledSkills.length }} 个就绪</strong></span>
+            <span class="text-stone-300">·</span>
+            <span class="px-1.5 py-0.5 rounded-full text-[10px] font-medium" :class="agentMode === 'Auto' ? 'text-emerald-700 bg-emerald-500/10' : agentMode === 'Ask' ? 'text-amber-700 bg-amber-500/10' : 'text-blue-700 bg-blue-500/10'">{{ agentMode }}</span>
+          </div>
+        </div>
+
+        <!-- ========== 场景 A: 首页（大输入框，无场景分类 Tab） ========== -->
+        <div v-if="!isChatActive && currentView === 'assistant'" class="flex-1 flex flex-col items-center justify-center px-6 -mt-10 max-w-3xl mx-auto w-full space-y-7">
+
+          <div class="text-center space-y-2.5">
+            <div class="w-11 h-11 mx-auto rounded-2xl bg-gradient-to-br from-accent to-amber-700 flex items-center justify-center shadow-glow text-white mb-1" v-html="ico('bolt')"></div>
+            <h1 class="text-[28px] font-serif font-bold tracking-tight text-stone-900">AgentBuddy, 我帮你</h1>
+            <p class="text-stone-500 text-[12px]">直接描述你想做什么，Agent 自动选择工具与技能 · 读码 / 改码 / 跑命令 / MCP / Skills</p>
+          </div>
+
+          <!-- 快捷入口：技能与常用动作 -->
+          <div class="flex flex-wrap items-center justify-center gap-2 max-w-xl">
+            <button v-for="preset in quickPresets" :key="preset.label"
+                    @click="applyPreset(preset)"
+                    class="bg-card hover:bg-cardHover border border-border hover:border-borderLight px-3 py-1.5 rounded-full text-stone-700 flex items-center gap-1.5 transition-std text-[11px] shadow-card">
+              <span class="text-stone-500" v-html="ico(preset.icon)"></span>
+              <span>{{ preset.label }}</span>
+            </button>
+          </div>
+
+          <!-- 大输入卡片 -->
+          <div class="w-full bg-card border border-border focus-within:border-accent/50 focus-within:shadow-glow rounded-2xl p-4 shadow-popover transition-std space-y-3 relative">
+
+            <!-- / 技能提及浮窗 -->
+            <div v-if="showSkillMenu" class="absolute bottom-full mb-2 left-0 w-80 bg-white border border-borderLight rounded-xl shadow-popover p-1 text-xs z-30">
+              <div class="px-2.5 py-1.5 text-[10px] text-stone-500 font-semibold uppercase tracking-wide">调用本地技能 · / 触发</div>
+              <div v-for="skill in enabledSkills" :key="skill.name"
+                   @click="selectSkill(skill.name)"
+                   class="px-2.5 py-2 hover:bg-cardHover rounded-lg flex items-center justify-between cursor-pointer text-stone-800 transition-std">
+                <span class="font-mono text-indigo-700 font-semibold">/{{ skill.name }}</span>
+                <span class="text-[11px] text-stone-600 truncate ml-2">{{ skill.description }}</span>
+              </div>
+            </div>
+
+            <!-- # MCP 连接器提及浮窗 -->
+            <div v-if="showMcpMenu" class="absolute bottom-full mb-2 left-0 w-80 bg-white border border-borderLight rounded-xl shadow-popover p-1 text-xs z-30">
+              <div class="px-2.5 py-1.5 text-[10px] text-stone-500 font-semibold uppercase tracking-wide">调用 MCP 连接器 · # 触发</div>
+              <div v-for="mcp in mcpConnectors" :key="mcp.id"
+                   @click="mcp.status === 'connected' && selectMcp(mcp.name)"
+                   :class="['px-2.5 py-2 rounded-lg flex items-center justify-between transition-std', mcp.status === 'connected' ? 'hover:bg-cardHover cursor-pointer text-stone-800' : 'text-stone-400 cursor-not-allowed']">
+                <span class="font-mono text-purple-700 font-semibold">#{{ mcp.name }}</span>
+                <span class="text-[11px] text-stone-600 truncate ml-2">{{ mcp.status === 'connected' ? mcp.tools.length + ' 个 Tools' : '未连接' }}</span>
+              </div>
+            </div>
+
+            <!-- @ 工作区文件提及浮窗 -->
+            <div v-if="showFileMenu" class="absolute bottom-full mb-2 left-0 w-80 bg-white border border-borderLight rounded-xl shadow-popover p-1 text-xs z-30">
+              <div class="px-2.5 py-1.5 text-[10px] text-stone-500 font-semibold uppercase tracking-wide">提及工作区文件 · @ 触发</div>
+              <div v-for="f in mentionFiles" :key="f.path"
+                   @click="selectFile(f.path)"
+                   class="px-2.5 py-2 hover:bg-cardHover rounded-lg flex items-center gap-2 cursor-pointer text-stone-800 transition-std">
+                <span class="text-stone-500" v-html="ico('file')"></span>
+                <span class="font-mono text-[11px] truncate">@{{ f.path }}</span>
+                <span v-if="f.modified" class="ml-auto text-[9px] text-amber-700 font-bold shrink-0">M</span>
+              </div>
+            </div>
+
+            <textarea v-model="inputText"
+                      @input="handleInput"
+                      @keydown.enter.exact.prevent="submitTask"
+                      placeholder="今天帮你做什么？@ 选文件 · # 调 MCP · / 调技能"
+                      rows="3"
+                      class="w-full bg-transparent text-stone-900 placeholder-stone-400 outline-none resize-none leading-relaxed text-[13px]"></textarea>
+
+            <div class="flex items-center justify-between pt-2.5 border-t border-border">
+              <div class="flex items-center gap-2">
+                <!-- 工作区文件夹选择（Claude 桌面端同款） -->
+                <div class="relative">
+                  <button @click="showWsMenu = !showWsMenu; showPermMenu = false" class="flex items-center gap-1.5 bg-surface hover:bg-cardHover border border-border hover:border-borderLight rounded-lg px-2.5 py-1.5 text-[11px] text-stone-700 transition-std">
+                    <span class="text-amber-700/80" v-html="ico('folder')"></span>
+                    <span class="font-mono max-w-[130px] truncate">{{ currentWorkspace ? currentWorkspace.name : '选择工作区文件夹' }}</span>
+                    <span class="text-[8px] text-stone-400">▼</span>
+                  </button>
+                  <div v-if="showWsMenu" class="absolute bottom-full mb-2 left-0 w-64 bg-white border border-borderLight rounded-xl shadow-popover p-1 text-xs z-30">
+                    <div class="px-2.5 py-1.5 text-[10px] text-stone-500 font-semibold uppercase tracking-wide">选择工作区文件夹</div>
+                    <div v-for="ws in workspaces" :key="ws.path" @click="pickWorkspace(ws)"
+                         class="px-2.5 py-2 hover:bg-cardHover rounded-lg flex items-center gap-2 cursor-pointer text-stone-700 transition-std">
+                      <span class="text-amber-700/80" v-html="ico('folder')"></span>
+                      <span class="font-mono text-[11px] truncate">{{ ws.name }}</span>
+                      <span class="ml-auto text-[9px] text-stone-400 font-mono shrink-0">{{ ws.sessions.length }} 会话</span>
+                    </div>
+                    <div @click="addWorkspace(); showWsMenu = false" class="px-2.5 py-2 hover:bg-cardHover rounded-lg flex items-center gap-2 cursor-pointer text-accent transition-std border-t border-border mt-1">
+                      <span v-html="ico('plus')"></span> 打开新文件夹…
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Chat / Agent 模式切换（Claude 同款） -->
+                <div class="flex items-center bg-surface border border-border rounded-lg p-0.5">
+                  <button @click="chatMode = 'chat'" :class="['px-2.5 py-1 rounded-md text-[11px] font-medium transition-std', chatMode === 'chat' ? 'bg-card text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700']">Chat</button>
+                  <button @click="chatMode = 'agent'" :class="['px-2.5 py-1 rounded-md text-[11px] font-medium transition-std', chatMode === 'agent' ? 'bg-card text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700']">Agent</button>
+                </div>
+
+                <!-- 工作区默认权限（仅 Agent 模式；Ask = 副作用均确认） -->
+                <div class="relative" v-if="chatMode === 'agent'">
+                  <button @click="showPermMenu = !showPermMenu; showWsMenu = false" title="工作区默认权限"
+                          class="flex items-center gap-1.5 border rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-std"
+                          :class="agentMode === 'Auto' ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/25' : agentMode === 'Ask' ? 'bg-amber-500/10 text-amber-700 border-amber-500/25' : 'bg-blue-500/10 text-blue-700 border-blue-500/25'">
+                    <span v-html="ico('shield')"></span> {{ agentMode }}
+                  </button>
+                  <div v-if="showPermMenu" class="absolute bottom-full mb-2 left-0 w-72 bg-white border border-borderLight rounded-xl shadow-popover p-1 text-xs z-30">
+                    <div class="px-2.5 py-1.5 text-[10px] text-stone-500 font-semibold">工作区默认权限（对新会话生效）</div>
+                    <div v-for="opt in permOptions" :key="opt.v" @click="agentMode = opt.v; showPermMenu = false"
+                         :class="['px-2.5 py-2 hover:bg-cardHover rounded-lg cursor-pointer transition-std flex items-start gap-2', agentMode === opt.v ? 'text-stone-900' : 'text-stone-700']">
+                      <span class="font-mono font-semibold shrink-0" :class="opt.v === 'Auto' ? 'text-emerald-700' : opt.v === 'Ask' ? 'text-amber-700' : 'text-blue-700'">{{ opt.v }}</span>
+                      <span class="text-[10px] text-stone-600 leading-relaxed">{{ opt.d }}</span>
+                    </div>
+                  </div>
+                </div>
+                <span v-else class="text-[10px] text-stone-400">Chat 模式不调用工具</span>
+              </div>
+
+              <div class="flex items-center gap-2.5">
+                <span class="text-[10px] text-stone-500 font-mono">DeepSeek-V3</span>
+                <button @click="submitTask" class="w-8 h-8 rounded-full bg-accent hover:bg-accentDim text-white flex items-center justify-center shadow-lg transition-std" v-html="ico('send')"></button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Auto 模式边界说明 -->
+          <p class="text-[10px] text-stone-400 leading-relaxed text-center max-w-lg">
+            Auto 模式仅自动执行：读取文件、修改工作区文件、白名单低风险命令（如测试）。
+            高风险命令、网络操作与删除类操作（rm / git reset --hard / docker rm…）任何模式下都需要你确认。
+          </p>
+        </div>
+
+        <!-- ========== 场景 B: 三栏工作台（对话 + 代码 / Diff）· 专家专属会话同样复用 ========== -->
+        <div v-if="isChatActive && (currentView === 'assistant' || (currentView === 'experts' && activeExpert))" class="flex-1 flex overflow-hidden">
+
+          <!-- 中栏：Agent 对话流 -->
+          <div class="flex-1 flex flex-col min-w-0">
+
+            <!-- 专家会话头部（仅专家对话时显示：logo + 名称 + 能力标签 + 绑定明细） -->
+            <div v-if="activeExpert && currentView === 'experts'" class="h-11 border-b border-border bg-surface/60 px-4 flex items-center gap-2.5 shrink-0">
+              <button @click="closeExpertChat" class="px-2 py-1 hover:bg-card rounded-md text-stone-500 hover:text-stone-700 transition-std text-[11px]" title="返回专家团">← 专家团</button>
+              <div class="w-6 h-6 rounded-full overflow-hidden flex items-center justify-center bg-card border border-border text-[13px] shrink-0">
+                <img v-if="activeExpert.logo" :src="activeExpert.logo" class="w-full h-full object-cover" />
+                <span v-else>{{ activeExpert.emoji }}</span>
+              </div>
+              <div class="min-w-0">
+                <div class="text-stone-900 font-semibold text-[12px] truncate">{{ activeExpert.name }}</div>
+                <div class="text-[9px] text-stone-500 truncate font-mono">工具 {{ activeExpert.tools.join(' · ') || '—' }}{{ activeExpert.skills.length ? ' · 技能 ' + activeExpert.skills.map(s => '/' + s).join(' ') : '' }}</div>
+              </div>
+              <div class="ml-auto flex items-center gap-1 shrink-0">
+                <span v-for="t in activeExpert.tags.slice(0, 3)" :key="t" class="text-[9px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/20">{{ t }}</span>
+              </div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+
+              <div v-for="(msg, idx) in activeMessages" :key="idx" class="space-y-3">
+                <!-- 用户消息 -->
+                <div v-if="msg.role === 'user'" class="flex items-start gap-3">
+                  <div class="w-7 h-7 rounded-full bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-xs font-bold text-blue-700 shrink-0">U</div>
+                  <div class="bg-card border border-border rounded-xl px-3.5 py-2.5 text-[12.5px] leading-relaxed text-stone-800 max-w-2xl shadow-card">{{ msg.content }}</div>
+                </div>
+
+                <!-- Assistant 回合：计划 → Tool Trace → 总结 -->
+                <div v-if="msg.role === 'assistant'" class="flex items-start gap-3">
+                  <!-- 专家会话中头像替换为专家 Logo -->
+                  <div class="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 shadow-sm overflow-hidden"
+                       :class="activeExpert ? 'bg-card border border-border text-[13px]' : 'bg-gradient-to-br from-accent to-amber-700 text-white'">
+                    <img v-if="activeExpert && activeExpert.logo" :src="activeExpert.logo" class="w-full h-full object-cover" />
+                    <span v-else>{{ activeExpert ? activeExpert.emoji : 'AI' }}</span>
+                  </div>
+                  <div class="flex-1 space-y-3 max-w-3xl">
+
+                    <!-- 技能标记 -->
+                    <div v-if="msg.skill" class="inline-flex items-center gap-1.5 bg-indigo-500/10 border border-indigo-500/25 px-2.5 py-1 rounded-full text-[11px] text-indigo-700 font-mono">
+                      <span v-html="ico('sparkle')"></span> Skill: {{ msg.skill }}
+                    </div>
+
+                    <!-- 意图说明 -->
+                    <div v-if="msg.intro" class="text-stone-800 leading-relaxed text-[12.5px]">{{ msg.intro }}</div>
+
+                    <!-- 执行计划 -->
+                    <div v-if="msg.plan && msg.plan.length" class="bg-card border border-border rounded-lg p-3 space-y-1.5 shadow-card">
+                      <div class="text-[10px] text-stone-500 font-semibold uppercase tracking-wide">执行计划</div>
+                      <div v-for="(step, sIdx) in msg.plan" :key="sIdx" class="flex items-center gap-2 text-[11px]">
+                        <span :class="step.done ? 'text-emerald-700' : 'text-stone-400'" v-html="step.done ? ico('check') : ico('circle')"></span>
+                        <span :class="step.done ? 'text-stone-700' : 'text-stone-500'">{{ step.text }}</span>
+                      </div>
+                    </div>
+
+                    <!-- Tool Trace 卡片流 -->
+                    <div v-for="(tool, tIdx) in msg.tools" :key="tIdx">
+
+                      <!-- grep / read 只读工具 -->
+                      <div v-if="tool.type === 'grep' || tool.type === 'read'" class="bg-card border border-border rounded-lg overflow-hidden font-mono text-[11px] shadow-card">
+                        <div class="bg-surface px-3 py-2 flex items-center justify-between text-stone-700">
+                          <span class="flex items-center gap-1.5 text-stone-600">
+                            <span v-html="ico(tool.type === 'grep' ? 'search' : 'file')"></span>
+                            {{ tool.type }} "{{ tool.query || tool.path }}"
+                          </span>
+                          <span class="flex items-center gap-2">
+                            <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-700 border border-blue-500/20">READ</span>
+                            <span class="text-emerald-700">✓ {{ tool.result }}</span>
+                          </span>
+                        </div>
+                        <div v-if="tool.detail" class="p-2.5 bg-[#f7f5ef] text-stone-600 border-t border-border whitespace-pre-line">{{ tool.detail }}</div>
+                      </div>
+
+                      <!-- edit 修改卡片 → 打开右侧 Diff -->
+                      <div v-if="tool.type === 'edit'" class="bg-card border border-border rounded-lg overflow-hidden font-mono text-[11px] shadow-card">
+                        <div class="bg-surface px-3 py-2 flex items-center justify-between text-stone-700">
+                          <span class="flex items-center gap-1.5 text-stone-600">
+                            <span v-html="ico('pencil')"></span> edit {{ tool.file }}
+                          </span>
+                          <span class="flex items-center gap-2">
+                            <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-700 border border-indigo-500/20">WRITE</span>
+                            <span :class="tool.status === 'accepted' ? 'text-emerald-700' : tool.status === 'reverted' ? 'text-rose-600' : 'text-amber-700'">
+                              {{ tool.status === 'accepted' ? '✓ 已接受' : tool.status === 'reverted' ? '↩ 已撤销' : '待审阅' }}
+                            </span>
+                          </span>
+                        </div>
+                        <div class="p-2.5 bg-[#f7f5ef] border-t border-border">
+                          <div class="text-stone-600 mb-2">{{ tool.summary }}</div>
+                          <button @click="openDiff(tool)" class="flex items-center gap-1.5 text-accent hover:text-blue-700 text-[11px] transition-std">
+                            <span v-html="ico('diff')"></span> 查看 Diff
+                          </button>
+                        </div>
+                      </div>
+
+                      <!-- bash 命令卡片（权限确认 / 已执行） -->
+                      <div v-if="tool.type === 'bash'">
+                        <!-- 待确认 -->
+                        <div v-if="!tool.resolved" class="bg-amber-50 border border-amber-500/30 rounded-lg p-3 space-y-2 text-xs shadow-card">
+                          <div class="flex items-center justify-between text-amber-700 font-medium">
+                            <span class="flex items-center gap-1.5"><span v-html="ico('alert')"></span> 需要确认执行命令（{{ agentMode }} 模式）</span>
+                            <span class="text-[9px] bg-amber-500/15 px-1.5 py-0.5 rounded-full font-mono">EXEC</span>
+                          </div>
+                          <div class="bg-[#f7f5ef] p-2 rounded-md font-mono text-[11px] text-stone-700 border border-amber-500/15">{{ tool.cmd }}</div>
+                          <div class="flex justify-end gap-2 pt-1">
+                            <button @click="resolveBash(tool, 'deny')" class="px-2.5 py-1 bg-border hover:bg-borderLight text-stone-700 rounded-md transition-std">拒绝</button>
+                            <button @click="resolveBash(tool, 'once')" class="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-md font-medium transition-std">允许一次</button>
+                            <button @click="resolveBash(tool, 'always')" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md font-medium transition-std">始终允许（本会话）</button>
+                          </div>
+                        </div>
+                        <!-- 已执行 -->
+                        <div v-else class="bg-card border rounded-lg overflow-hidden font-mono text-[11px] shadow-card" :class="tool.decision === 'deny' ? 'border-rose-500/30' : 'border-border'">
+                          <div class="bg-surface px-3 py-2 flex items-center justify-between text-stone-700">
+                            <span class="flex items-center gap-1.5 text-stone-600"><span v-html="ico('terminal')"></span> {{ tool.cmd }}</span>
+                            <span :class="tool.decision === 'deny' ? 'text-rose-600' : 'text-emerald-700'">
+                              {{ tool.decision === 'deny' ? '✗ 已拒绝' : '✓ exit 0 · 1.2s' }}
+                            </span>
+                          </div>
+                          <div v-if="tool.decision !== 'deny' && tool.output" class="p-2.5 bg-[#f7f5ef] text-stone-600 border-t border-border whitespace-pre-line">{{ tool.output }}</div>
+                        </div>
+                      </div>
+
+                      <!-- MCP 工具调用卡片 -->
+                      <div v-if="tool.type === 'mcp'" class="bg-card border border-border rounded-lg overflow-hidden font-mono text-[11px] shadow-card">
+                        <div class="bg-surface px-3 py-2 flex items-center justify-between text-stone-700">
+                          <span class="flex items-center gap-1.5 text-stone-600"><span v-html="ico('plug')"></span> {{ tool.server }} / {{ tool.tool }}</span>
+                          <span class="flex items-center gap-2">
+                            <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-700 border border-purple-500/20">NETWORK</span>
+                            <span :class="tool.resolved ? 'text-emerald-700' : 'text-amber-700'">{{ tool.resolved ? '✓ 调用成功' : '待确认' }}</span>
+                          </span>
+                        </div>
+                        <div class="p-2.5 bg-[#f7f5ef] text-stone-600 border-t border-border">
+                          <template v-if="!tool.resolved">
+                            <span class="text-stone-700">{{ tool.summary }}</span>
+                            <div class="flex justify-end gap-2 pt-2">
+                              <button @click="tool.resolved = true" class="px-2.5 py-1 bg-border hover:bg-borderLight text-stone-700 rounded-md font-sans transition-std">拒绝</button>
+                              <button @click="tool.resolved = true" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md font-medium font-sans transition-std">允许一次</button>
+                            </div>
+                          </template>
+                          <template v-else>{{ tool.summary }} → {{ tool.resultText }}</template>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- AI 总结 -->
+                    <div v-if="msg.text" class="text-stone-800 leading-relaxed pt-2 border-t border-border text-[12.5px]">{{ msg.text }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 中栏底部输入条 -->
+            <div class="p-3.5 border-t border-border bg-sidebar/60">
+              <div class="flex items-center gap-2">
+                <button class="p-2 hover:bg-card rounded-lg text-stone-500 hover:text-stone-700 transition-std" title="附加文件" v-html="ico('clip')"></button>
+                <div class="relative flex-1">
+                  <!-- @ / # / / 提及浮窗（对话内同样可用） -->
+                  <div v-if="showSkillMenu" class="absolute bottom-full mb-2 left-0 w-72 bg-white border border-borderLight rounded-xl shadow-popover p-1 text-xs z-30">
+                    <div v-for="skill in enabledSkills" :key="skill.name" @click="selectSkill(skill.name)"
+                         class="px-2.5 py-1.5 hover:bg-cardHover rounded-lg flex items-center justify-between cursor-pointer text-stone-800 transition-std">
+                      <span class="font-mono text-indigo-700 font-semibold">/{{ skill.name }}</span>
+                      <span class="text-[10px] text-stone-600 truncate ml-2">{{ skill.description }}</span>
+                    </div>
+                  </div>
+                  <div v-if="showMcpMenu" class="absolute bottom-full mb-2 left-0 w-72 bg-white border border-borderLight rounded-xl shadow-popover p-1 text-xs z-30">
+                    <div v-for="mcp in mcpConnectors" :key="mcp.id" @click="mcp.status === 'connected' && selectMcp(mcp.name)"
+                         :class="['px-2.5 py-1.5 rounded-lg flex items-center justify-between transition-std', mcp.status === 'connected' ? 'hover:bg-cardHover cursor-pointer text-stone-800' : 'text-stone-400 cursor-not-allowed']">
+                      <span class="font-mono text-purple-700 font-semibold">#{{ mcp.name }}</span>
+                      <span class="text-[10px] text-stone-600 truncate ml-2">{{ mcp.status === 'connected' ? mcp.tools.length + ' Tools' : '未连接' }}</span>
+                    </div>
+                  </div>
+                  <div v-if="showFileMenu" class="absolute bottom-full mb-2 left-0 w-72 bg-white border border-borderLight rounded-xl shadow-popover p-1 text-xs z-30">
+                    <div v-for="f in mentionFiles" :key="f.path" @click="selectFile(f.path)"
+                         class="px-2.5 py-1.5 hover:bg-cardHover rounded-lg flex items-center gap-2 cursor-pointer text-stone-800 transition-std">
+                      <span class="text-stone-500" v-html="ico('file')"></span>
+                      <span class="font-mono text-[10px] truncate">@{{ f.path }}</span>
+                      <span v-if="f.modified" class="ml-auto text-[9px] text-amber-700 font-bold shrink-0">M</span>
+                    </div>
+                  </div>
+                  <input v-model="inputText"
+                         @input="handleInput"
+                         @keydown.enter.prevent="submitTask"
+                         placeholder="继续向 Agent 提问或追加指令（@ 文件 / # MCP / / 技能）..."
+                         class="w-full bg-card border border-border focus:border-accent/50 rounded-xl px-4 py-2 text-[12.5px] outline-none text-stone-900 transition-std" />
+                </div>
+                <!-- Chat / Agent 切换 -->
+                <div class="flex items-center bg-surface border border-border rounded-lg p-0.5 shrink-0">
+                  <button @click="chatMode = 'chat'" :class="['px-2 py-1 rounded-md text-[11px] font-medium transition-std', chatMode === 'chat' ? 'bg-card text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700']">Chat</button>
+                  <button @click="chatMode = 'agent'" :class="['px-2 py-1 rounded-md text-[11px] font-medium transition-std', chatMode === 'agent' ? 'bg-card text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700']">Agent</button>
+                </div>
+                <!-- 工作区默认权限 -->
+                <div class="relative shrink-0" v-if="chatMode === 'agent'">
+                  <button @click="showPermMenu = !showPermMenu" title="工作区默认权限"
+                          class="flex items-center gap-1 border rounded-lg px-2 py-2 text-[11px] font-medium transition-std"
+                          :class="agentMode === 'Auto' ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/25' : agentMode === 'Ask' ? 'bg-amber-500/10 text-amber-700 border-amber-500/25' : 'bg-blue-500/10 text-blue-700 border-blue-500/25'">
+                    <span v-html="ico('shield')"></span> {{ agentMode }}
+                  </button>
+                  <div v-if="showPermMenu" class="absolute bottom-full mb-2 right-0 w-64 bg-white border border-borderLight rounded-xl shadow-popover p-1 text-xs z-30">
+                    <div v-for="opt in permOptions" :key="opt.v" @click="agentMode = opt.v; showPermMenu = false"
+                         :class="['px-2.5 py-1.5 hover:bg-cardHover rounded-lg cursor-pointer transition-std flex items-center gap-2', agentMode === opt.v ? 'text-stone-900' : 'text-stone-700']">
+                      <span class="font-mono font-semibold" :class="opt.v === 'Auto' ? 'text-emerald-700' : opt.v === 'Ask' ? 'text-amber-700' : 'text-blue-700'">{{ opt.v }}</span>
+                      <span class="text-[10px] text-stone-600 truncate">{{ opt.d }}</span>
+                    </div>
+                  </div>
+                </div>
+                <button @click="submitTask" class="px-4 py-2 bg-accent hover:bg-accentDim text-white rounded-xl font-medium transition-std shadow-sm">发送 ↵</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 右栏：代码 / Diff 工作台 -->
+          <div v-if="codePanel.visible" class="w-[380px] border-l border-border bg-surface/60 flex flex-col shrink-0">
+            <div class="h-9 border-b border-border px-3 flex items-center justify-between">
+              <div class="flex items-center gap-1">
+                <button v-for="t in ['diff', 'code', 'files']" :key="t"
+                        @click="codePanel.tab = t"
+                        :class="['px-2.5 py-1 rounded-md text-[11px] transition-std', codePanel.tab === t ? 'bg-card text-stone-900 font-medium shadow-sm border border-border' : 'text-stone-500 hover:text-stone-700']">
+                  {{ t === 'diff' ? 'Diff' : t === 'code' ? '代码' : '文件' }}
+                </button>
+              </div>
+              <button @click="codePanel.visible = false" class="text-stone-500 hover:text-stone-700 p-1 hover:bg-card rounded-md transition-std" v-html="ico('x')"></button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto">
+              <!-- Diff 审阅 -->
+              <div v-if="codePanel.tab === 'diff'" class="p-3 space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="font-mono text-[11px] text-stone-700 flex items-center gap-1.5"><span v-html="ico('file')"></span> {{ diffData.file }}</span>
+                  <span class="font-mono text-[10px]"><span class="text-emerald-700">+1</span> <span class="text-rose-600">-1</span></span>
+                </div>
+
+                <div class="bg-[#fbfaf7] border border-border rounded-lg overflow-hidden font-mono text-[11px] leading-5 shadow-card">
+                  <div v-for="(line, i) in diffData.lines" :key="i"
+                       :class="['px-2 flex', line.type === 'del' ? 'diff-del' : line.type === 'add' ? 'diff-add' : 'text-stone-500']">
+                    <span class="w-6 text-right pr-2 text-stone-400 shrink-0 select-none">{{ line.no || '' }}</span>
+                    <span class="whitespace-pre">{{ line.text }}</span>
+                  </div>
+                </div>
+
+                <div v-if="diffData.state === 'pending'" class="flex gap-2">
+                  <button @click="acceptDiff" class="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-medium transition-std">接受修改</button>
+                  <button @click="revertDiff" class="flex-1 py-1.5 bg-border hover:bg-borderLight text-stone-700 rounded-lg text-[11px] transition-std">撤销</button>
+                </div>
+                <div v-else-if="diffData.state === 'accepted'" class="bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 rounded-lg px-3 py-2 text-[11px] flex items-center gap-1.5">
+                  <span v-html="ico('check')"></span> 修改已接受并写入工作区
+                </div>
+                <div v-else class="bg-rose-500/10 border border-rose-500/25 text-rose-600 rounded-lg px-3 py-2 text-[11px]">↩ 修改已撤销，文件未变更</div>
+              </div>
+
+              <!-- 代码查看 -->
+              <div v-if="codePanel.tab === 'code'" class="bg-[#fbfaf7] font-mono text-[11px] leading-5 p-2">
+                <div class="text-stone-500 mb-2 flex items-center gap-1.5 px-1"><span v-html="ico('file')"></span> src/auth/token.ts</div>
+                <div v-for="(line, i) in codeLines" :key="i"
+                     :class="['px-2 flex rounded', line.hl ? 'bg-emerald-500/10 border-l-2 border-emerald-500/50' : '']">
+                  <span class="w-6 text-right pr-2 text-stone-400 shrink-0 select-none">{{ i + 1 }}</span>
+                  <span class="whitespace-pre text-stone-700">{{ line.t }}</span>
+                </div>
+              </div>
+
+              <!-- 文件树 -->
+              <div v-if="codePanel.tab === 'files'" class="p-2 font-mono text-[11px] text-stone-600">
+                <div v-for="f in fileTree" :key="f.name"
+                     :class="['px-2 py-1 rounded-md flex items-center gap-1.5 cursor-pointer hover:bg-card transition-std', f.modified ? 'text-amber-700' : '']"
+                     :style="{ paddingLeft: (f.depth * 14 + 8) + 'px' }"
+                     @click="f.name.endsWith('.ts') && openCode()">
+                  <span :class="f.dir ? 'text-amber-700/70' : ''" v-html="ico(f.dir ? 'folder' : 'file')"></span>
+                  <span>{{ f.name }}</span>
+                  <span v-if="f.modified" class="ml-auto text-[9px] text-amber-700 font-bold">M</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ========== 场景 C: Skills 管理（全局 / 项目两级） ========== -->
+        <div v-if="currentView === 'skills'" class="flex-1 flex flex-col overflow-hidden">
+          <div class="h-12 border-b border-border bg-surface/50 px-4 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <button @click="skillScope = 'all'" :class="['px-3.5 py-1.5 rounded-full text-xs font-medium transition-std', skillScope === 'all' ? 'tab-active' : 'text-stone-600 hover:text-stone-800 hover:bg-card']">全部</button>
+              <button @click="skillScope = 'global'" :class="['px-3.5 py-1.5 rounded-full text-xs font-medium transition-std', skillScope === 'global' ? 'tab-active' : 'text-stone-600 hover:text-stone-800 hover:bg-card']">全局 (~/.my-agent)</button>
+              <button @click="skillScope = 'project'" :class="['px-3.5 py-1.5 rounded-full text-xs font-medium transition-std', skillScope === 'project' ? 'tab-active' : 'text-stone-600 hover:text-stone-800 hover:bg-card']">当前项目 (.agent)</button>
+            </div>
+            <div class="flex items-center gap-3">
+              <input v-model="searchQuery" placeholder="搜索技能..." class="w-44 bg-card border border-border focus:border-accent/50 rounded-lg px-3 py-1.5 text-[11px] outline-none text-stone-800 placeholder-stone-400 transition-std" />
+              <label class="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/25 hover:bg-emerald-500/20 text-emerald-700 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-std cursor-pointer">
+                <span v-html="ico('upload')"></span> 导入 ZIP 技能包
+                <input type="file" accept=".zip" class="hidden" @change="handleZipUpload" />
+              </label>
+              <button @click="openSkillModal(null)" class="flex items-center gap-1.5 bg-accent hover:bg-accentDim text-white px-3 py-1.5 rounded-lg text-[11px] font-medium transition-std shadow-sm">
+                <span v-html="ico('plus')"></span> 新增
+              </button>
+            </div>
+          </div>
+
+          <div class="flex-1 overflow-y-auto p-6">
+            <div class="mb-5">
+              <h2 class="text-lg font-bold text-stone-900 flex items-center gap-2"><span class="text-indigo-700" v-html="ico('sparkle')"></span> 技能管理</h2>
+              <p class="text-[11px] text-stone-500 mt-1">Skills = 「怎么做」的可复用知识/流程包（Markdown）。项目级技能优先于全局同名技能。</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              <div v-for="skill in filteredSkills" :key="skill.id"
+                   class="bg-card border border-border rounded-xl p-4 hover:border-accent/40 hover:shadow-card transition-std group">
+                <div class="flex items-start justify-between mb-3">
+                  <div class="flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-lg bg-indigo-500/10 border border-indigo-500/25 flex items-center justify-center text-base">{{ skill.icon }}</div>
+                    <div>
+                      <h3 class="font-semibold text-stone-800 font-mono">/{{ skill.name }}</h3>
+                      <span :class="['text-[9px] px-1.5 py-0.5 rounded-full font-mono', skill.scope === 'project' ? 'bg-blue-500/10 text-blue-700 border border-blue-500/20' : 'bg-gray-500/10 text-stone-600 border border-gray-500/20']">
+                        {{ skill.scope === 'project' ? '当前项目' : '全局' }}
+                      </span>
+                    </div>
+                  </div>
+                  <!-- 启用开关 -->
+                  <button @click="skill.enabled = !skill.enabled"
+                          :class="['w-8 h-4 rounded-full p-0.5 transition-std', skill.enabled ? 'bg-emerald-500' : 'bg-stone-300']">
+                    <div :class="['w-3 h-3 rounded-full bg-white transition-std', skill.enabled ? 'translate-x-4' : '']"></div>
+                  </button>
+                </div>
+
+                <p class="text-[11px] text-stone-500 line-clamp-2 mb-3 leading-relaxed">{{ skill.description }}</p>
+
+                <div class="grid grid-cols-2 gap-1.5 text-[10px] mb-3">
+                  <div class="flex justify-between bg-surface rounded-md px-2 py-1"><span class="text-stone-400">版本</span><span class="text-stone-700 font-mono">{{ skill.version }}</span></div>
+                  <div class="flex justify-between bg-surface rounded-md px-2 py-1"><span class="text-stone-400">修改</span><span class="text-stone-700 font-mono">{{ skill.updatedAt }}</span></div>
+                </div>
+
+                <div class="flex items-center gap-2 pt-2 border-t border-border">
+                  <button @click="viewSkillMd(skill)" class="flex-1 py-1.5 bg-surface hover:bg-cardHover text-stone-600 hover:text-stone-800 border border-border rounded-md text-[10px] transition-std">查看 SKILL.md</button>
+                  <button @click="openSkillModal(skill)" class="flex-1 py-1.5 bg-surface hover:bg-cardHover text-stone-600 hover:text-accent border border-border rounded-md text-[10px] transition-std">编辑</button>
+                  <button @click="deleteSkill(skill)" class="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-500/10 rounded-md transition-std" v-html="ico('trash')"></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ========== 场景 D: MCP 连接器（卡片式，对齐 Skills 卡片） ========== -->
+        <div v-if="currentView === 'mcp'" class="flex-1 flex flex-col overflow-hidden">
+          <div class="h-12 border-b border-border bg-surface/50 px-4 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <button @click="mcpScope = 'all'" :class="['px-3.5 py-1.5 rounded-full text-xs font-medium transition-std', mcpScope === 'all' ? 'tab-active' : 'text-stone-600 hover:text-stone-800 hover:bg-card']">全部</button>
+              <button @click="mcpScope = 'connected'" :class="['px-3.5 py-1.5 rounded-full text-xs font-medium transition-std', mcpScope === 'connected' ? 'tab-active' : 'text-stone-600 hover:text-stone-800 hover:bg-card']">已连接</button>
+              <button @click="mcpScope = 'disconnected'" :class="['px-3.5 py-1.5 rounded-full text-xs font-medium transition-std', mcpScope === 'disconnected' ? 'tab-active' : 'text-stone-600 hover:text-stone-800 hover:bg-card']">未连接</button>
+            </div>
+            <div class="flex items-center gap-3">
+              <input v-model="searchQuery" placeholder="搜索连接器..." class="w-44 bg-card border border-border focus:border-accent/50 rounded-lg px-3 py-1.5 text-[11px] outline-none text-stone-800 placeholder-stone-400 transition-std" />
+              <button @click="showMcpJsonModal = true" class="flex items-center gap-1.5 bg-card border border-border hover:border-accent/40 text-stone-700 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-std shadow-sm">
+                <span v-html="ico('file')"></span> JSON 导入
+              </button>
+              <button @click="openMcpModal(null)" class="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-[11px] font-medium transition-std shadow-sm">
+                <span v-html="ico('plus')"></span> 新增连接器
+              </button>
+            </div>
+          </div>
+
+          <div class="flex-1 overflow-y-auto p-6">
+            <div class="mb-5">
+              <h2 class="text-lg font-bold text-stone-900 flex items-center gap-2"><span class="text-purple-700" v-html="ico('plug')"></span> MCP 连接器</h2>
+              <p class="text-[11px] text-stone-500 mt-1">MCP = 「能调用什么外部系统」，Tools 自动合并进 Agent 工具总线（内部命名 mcp__{server}__{tool}，风险 NETWORK）· 输入框 # 提及连接器 · 支持粘贴 mcp.json 批量导入。</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              <div v-for="mcp in filteredMcps" :key="mcp.id" class="bg-card border border-border rounded-xl p-4 hover:border-accent/40 hover:shadow-card transition-std">
+                <!-- 卡片头：图标 + 名称 + 类型徽标 + 连接开关 -->
+                <div class="flex items-start justify-between mb-3">
+                  <div class="flex items-center gap-2.5">
+                    <div :class="['w-9 h-9 rounded-lg flex items-center justify-center text-base border', mcp.status === 'connected' ? 'bg-emerald-500/10 border-emerald-500/25' : 'bg-gray-500/5 border-stone-300']">{{ mcp.icon }}</div>
+                    <div>
+                      <h3 class="font-semibold text-stone-800 font-mono">#{{ mcp.name }}</h3>
+                      <span :class="['text-[9px] px-1.5 py-0.5 rounded-full font-mono', mcp.type === 'stdio' ? 'bg-blue-500/10 text-blue-700 border border-blue-500/20' : mcp.type === 'sse' ? 'bg-purple-500/10 text-purple-700 border border-purple-500/20' : 'bg-amber-500/10 text-amber-700 border border-amber-500/20']">{{ mcp.type.toUpperCase() }}</span>
+                    </div>
+                  </div>
+                  <!-- 连接开关（与技能启用开关同款） -->
+                  <button @click="toggleMcpConnection(mcp)" :title="mcp.status === 'connected' ? '断开' : '连接'"
+                          :class="['w-8 h-4 rounded-full p-0.5 transition-std', mcp.status === 'connected' ? 'bg-emerald-500' : 'bg-stone-300']">
+                    <div :class="['w-3 h-3 rounded-full bg-white transition-std', mcp.status === 'connected' ? 'translate-x-4' : '']"></div>
+                  </button>
+                </div>
+
+                <p class="text-[11px] text-stone-500 line-clamp-2 mb-3 leading-relaxed">{{ mcp.description }}</p>
+
+                <!-- 启动命令 / 端点 -->
+                <div v-if="mcp.type === 'stdio'" class="bg-surface border border-border rounded-md px-2 py-1 font-mono text-[10px] text-stone-600 mb-3 truncate">
+                  $ {{ mcp.command }} <span v-for="(arg, i) in mcp.args" :key="i" class="text-emerald-700"> {{ arg }}</span>
+                </div>
+                <div v-else class="bg-surface border border-border rounded-md px-2 py-1 font-mono text-[10px] text-blue-700 mb-3 truncate">{{ mcp.url }}</div>
+
+                <!-- 元信息两列：状态 / Tools -->
+                <div class="grid grid-cols-2 gap-1.5 text-[10px] mb-3">
+                  <div class="flex justify-between bg-surface rounded-md px-2 py-1"><span class="text-stone-400">状态</span><span :class="['font-mono', mcp.status === 'connected' ? 'text-emerald-700' : 'text-stone-500']">{{ mcp.status === 'connected' ? '● 已连接' : '○ 未连接' }}</span></div>
+                  <div class="flex justify-between bg-surface rounded-md px-2 py-1"><span class="text-stone-400">Tools</span><span class="text-stone-700 font-mono">{{ mcp.status === 'connected' ? mcp.tools.length + ' 个' : '—' }}</span></div>
+                </div>
+
+                <!-- Tools 列表展开 -->
+                <div v-if="mcp.showTools && mcp.status === 'connected'" class="mb-3 space-y-1">
+                  <div v-for="t in mcp.tools" :key="t.name" class="bg-surface border border-border rounded-md px-2 py-1">
+                    <div class="font-mono text-[10px] text-indigo-700">{{ t.name }}</div>
+                    <div class="text-[9px] text-stone-500">{{ t.desc }}</div>
+                  </div>
+                </div>
+
+                <!-- 底部操作 -->
+                <div class="flex items-center gap-2 pt-2 border-t border-border">
+                  <button v-if="mcp.status === 'connected'" @click="mcp.showTools = !mcp.showTools" class="flex-1 py-1.5 bg-surface hover:bg-cardHover text-stone-600 hover:text-indigo-700 border border-border rounded-md text-[10px] transition-std">{{ mcp.showTools ? '收起 Tools' : '查看 Tools' }}</button>
+                  <button @click="openMcpModal(mcp)" class="flex-1 py-1.5 bg-surface hover:bg-cardHover text-stone-600 hover:text-accent border border-border rounded-md text-[10px] transition-std">编辑</button>
+                  <button @click="deleteMcp(mcp)" class="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-500/10 rounded-md transition-std" v-html="ico('trash')"></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ========== 场景 E: 模型配置（密钥托管） ========== -->
+        <div v-if="currentView === 'models'" class="flex-1 flex flex-col overflow-hidden">
+          <div class="h-12 border-b border-border bg-surface/50 px-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <span class="text-blue-700" v-html="ico('cpu')"></span>
+              <div>
+                <h2 class="font-bold text-stone-900 text-sm">模型配置中心</h2>
+                <p class="text-[10px] text-stone-500">API Key 存储于系统钥匙串（Electron safeStorage），界面仅显示掩码</p>
+              </div>
+            </div>
+            <button @click="openModelModal(null)" class="flex items-center gap-1.5 bg-accent hover:bg-accentDim text-white px-3 py-1.5 rounded-lg text-[11px] font-medium transition-std shadow-sm">
+              <span v-html="ico('plus')"></span> 新增模型
+            </button>
+          </div>
+
+          <div class="flex-1 overflow-y-auto p-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl">
+              <div v-for="model in modelConfigs" :key="model.id" class="bg-card border border-border rounded-xl p-4 hover:border-accent/40 hover:shadow-card transition-std">
+                <div class="flex items-start justify-between mb-3">
+                  <div class="flex items-center gap-3">
+                    <div :class="['w-12 h-12 rounded-xl flex items-center justify-center text-xl font-bold border', model.provider === 'deepseek' ? 'bg-blue-500/10 border-blue-500/25 text-blue-700' : model.provider === 'openai' ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-700' : 'bg-purple-500/10 border-purple-500/25 text-purple-700']">
+                      {{ model.provider === 'deepseek' ? 'DS' : model.provider === 'openai' ? 'G' : 'C' }}
+                    </div>
+                    <div>
+                      <h3 class="font-semibold text-stone-800">{{ model.name }}</h3>
+                      <p class="text-[11px] text-stone-500">{{ model.provider }} · {{ model.modelId }}</p>
+                    </div>
+                  </div>
+                  <span :class="['text-[10px] px-1.5 py-0.5 rounded-full font-mono', model.isDefault ? 'bg-blue-500/10 text-blue-700 border border-blue-500/20' : 'bg-gray-500/10 text-stone-500 border border-stone-300']">
+                    {{ model.isDefault ? '默认' : '备选' }}
+                  </span>
+                </div>
+
+                <!-- API Key 掩码（只读，不提供明文展示） -->
+                <div class="bg-surface border border-border rounded-lg px-3 py-2 mb-3">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[10px] text-stone-500">API Key（已托管系统钥匙串）</span>
+                    <span class="text-emerald-700 flex items-center gap-1 text-[10px]" v-html="ico('shield') + ' 已加密'"></span>
+                  </div>
+                  <div class="font-mono text-[11px] text-stone-700 mt-1 flex items-center justify-between">
+                    <span>{{ model.keyMask }}</span>
+                    <button @click="resetApiKey(model)" class="text-accent hover:text-blue-700 text-[10px] font-sans transition-std">重新设置</button>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 mb-3">
+                  <div class="bg-surface border border-border rounded-md px-2 py-1.5 text-center">
+                    <div class="text-[9px] text-stone-500">温度</div>
+                    <div class="text-[11px] text-stone-700 font-mono">{{ model.temperature }}</div>
+                  </div>
+                  <div class="bg-surface border border-border rounded-md px-2 py-1.5 text-center">
+                    <div class="text-[9px] text-stone-500">Max Tokens</div>
+                    <div class="text-[11px] text-stone-700 font-mono">{{ model.maxTokens }}</div>
+                  </div>
+                  <div class="bg-surface border border-border rounded-md px-2 py-1.5 text-center">
+                    <div class="text-[9px] text-stone-500">延迟</div>
+                    <div class="text-[11px] font-mono" :class="model.latency < 500 ? 'text-emerald-700' : model.latency < 1000 ? 'text-amber-700' : 'text-rose-600'">{{ model.latency }}ms</div>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <button @click="testModelLatency(model)" class="flex-1 flex items-center justify-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 border border-emerald-500/25 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-std">
+                    <span v-html="ico('bolt')"></span> 测试延迟
+                  </button>
+                  <button @click="openModelModal(model)" class="p-1.5 hover:bg-cardHover rounded-lg text-stone-500 hover:text-stone-700 transition-std" v-html="ico('gear')"></button>
+                  <button @click="deleteModelConfig(model)" class="p-1.5 hover:bg-cardHover rounded-lg text-stone-500 hover:text-rose-600 transition-std" v-html="ico('trash')"></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ========== 场景 F: 用量统计（Token 消耗 + 执行记录） ========== -->
+        <div v-if="currentView === 'usage'" class="flex-1 flex flex-col overflow-hidden">
+          <div class="h-12 border-b border-border bg-surface/50 px-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <span class="text-accent" v-html="ico('chart')"></span>
+              <div>
+                <h2 class="font-bold text-stone-900 text-sm">用量统计</h2>
+                <p class="text-[10px] text-stone-500">本机会话消耗与工具调用回放 · 不上送云端</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button @click="usageTab = 'overview'" :class="['px-3.5 py-1.5 rounded-full text-xs font-medium transition-std', usageTab === 'overview' ? 'tab-active' : 'text-stone-600 hover:bg-card']">总览</button>
+              <button @click="usageTab = 'models'" :class="['px-3.5 py-1.5 rounded-full text-xs font-medium transition-std', usageTab === 'models' ? 'tab-active' : 'text-stone-600 hover:bg-card']">模型消耗</button>
+              <button @click="usageTab = 'records'" :class="['px-3.5 py-1.5 rounded-full text-xs font-medium transition-std', usageTab === 'records' ? 'tab-active' : 'text-stone-600 hover:bg-card']">执行记录</button>
+            </div>
+          </div>
+
+          <div class="flex-1 overflow-y-auto p-6 space-y-4">
+            <!-- 总览：统计卡 + 7 日柱状图 + 工具分布 -->
+            <div v-if="usageTab === 'overview'" class="space-y-4">
+              <div class="grid grid-cols-2 xl:grid-cols-5 gap-4">
+                <div class="bg-card border border-border rounded-xl p-4 shadow-card">
+                  <div class="text-[10px] text-stone-500">总 Token 消耗</div>
+                  <div class="text-xl font-bold font-mono text-stone-900 mt-1">{{ fmtK(usageTotals.tokens) }}</div>
+                  <div class="text-[9px] text-stone-400 mt-0.5">输入 + 输出</div>
+                </div>
+                <div class="bg-card border border-border rounded-xl p-4 shadow-card">
+                  <div class="text-[10px] text-stone-500">估算费用</div>
+                  <div class="text-xl font-bold font-mono text-accent mt-1">$ {{ usageTotals.cost.toFixed(2) }}</div>
+                  <div class="text-[9px] text-stone-400 mt-0.5">按各模型计价累加</div>
+                </div>
+                <div class="bg-card border border-border rounded-xl p-4 shadow-card">
+                  <div class="text-[10px] text-stone-500">工具调用</div>
+                  <div class="text-xl font-bold font-mono text-stone-900 mt-1">{{ usageTotals.calls }}</div>
+                  <div class="text-[9px] text-stone-400 mt-0.5">内置 + MCP</div>
+                </div>
+                <div class="bg-card border border-border rounded-xl p-4 shadow-card">
+                  <div class="text-[10px] text-stone-500">会话数</div>
+                  <div class="text-xl font-bold font-mono text-stone-900 mt-1">{{ usageTotals.sessions }}</div>
+                  <div class="text-[9px] text-stone-400 mt-0.5">全部代码空间</div>
+                </div>
+                <div class="bg-card border border-border rounded-xl p-4 shadow-card">
+                  <div class="text-[10px] text-stone-500">缓存命中率</div>
+                  <div class="text-xl font-bold font-mono text-emerald-700 mt-1">{{ usageTotals.cacheHit }}%</div>
+                  <div class="text-[9px] text-stone-400 mt-0.5">Prompt Cache · 命中 {{ fmtK(usageTotals.cacheSaved) }} tokens</div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <!-- 近 7 日 Token 柱状图 -->
+                <div class="bg-card border border-border rounded-xl p-4 shadow-card">
+                  <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-[12px] font-semibold text-stone-900">近 7 日 Token 用量</h3>
+                    <span class="text-[10px] text-stone-500 font-mono">合计 {{ fmtK(usageDaily.reduce((s, d) => s + d.tokens, 0)) }}</span>
+                  </div>
+                  <div class="flex items-end gap-2 h-28">
+                    <div v-for="d in usageDaily" :key="d.day" class="flex-1 h-full flex flex-col justify-end items-center gap-1" :title="d.day + ' · ' + d.tokens + ' tokens'">
+                      <div class="w-full rounded-t-md bg-accent/60 hover:bg-accent transition-std" :style="{ height: Math.max(6, d.tokens / maxDaily * 100) + '%' }"></div>
+                      <span class="text-[9px] text-stone-400 font-mono">{{ d.day.slice(3) }}</span>
+                    </div>
+                  </div>
+                </div>
+                <!-- 工具调用分布 -->
+                <div class="bg-card border border-border rounded-xl p-4 shadow-card">
+                  <h3 class="text-[12px] font-semibold text-stone-900 mb-3">工具调用分布</h3>
+                  <div class="space-y-2.5">
+                    <div v-for="t in usageByTool" :key="t.tool" class="flex items-center gap-2">
+                      <span class="w-12 font-mono text-[10px] text-stone-600">{{ t.tool }}</span>
+                      <div class="flex-1 h-2 bg-surface rounded-full overflow-hidden">
+                        <div class="h-full bg-indigo-500/60 rounded-full" :style="{ width: (t.count / usageByTool[0].count * 100) + '%' }"></div>
+                      </div>
+                      <span class="w-8 text-right font-mono text-[10px] text-stone-500">{{ t.count }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 模型消耗 -->
+            <div v-if="usageTab === 'models'" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div v-for="m in usageByModel" :key="m.name" class="bg-card border border-border rounded-xl p-4 shadow-card">
+                <div class="flex items-center justify-between mb-3">
+                  <h3 class="font-semibold text-stone-800">{{ m.name }}</h3>
+                  <span class="text-[9px] px-1.5 py-0.5 rounded-full font-mono bg-stone-100 text-stone-600 border border-stone-300">{{ m.provider }}</span>
+                </div>
+                <div class="grid grid-cols-2 gap-1.5 text-[10px] mb-3">
+                  <div class="flex justify-between bg-surface rounded-md px-2 py-1"><span class="text-stone-400">请求</span><span class="text-stone-700 font-mono">{{ m.reqs }}</span></div>
+                  <div class="flex justify-between bg-surface rounded-md px-2 py-1"><span class="text-stone-400">费用</span><span class="text-accent font-mono">$ {{ m.cost.toFixed(2) }}</span></div>
+                  <div class="flex justify-between bg-surface rounded-md px-2 py-1"><span class="text-stone-400">输入</span><span class="text-stone-700 font-mono">{{ fmtK(m.input) }}</span></div>
+                  <div class="flex justify-between bg-surface rounded-md px-2 py-1"><span class="text-stone-400">输出</span><span class="text-stone-700 font-mono">{{ fmtK(m.output) }}</span></div>
+                  <div class="flex justify-between bg-surface rounded-md px-2 py-1"><span class="text-stone-400">缓存命中</span><span class="text-stone-700 font-mono">{{ fmtK(m.cacheRead) }}</span></div>
+                  <div class="flex justify-between bg-surface rounded-md px-2 py-1"><span class="text-stone-400">命中率</span><span class="text-emerald-700 font-mono">{{ Math.round(m.cacheRead / m.input * 100) }}%</span></div>
+                </div>
+                <div class="text-[9px] text-stone-400 mb-1">占总 Token {{ Math.round((m.input + m.output) / usageTotals.tokens * 100) }}%</div>
+                <div class="h-2 bg-surface rounded-full overflow-hidden">
+                  <div class="h-full bg-accent/70 rounded-full" :style="{ width: ((m.input + m.output) / usageTotals.tokens * 100) + '%' }"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 执行记录 -->
+            <div v-if="usageTab === 'records'" class="space-y-3">
+              <div class="flex items-center justify-between">
+                <div>
+                  <h3 class="text-sm font-bold text-stone-900">执行记录</h3>
+                  <p class="text-[10px] text-stone-500 mt-0.5">本机所有工具调用的回放视图（非上送审计），可按会话 / 工具筛选</p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <select v-model="recordFilterSession" class="bg-surface border border-border rounded-lg px-2.5 py-1.5 text-[11px] outline-none text-stone-700 transition-std">
+                    <option value="all">全部会话</option>
+                    <option v-for="s in allSessions" :key="s.id" :value="s.title">{{ s.title }}</option>
+                  </select>
+                  <select v-model="recordFilterTool" class="bg-surface border border-border rounded-lg px-2.5 py-1.5 text-[11px] outline-none text-stone-700 transition-std">
+                    <option value="all">全部工具</option>
+                    <option v-for="t in ['grep','read','edit','bash','mcp']" :key="t" :value="t">{{ t }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="bg-card border border-border rounded-xl overflow-hidden shadow-card">
+                <table class="w-full text-[11px]">
+                  <thead>
+                    <tr class="text-left text-stone-500 border-b border-border bg-surface">
+                      <th class="px-3 py-2.5 font-medium">时间</th>
+                      <th class="px-3 py-2.5 font-medium">会话</th>
+                      <th class="px-3 py-2.5 font-medium">工具</th>
+                      <th class="px-3 py-2.5 font-medium">对象</th>
+                      <th class="px-3 py-2.5 font-medium">风险</th>
+                      <th class="px-3 py-2.5 font-medium">结果</th>
+                      <th class="px-3 py-2.5 font-medium">耗时</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(r, i) in filteredRecords" :key="i" class="border-b border-border/60 hover:bg-cardHover/60 transition-std">
+                      <td class="px-3 py-2 font-mono text-stone-500">{{ r.time }}</td>
+                      <td class="px-3 py-2 text-stone-700">{{ r.session }}</td>
+                      <td class="px-3 py-2 font-mono text-indigo-700">{{ r.tool }}</td>
+                      <td class="px-3 py-2 font-mono text-stone-600 truncate max-w-[180px]">{{ r.target }}</td>
+                      <td class="px-3 py-2">
+                        <span :class="['text-[9px] px-1.5 py-0.5 rounded-full font-mono', riskBadge(r.risk)]">{{ r.risk }}</span>
+                      </td>
+                      <td class="px-3 py-2" :class="r.ok ? 'text-emerald-700' : 'text-rose-600'">{{ r.ok ? '成功' : (r.target === '(已拒绝)' ? '已拒绝' : '失败') }}</td>
+                      <td class="px-3 py-2 font-mono text-stone-500">{{ r.cost }}</td>
+                    </tr>
+                    <tr v-if="!filteredRecords.length">
+                      <td colspan="7" class="px-3 py-6 text-center text-stone-400">无匹配的执行记录</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ========== 场景 G: 专家团（卡片式，参考 WorkBuddy：Logo + 能力标签 + 绑定工具/Skills） ========== -->
+        <div v-if="currentView === 'experts' && !activeExpert" class="flex-1 flex flex-col overflow-hidden">
+          <div class="h-12 border-b border-border bg-surface/50 px-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <span class="text-accent" v-html="ico('users')"></span>
+              <div>
+                <h2 class="font-bold text-stone-900 text-sm">专家团</h2>
+                <p class="text-[10px] text-stone-500">预置人设 + 绑定工具 / Skills 的专属智能体 · 点击专家卡片进入专属对话（与主界面同款）</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <input v-model="searchQuery" placeholder="搜索专家 / 标签..." class="w-44 bg-card border border-border focus:border-accent/50 rounded-lg px-3 py-1.5 text-[11px] outline-none text-stone-800 placeholder-stone-400 transition-std" />
+              <button @click="openExpertModal(null)" class="flex items-center gap-1.5 bg-accent hover:bg-accentDim text-white px-3 py-1.5 rounded-lg text-[11px] font-medium transition-std shadow-sm">
+                <span v-html="ico('plus')"></span> 创建专家
+              </button>
+            </div>
+          </div>
+
+          <div class="flex-1 overflow-y-auto p-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              <div v-for="ex in filteredExperts" :key="ex.id" @click="openExpertChat(ex)"
+                   class="bg-card border border-border rounded-xl p-4 hover:border-accent/40 hover:shadow-card transition-std cursor-pointer group">
+                <!-- 卡片头：Logo（可上传）+ 名称 + 能力标签 -->
+                <div class="flex items-start gap-3 mb-3">
+                  <div class="w-11 h-11 rounded-xl overflow-hidden flex items-center justify-center text-xl border shrink-0"
+                       :class="ex.logo ? 'border-border bg-surface' : 'bg-accent/10 border-accent/25'">
+                    <img v-if="ex.logo" :src="ex.logo" class="w-full h-full object-cover" />
+                    <span v-else>{{ ex.emoji }}</span>
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <h3 class="font-semibold text-stone-800 truncate">{{ ex.name }}</h3>
+                    <div class="flex flex-wrap gap-1 mt-1">
+                      <span v-for="t in ex.tags.slice(0, 3)" :key="t" class="text-[9px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/20">{{ t }}</span>
+                      <span v-if="ex.tags.length > 3" class="text-[9px] px-1.5 py-0.5 rounded-full bg-surface text-stone-500 border border-border">+{{ ex.tags.length - 3 }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <p class="text-[11px] text-stone-500 line-clamp-2 mb-3 leading-relaxed">{{ ex.description }}</p>
+
+                <!-- 元信息：绑定工具 / Skills / 会话数 -->
+                <div class="grid grid-cols-3 gap-1.5 text-[10px] mb-3">
+                  <div class="flex justify-between bg-surface rounded-md px-2 py-1"><span class="text-stone-400">工具</span><span class="text-stone-700 font-mono">{{ ex.tools.length }} 个</span></div>
+                  <div class="flex justify-between bg-surface rounded-md px-2 py-1"><span class="text-stone-400">Skills</span><span class="text-indigo-700 font-mono">{{ ex.skills.length }} 个</span></div>
+                  <div class="flex justify-between bg-surface rounded-md px-2 py-1"><span class="text-stone-400">会话</span><span class="text-stone-700 font-mono">{{ ex.sessionCount || 0 }}</span></div>
+                </div>
+
+                <!-- 绑定明细徽标 -->
+                <div class="flex flex-wrap gap-1 mb-3">
+                  <span v-for="t in ex.tools" :key="t" class="text-[9px] px-1.5 py-0.5 rounded border font-mono" :class="t.startsWith('mcp:') ? 'bg-purple-500/10 text-purple-700 border-purple-500/20' : 'bg-blue-500/10 text-blue-700 border-blue-500/20'">{{ t }}</span>
+                  <span v-for="s in ex.skills" :key="s" class="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-700 border border-indigo-500/20 font-mono">/{{ s }}</span>
+                </div>
+
+                <!-- 底部操作 -->
+                <div class="flex items-center gap-2 pt-2 border-t border-border">
+                  <button @click.stop="openExpertChat(ex)" class="flex-1 py-1.5 bg-accent/10 hover:bg-accent/20 text-accent border border-accent/25 rounded-md text-[10px] font-medium transition-std flex items-center justify-center gap-1"><span v-html="ico('chat')"></span> 对话</button>
+                  <button @click.stop="openExpertModal(ex)" class="flex-1 py-1.5 bg-surface hover:bg-cardHover text-stone-600 hover:text-accent border border-border rounded-md text-[10px] transition-std">编辑</button>
+                  <button @click.stop="deleteExpert(ex)" class="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-500/10 rounded-md transition-std" v-html="ico('trash')"></button>
+                </div>
+              </div>
+
+              <!-- 空态 -->
+              <div v-if="!filteredExperts.length" class="col-span-full py-16 text-center text-stone-400 text-[11px]">
+                没有匹配的专家，点击右上角「创建专家」添加一位
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </main>
+    </div>
+
+    <!-- ================= 弹窗: 新增/编辑 Skill ================= -->
+    <div v-if="showSkillModal" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay" @click.self="showSkillModal = false">
+      <div class="bg-card border border-border rounded-2xl shadow-popover w-full max-w-2xl mx-4 overflow-hidden" @click.stop>
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h3 class="font-bold text-stone-900 flex items-center gap-2"><span v-html="ico('sparkle')"></span> {{ editingSkill ? '编辑技能' : '新增技能' }}</h3>
+          <button @click="showSkillModal = false" class="text-stone-500 hover:text-stone-700 p-1" v-html="ico('x')"></button>
+        </div>
+        <div class="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-[11px] text-stone-600 mb-1.5">技能名称 <span class="text-rose-600">*</span></label>
+              <input v-model="skillForm.name" placeholder="review / test / commit"
+                     class="w-full bg-surface border border-border focus:border-accent/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800 placeholder-stone-400 font-mono" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-stone-600 mb-1.5">来源 <span class="text-stone-400">(项目级优先)</span></label>
+              <select v-model="skillForm.scope" class="w-full bg-surface border border-border focus:border-accent/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800">
+                <option value="global">全局 (~/.my-agent/skills/)</option>
+                <option value="project">当前项目 (.agent/skills/)</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="block text-[11px] text-stone-600 mb-1.5">描述 <span class="text-stone-400">(注入 System Prompt 摘要)</span></label>
+            <textarea v-model="skillForm.description" rows="2" placeholder="该技能的用途和触发条件..."
+                      class="w-full bg-surface border border-border focus:border-accent/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800 placeholder-stone-400 resize-none"></textarea>
+          </div>
+          <div>
+            <label class="block text-[11px] text-stone-600 mb-1.5">SKILL.md 正文 <span class="text-stone-400">(Markdown 指令，不执行脚本)</span></label>
+            <textarea v-model="skillForm.content" rows="8" placeholder="# 技能指令&#10;&#10;1. ...&#10;2. ..."
+                      class="w-full bg-surface border border-border focus:border-accent/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800 placeholder-stone-400 resize-none font-mono leading-relaxed"></textarea>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-[11px] text-stone-600 mb-1.5">版本号</label>
+              <input v-model="skillForm.version" placeholder="1.0.0" class="w-full bg-surface border border-border focus:border-accent/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800 placeholder-stone-400 font-mono" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-stone-600 mb-1.5">状态</label>
+              <select v-model="skillForm.enabled" class="w-full bg-surface border border-border focus:border-accent/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800">
+                <option :value="true">启用</option>
+                <option :value="false">禁用</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-border bg-surface">
+          <button @click="showSkillModal = false" class="px-4 py-2 text-stone-600 hover:text-stone-800 text-[11px] font-medium transition-std">取消</button>
+          <button @click="saveSkill" class="px-5 py-2 bg-accent hover:bg-accentDim text-white rounded-lg text-[11px] font-medium shadow-sm transition-std">{{ editingSkill ? '保存修改' : '创建技能' }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 弹窗: SKILL.md 预览 ================= -->
+    <div v-if="showSkillMdModal" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay" @click.self="showSkillMdModal = false">
+      <div class="bg-card border border-border rounded-2xl shadow-popover w-full max-w-xl mx-4 overflow-hidden" @click.stop>
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h3 class="font-bold text-stone-900 font-mono text-sm">/{{ previewSkill?.name }}/SKILL.md</h3>
+          <button @click="showSkillMdModal = false" class="text-stone-500 hover:text-stone-700 p-1" v-html="ico('x')"></button>
+        </div>
+        <div class="p-6">
+          <pre class="text-[11px] text-stone-700 font-mono leading-relaxed whitespace-pre-wrap bg-surface border border-border rounded-lg p-4 max-h-[50vh] overflow-y-auto">{{ previewSkill?.content }}</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 弹窗: 新增/编辑 MCP ================= -->
+    <div v-if="showMcpModal" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay" @click.self="showMcpModal = false">
+      <div class="bg-card border border-border rounded-2xl shadow-popover w-full max-w-2xl mx-4 overflow-hidden" @click.stop>
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h3 class="font-bold text-stone-900 flex items-center gap-2"><span v-html="ico('plug')"></span> {{ editingMcp ? '编辑连接器' : '新增 MCP 连接器' }}</h3>
+          <button @click="showMcpModal = false" class="text-stone-500 hover:text-stone-700 p-1" v-html="ico('x')"></button>
+        </div>
+        <div class="p-6 max-h-[65vh] overflow-y-auto space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-[11px] text-stone-600 mb-1.5">连接器名称 <span class="text-rose-600">*</span></label>
+              <input v-model="mcpForm.name" placeholder="github / filesystem" class="w-full bg-surface border border-border focus:border-emerald-500/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800 placeholder-stone-400 font-mono" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-stone-600 mb-1.5">连接类型 <span class="text-rose-600">*</span></label>
+              <div class="flex gap-2">
+                <button v-for="t in ['stdio', 'sse', 'http']" :key="t" @click="mcpForm.type = t"
+                        :class="['flex-1 py-2 rounded-lg text-[11px] font-medium transition border font-mono', mcpForm.type === t ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-700' : 'bg-card border-border text-stone-600']">
+                  {{ t.toUpperCase() }}
+                </button>
+              </div>
+            </div>
+          </div>
+          <div v-if="mcpForm.type === 'stdio'" class="space-y-4 pl-4 border-l-2 border-emerald-500/30">
+            <div>
+              <label class="block text-[11px] text-stone-600 mb-1.5">启动命令 <span class="text-rose-600">*</span></label>
+              <input v-model="mcpForm.command" placeholder="npx / uvx / cmd" class="w-full bg-surface border border-border focus:border-emerald-500/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800 placeholder-stone-400 font-mono" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-stone-600 mb-1.5">参数数组 <span class="text-stone-400">(每行一个)</span></label>
+              <textarea v-model="mcpForm.argsText" rows="3" placeholder="-y @modelcontextprotocol/server-github" class="w-full bg-surface border border-border focus:border-emerald-500/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800 placeholder-stone-400 resize-none font-mono"></textarea>
+            </div>
+          </div>
+          <div v-else class="space-y-4 pl-4 border-l-2 border-blue-500/30">
+            <div>
+              <label class="block text-[11px] text-stone-600 mb-1.5">端点 URL <span class="text-rose-600">*</span></label>
+              <input v-model="mcpForm.url" placeholder="http://localhost:3000/sse" class="w-full bg-surface border border-border focus:border-accent/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800 placeholder-stone-400 font-mono" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-[11px] text-stone-600 mb-1.5">描述</label>
+            <input v-model="mcpForm.description" placeholder="该连接器提供的能力..." class="w-full bg-surface border border-border focus:border-emerald-500/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800 placeholder-stone-400" />
+          </div>
+          <div>
+            <label class="block text-[11px] text-stone-600 mb-1.5">环境变量 <span class="text-stone-400">(JSON，Key 将加密存入钥匙串，不写日志)</span></label>
+            <textarea v-model="mcpForm.envJson" rows="2" placeholder='{"GITHUB_TOKEN": "${GITHUB_TOKEN}"}' class="w-full bg-surface border border-border focus:border-emerald-500/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800 placeholder-stone-400 resize-none font-mono"></textarea>
+          </div>
+        </div>
+        <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-border bg-surface">
+          <button @click="showMcpModal = false" class="px-4 py-2 text-stone-600 hover:text-stone-800 text-[11px] font-medium transition-std">取消</button>
+          <button @click="saveMcp" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-medium shadow-sm transition-std">{{ editingMcp ? '保存修改' : '创建连接器' }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 弹窗: 新增/编辑模型 ================= -->
+    <div v-if="showModelModal" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay" @click.self="showModelModal = false">
+      <div class="bg-card border border-border rounded-2xl shadow-popover w-full max-w-lg mx-4 overflow-hidden" @click.stop>
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h3 class="font-bold text-stone-900 flex items-center gap-2"><span v-html="ico('cpu')"></span> {{ editingModel ? '编辑模型配置' : '新增模型配置' }}</h3>
+          <button @click="showModelModal = false" class="text-stone-500 hover:text-stone-700 p-1" v-html="ico('x')"></button>
+        </div>
+        <div class="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+          <div>
+            <label class="block text-[11px] text-stone-600 mb-1.5">显示名称 <span class="text-rose-600">*</span></label>
+            <input v-model="modelForm.name" placeholder="DeepSeek-V3 / GPT-4o" class="w-full bg-surface border border-border focus:border-accent/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800 placeholder-stone-400" />
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-[11px] text-stone-600 mb-1.5">提供商 <span class="text-rose-600">*</span></label>
+              <select v-model="modelForm.provider" class="w-full bg-surface border border-border focus:border-accent/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800">
+                <option value="deepseek">DeepSeek</option>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="custom">自定义</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] text-stone-600 mb-1.5">模型 ID <span class="text-rose-600">*</span></label>
+              <input v-model="modelForm.modelId" placeholder="deepseek-chat" class="w-full bg-surface border border-border focus:border-accent/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800 placeholder-stone-400 font-mono" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-[11px] text-stone-600 mb-1.5">API Key <span class="text-rose-600">*</span></label>
+            <input v-model="modelForm.apiKeyInput" type="password" :placeholder="editingModel ? '留空则保留原密钥' : '保存后加密存入系统钥匙串'"
+                   class="w-full bg-surface border border-border focus:border-accent/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800 placeholder-stone-400 font-mono" />
+            <p class="text-[10px] text-stone-400 mt-1">密钥经 Electron safeStorage 加密，界面与日志中仅出现掩码。</p>
+          </div>
+          <div>
+            <label class="block text-[11px] text-stone-600 mb-1.5">Base URL <span class="text-stone-400">(可选)</span></label>
+            <input v-model="modelForm.baseUrl" placeholder="https://api.deepseek.com/v1" class="w-full bg-surface border border-border focus:border-accent/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800 placeholder-stone-400 font-mono" />
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-[11px] text-stone-600 mb-1.5">温度</label>
+              <input v-model.number="modelForm.temperature" type="number" min="0" max="2" step="0.1" class="w-full bg-surface border border-border focus:border-accent/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800 font-mono" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-stone-600 mb-1.5">Max Tokens</label>
+              <input v-model.number="modelForm.maxTokens" type="number" min="256" max="128000" step="256" class="w-full bg-surface border border-border focus:border-accent/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800 font-mono" />
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="checkbox" v-model="modelForm.isDefault" id="isDefault" class="rounded border-gray-600 text-blue-500" />
+            <label for="isDefault" class="text-[11px] text-stone-600">设为默认模型</label>
+          </div>
+        </div>
+        <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-border bg-surface">
+          <button @click="showModelModal = false" class="px-4 py-2 text-stone-600 hover:text-stone-800 text-[11px] font-medium transition-std">取消</button>
+          <button @click="saveModelConfig" class="px-5 py-2 bg-accent hover:bg-accentDim text-white rounded-lg text-[11px] font-medium shadow-sm transition-std">{{ editingModel ? '保存修改' : '创建配置' }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 弹窗: 延迟测试 ================= -->
+    <div v-if="showLatencyModal" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay" @click.self="showLatencyModal = false">
+      <div class="bg-card border border-border rounded-2xl shadow-popover w-full max-w-md mx-4 overflow-hidden" @click.stop>
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h3 class="font-bold text-stone-900 flex items-center gap-2"><span v-html="ico('bolt')"></span> 推理延迟测试</h3>
+          <button @click="showLatencyModal = false" class="text-stone-500 hover:text-stone-700 p-1" v-html="ico('x')"></button>
+        </div>
+        <div class="p-6 space-y-4">
+          <div class="bg-surface border border-border rounded-xl p-4">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-[11px] text-stone-600">模型: {{ testingModel?.name }}</span>
+              <span :class="['text-[10px] px-2 py-0.5 rounded-full font-mono', testingLatency < 500 ? 'bg-emerald-500/10 text-emerald-700' : testingLatency < 1000 ? 'bg-amber-500/10 text-amber-700' : 'bg-rose-500/10 text-rose-600']">
+                {{ testingLatency < 500 ? '优秀' : testingLatency < 1000 ? '良好' : '较慢' }}
+              </span>
+            </div>
+            <div class="text-center">
+              <div class="text-3xl font-bold font-mono" :class="testingLatency < 500 ? 'text-emerald-700' : testingLatency < 1000 ? 'text-amber-700' : 'text-rose-600'">
+                {{ testingLatency }}<span class="text-sm text-stone-500">ms</span>
+              </div>
+              <div class="text-[10px] text-stone-500 mt-1">首 Token 延迟 (TTFT) · 模拟</div>
+            </div>
+          </div>
+          <button @click="runLatencyTest" :disabled="isTesting"
+                  class="w-full py-2.5 bg-accent hover:bg-accentDim disabled:bg-stone-300 text-white rounded-lg text-[11px] font-medium transition">
+            {{ isTesting ? '测试中...' : testingComplete ? '重新测试' : '开始测试' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 弹窗: MCP JSON 粘贴导入 ================= -->
+    <div v-if="showMcpJsonModal" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay" @click.self="showMcpJsonModal = false">
+      <div class="bg-card border border-border rounded-2xl shadow-popover w-full max-w-lg mx-4 overflow-hidden" @click.stop>
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h3 class="font-bold text-stone-900 flex items-center gap-2"><span class="text-purple-700" v-html="ico('plug')"></span> JSON 粘贴导入</h3>
+          <button @click="showMcpJsonModal = false" class="text-stone-500 hover:text-stone-700 p-1" v-html="ico('x')"></button>
+        </div>
+        <div class="p-6 space-y-3">
+          <p class="text-[11px] text-stone-500 leading-relaxed">兼容 Claude Desktop / Cursor 的 <span class="font-mono text-stone-700">mcp.json</span>（<span class="font-mono text-stone-700">{"mcpServers": {...}}</span> 或内层对象均可），解析后批量合并进连接器，同名覆盖；<span class="font-mono text-stone-700">enabled: false</span> 导入后保持未连接，<span class="font-mono text-stone-700">env</span> 中 <span class="font-mono text-stone-700">${VAR}</span> 占位符经钥匙串注入。</p>
+          <textarea v-model="mcpJsonText" rows="12" spellcheck="false" class="w-full bg-surface border border-border focus:border-accent/50 rounded-lg px-3 py-2 text-[11px] font-mono outline-none text-stone-800 resize-none"></textarea>
+          <p v-if="mcpJsonError" class="text-[11px] text-rose-600 flex items-center gap-1.5"><span v-html="ico('alert')"></span> {{ mcpJsonError }}（未导入任何条目）</p>
+        </div>
+        <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-border bg-surface">
+          <button @click="showMcpJsonModal = false" class="px-4 py-2 text-stone-600 hover:text-stone-800 text-[11px] font-medium transition-std">取消</button>
+          <button @click="importMcpJson" class="px-5 py-2 bg-accent hover:bg-accentDim text-white rounded-lg text-[11px] font-medium shadow-sm transition-std">解析并导入</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 弹窗: 创建/编辑专家（Logo 上传 + 能力标签 + 绑定工具/Skills） ================= -->
+    <div v-if="showExpertModal" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay" @click.self="showExpertModal = false">
+      <div class="bg-card border border-border rounded-2xl shadow-popover w-full max-w-2xl mx-4 overflow-hidden" @click.stop>
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h3 class="font-bold text-stone-900 flex items-center gap-2"><span class="text-accent" v-html="ico('users')"></span> {{ editingExpert ? '编辑专家' : '创建专家' }}</h3>
+          <button @click="showExpertModal = false" class="text-stone-500 hover:text-stone-700 p-1" v-html="ico('x')"></button>
+        </div>
+        <div class="p-6 space-y-4 max-h-[62vh] overflow-y-auto">
+
+          <!-- Logo 上传 + 名称 / 描述 -->
+          <div class="flex items-start gap-4">
+            <div class="text-center shrink-0">
+              <div class="w-16 h-16 rounded-2xl overflow-hidden flex items-center justify-center text-3xl border border-border bg-surface">
+                <img v-if="expertForm.logo" :src="expertForm.logo" class="w-full h-full object-cover" />
+                <span v-else>{{ expertForm.emoji }}</span>
+              </div>
+              <label class="mt-1.5 inline-flex items-center gap-1 text-[10px] text-accent hover:text-blue-700 cursor-pointer transition-std">
+                <span v-html="ico('upload')"></span> 上传 Logo
+                <input type="file" accept="image/*" class="hidden" @change="handleExpertLogo" />
+              </label>
+              <div class="flex gap-0.5 justify-center mt-1 flex-wrap max-w-[100px]">
+                <button v-for="e in ['🧑‍💻','🧐','🧪','📦','🛡️','🎨','🚀','🤖']" :key="e" @click="expertForm.emoji = e; expertForm.logo = null"
+                        :class="['w-5 h-5 rounded text-[11px] transition-std', expertForm.emoji === e && !expertForm.logo ? 'bg-accent/15 border border-accent/40' : 'hover:bg-cardHover border border-transparent']">{{ e }}</button>
+              </div>
+            </div>
+            <div class="flex-1 space-y-3">
+              <div>
+                <label class="block text-[11px] text-stone-600 mb-1.5">专家名称 <span class="text-rose-600">*</span></label>
+                <input v-model="expertForm.name" placeholder="代码审查专家 / 测试工程师"
+                       class="w-full bg-surface border border-border focus:border-accent/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800 placeholder-stone-400" />
+              </div>
+              <div>
+                <label class="block text-[11px] text-stone-600 mb-1.5">一句话简介 <span class="text-stone-400">(展示在卡片上)</span></label>
+                <textarea v-model="expertForm.description" rows="2" placeholder="该专家的职责与适用场景..."
+                          class="w-full bg-surface border border-border focus:border-accent/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800 placeholder-stone-400 resize-none"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- 能力标签 -->
+          <div>
+            <label class="block text-[11px] text-stone-600 mb-1.5">能力标签 <span class="text-stone-400">(卡片展示，回车添加)</span></label>
+            <div class="flex flex-wrap gap-1.5 mb-2">
+              <span v-for="(t, i) in expertForm.tags" :key="t + i" class="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/25">
+                {{ t }}
+                <button @click="expertForm.tags.splice(i, 1)" class="hover:text-rose-600 transition-std">×</button>
+              </span>
+              <span v-if="!expertForm.tags.length" class="text-[10px] text-stone-400">暂无标签，可在下方输入后回车添加</span>
+            </div>
+            <div class="flex gap-2">
+              <input v-model="expertForm.tagInput" @keydown.enter.prevent="addExpertTag" placeholder="输入标签后回车，如：安全审计"
+                     class="flex-1 bg-surface border border-border focus:border-accent/50 rounded-lg px-3 py-1.5 text-[11px] outline-none text-stone-800 placeholder-stone-400" />
+              <button @click="addExpertTag" class="px-3 py-1.5 bg-surface hover:bg-cardHover border border-border rounded-lg text-[11px] text-stone-700 transition-std">添加</button>
+            </div>
+            <div class="flex flex-wrap gap-1 mt-2">
+              <button v-for="t in tagPresets.filter(p => !expertForm.tags.includes(p))" :key="t" @click="expertForm.tags.push(t)"
+                      class="text-[9px] px-1.5 py-0.5 rounded-full bg-surface hover:bg-cardHover text-stone-500 hover:text-accent border border-border transition-std">+ {{ t }}</button>
+            </div>
+          </div>
+
+          <!-- 人设提示词 -->
+          <div>
+            <label class="block text-[11px] text-stone-600 mb-1.5">专家人设 / System Prompt <span class="text-stone-400">(进入对话时注入)</span></label>
+            <textarea v-model="expertForm.persona" rows="2" placeholder="你是一名资深代码审查专家，擅长发现边界条件与安全隐患..."
+                      class="w-full bg-surface border border-border focus:border-accent/50 rounded-lg px-3 py-2 text-xs outline-none text-stone-800 placeholder-stone-400 resize-none font-mono leading-relaxed"></textarea>
+          </div>
+
+          <!-- 绑定工具（多选） -->
+          <div>
+            <label class="block text-[11px] text-stone-600 mb-1.5">绑定工具 <span class="text-stone-400">(多选 · 专家对话中仅能使用已勾选工具；MCP 需连接器已连接)</span></label>
+            <div class="flex flex-wrap gap-1.5">
+              <button v-for="t in builtinTools" :key="t.id" @click="toggleExpertItem(expertForm.tools, t.id)" :title="t.desc"
+                      :class="['inline-flex items-center gap-1.5 text-[10px] px-2.5 py-1.5 rounded-lg border font-mono transition-std', expertForm.tools.includes(t.id) ? 'bg-blue-500/10 border-blue-500/40 text-blue-700' : 'bg-card border-border text-stone-500 hover:border-borderLight']">
+                <span v-html="ico(t.icon)"></span>{{ t.id }}
+              </button>
+              <button v-for="m in connectedMcpNames" :key="'mcp:' + m" @click="toggleExpertItem(expertForm.tools, 'mcp:' + m)" title="MCP 连接器全部 Tools"
+                      :class="['inline-flex items-center gap-1.5 text-[10px] px-2.5 py-1.5 rounded-lg border font-mono transition-std', expertForm.tools.includes('mcp:' + m) ? 'bg-purple-500/10 border-purple-500/40 text-purple-700' : 'bg-card border-border text-stone-500 hover:border-borderLight']">
+                <span v-html="ico('plug')"></span>mcp:{{ m }}
+              </button>
+            </div>
+          </div>
+
+          <!-- 绑定 Skills（多选） -->
+          <div>
+            <label class="block text-[11px] text-stone-600 mb-1.5">绑定 Skills <span class="text-stone-400">(多选 · 来自技能管理，项目级优先于全局同名；置灰 = 已禁用)</span></label>
+            <div class="flex flex-wrap gap-1.5">
+              <button v-for="s in bindableSkills" :key="s.id" @click="toggleExpertItem(expertForm.skills, s.name)"
+                      :class="['inline-flex items-center gap-1.5 text-[10px] px-2.5 py-1.5 rounded-lg border font-mono transition-std', expertForm.skills.includes(s.name) ? 'bg-indigo-500/10 border-indigo-500/40 text-indigo-700' : 'bg-card border-border text-stone-500 hover:border-borderLight', !s.enabled ? 'opacity-50' : '']">
+                <span class="font-sans">{{ s.icon }}</span>/{{ s.name }}
+                <span class="text-[8px] font-sans" :class="s.scope === 'project' ? 'text-blue-600' : 'text-stone-400'">{{ s.scope === 'project' ? '项目' : '全局' }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-border bg-surface">
+          <button @click="showExpertModal = false" class="px-4 py-2 text-stone-600 hover:text-stone-800 text-[11px] font-medium transition-std">取消</button>
+          <button @click="saveExpert" class="px-5 py-2 bg-accent hover:bg-accentDim text-white rounded-lg text-[11px] font-medium shadow-sm transition-std">{{ editingExpert ? '保存修改' : '创建专家' }}</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const { createApp, ref, computed } = Vue
+
+    // ============ 线性图标库（替代 Emoji 的产品 UI 图标） ============
+    const svg = (d) => `<svg class="icon inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${d}"/></svg>`
+    const ICONS = {
+      bolt: svg('M13 10V3L4 14h7v7l9-11h-7z'),
+      search: svg('M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z'),
+      plus: svg('M12 4v16m8-8H4'),
+      bot: svg('M9 3v3m6-3v3M5 8h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2v-8a2 2 0 012-2zm4 5h.01M15 13h.01M9 17h6'),
+      sparkle: svg('M5 3v4M3 5h4M19 17v4m-2-2h4M12 5l1.9 4.6L18.5 11l-4.6 1.9L12 17.5l-1.9-4.6L5.5 11l4.6-1.4L12 5z'),
+      plug: svg('M8 7V3m8 4V3M5 11h14v4a5 5 0 01-5 5h-4a5 5 0 01-5-5v-4zM12 20v2'),
+      cpu: svg('M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m-2 6h2m14-6h2m-2 6h2M7 7h10v10H7V7zm3 3h4v4h-4v-4z'),
+      gear: svg('M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065zM15 12a3 3 0 11-6 0 3 3 0 016 0z'),
+      folder: svg('M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z'),
+      chat: svg('M8 10h.01M12 10h.01M16 10h.01M21 12a8 8 0 01-11.6 7.1L4 21l1.9-5.4A8 8 0 1121 12z'),
+      file: svg('M9 12h6m-6 4h6M9 2h6l5 5v13a2 2 0 01-2 2H7a2 2 0 01-2-2V4a2 2 0 012-2z'),
+      pencil: svg('M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z'),
+      terminal: svg('M8 9l3 3-3 3m5 0h3M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z'),
+      check: svg('M5 13l4 4L19 7'),
+      circle: svg('M12 21a9 9 0 110-18 9 9 0 010 18z'),
+      alert: svg('M12 9v2m0 4h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z'),
+      shield: svg('M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6l8-3z'),
+      diff: svg('M7 4v13a3 3 0 003 3h7M7 4L4 7m3-3l3 3m7 10v-7a3 3 0 00-3-3h-1m4 10l3-3m-3 3l-3-3'),
+      trash: svg('M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16'),
+      upload: svg('M7 16a4 4 0 01-.88-7.9A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M12 12v9m0-9l-3 3m3-3l3 3'),
+      clip: svg('M15.2 8.8l-6.4 6.4a2 2 0 01-2.8-2.8l7.8-7.8a4 4 0 015.6 5.6L11.6 18a6 6 0 01-8.4-8.4L9.5 3.3'),
+      send: svg('M14 5l7 7m0 0l-7 7m7-7H3'),
+      x: svg('M6 18L18 6M6 6l12 12'),
+      chart: svg('M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'),
+      users: svg('M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z')
+    }
+    const ico = (name) => ICONS[name] || ''
+
+    createApp({
+      setup() {
+        // ================= 基础状态 =================
+        const currentView = ref('assistant')   // assistant | skills | mcp | models | usage
+        const isChatActive = ref(false)
+        const agentMode = ref('Ask')          // 工作区默认权限：Plan | Ask | Auto
+        const chatMode = ref('agent')         // Chat（纯对话）| Agent（工具执行），Claude 同款切换
+        const inputText = ref('')
+        const showSkillMenu = ref(false)      // 输入 / 触发技能提及
+        const showMcpMenu = ref(false)        // 输入 # 触发 MCP 提及
+        const showFileMenu = ref(false)       // 输入 @ 触发文件提及
+        const showWsMenu = ref(false)         // 工作区文件夹选择
+        const showPermMenu = ref(false)       // 工作区默认权限选择
+        const activeSessionId = ref(null)
+        const searchQuery = ref('')
+        const skillScope = ref('all')
+        const mcpScope = ref('all')
+        const usageTab = ref('overview')
+        const recordFilterSession = ref('all')
+        const recordFilterTool = ref('all')
+
+        const permOptions = [
+          { v: 'Plan', d: '只读分析，不改文件、不执行命令' },
+          { v: 'Ask', d: '副作用操作均逐次确认（默认，推荐）' },
+          { v: 'Auto', d: '读文件 / 写工作区 / 低风险命令自动，高风险仍询问' }
+        ]
+
+        const navItems = [
+          { view: 'assistant', icon: 'bot', label: '编程助理' },
+          { view: 'experts', icon: 'users', label: '专家团' },
+          { view: 'skills', icon: 'sparkle', label: '技能 Skills' },
+          { view: 'mcp', icon: 'plug', label: 'MCP 连接器', badge: '2 连' },
+          { view: 'models', icon: 'cpu', label: '模型配置' },
+          { view: 'usage', icon: 'chart', label: '用量统计' }
+        ]
+
+        // ================= 代码空间：项目 → 会话 =================
+        const workspaces = ref([
+          {
+            name: 'auth-gateway', path: '~/projects/auth-gateway', open: true,
+            sessions: [
+              { id: 101, title: '修复 JWT Token 过期分支', time: '10分钟前' },
+              { id: 102, title: '添加 Redis Session 缓存', time: '2天前' }
+            ]
+          },
+          {
+            name: 'frontend-vue-app', path: '~/dev/frontend-vue-app', open: false,
+            sessions: [{ id: 201, title: '重构 Pinia 鉴权 Store', time: '昨天' }]
+          },
+          { name: 'python-scraper', path: '~/scripts/python-scraper', open: false, sessions: [] }
+        ])
+
+        const selectedWorkspacePath = ref(workspaces.value[0].path)
+        const currentWorkspace = ref(workspaces.value[0])
+
+        const allSessions = computed(() => workspaces.value.flatMap(ws => ws.sessions))
+
+        const quickPresets = ref([
+          { icon: 'search', label: '代码审查 /review' },
+          { icon: 'terminal', label: '运行测试 /test' },
+          { icon: 'check', label: 'Conventional 提交 /commit' },
+          { icon: 'plug', label: 'GitHub 提 Issue #github' }
+        ])
+
+        // ================= 会话消息（模拟完整回合：计划 → Trace → 总结） =================
+        const buildDemoMessages = (title) => ([
+          { role: 'user', content: title },
+          {
+            role: 'assistant',
+            skill: null,
+            intro: '我先分析认证流程，定位 token 校验的实现位置。',
+            plan: [
+              { text: '分析项目结构', done: true },
+              { text: '定位认证模块', done: true },
+              { text: '读取并修复 token 校验逻辑', done: true },
+              { text: '运行认证测试确认无回归', done: true }
+            ],
+            tools: [
+              { type: 'grep', query: 'verifyToken', result: '命中 2 个文件', detail: 'src/auth/token.ts:18: jwt.verify(rawToken, SECRET);\nsrc/routes/api.ts:42: checkAuthHeader(req);' },
+              { type: 'read', path: 'src/auth/token.ts', result: '34 行', detail: '已加载全文（12–34 行为校验函数）' },
+              { type: 'edit', file: 'src/auth/token.ts', summary: '+ 增加 token 过期校验，过期时抛出 TokenExpiredError', status: 'pending' },
+              { type: 'bash', cmd: 'npm run test:auth', resolved: false, decision: null, output: 'PASS src/auth/__tests__/token.test.ts\n  ✓ rejects expired token (3ms)\n  ✓ accepts valid token (1ms)\nTests: 2 passed, 2 total' },
+              { type: 'mcp', server: 'github', tool: 'create_issue', resolved: false, summary: '创建 Issue「登录偶发 401：token 过期未校验」并附上本次修复摘要', resultText: 'issue #128 已创建' }
+            ],
+            text: '已定位问题：token 校验只判断了存在性，未校验过期时间。修改已生成 Diff（右侧可审阅），并准备运行认证测试与在 GitHub 登记 Issue（均需你确认）。'
+          }
+        ])
+
+        const activeMessages = ref([])
+
+        // ================= 右栏：代码 / Diff 工作台 =================
+        const codePanel = ref({ visible: false, tab: 'files' })
+
+        const diffData = ref({
+          file: 'src/auth/token.ts',
+          state: 'pending',   // pending | accepted | reverted
+          lines: [
+            { no: 16, text: 'export function verifyToken(rawToken: string) {' },
+            { no: 17, type: 'del', text: '-  if (!token) throw new Error("Unauthorized");' },
+            { no: 17, type: 'add', text: '+  if (!token || isExpired(token)) throw new TokenExpiredError();' },
+            { no: 18, text: '  return jwt.verify(rawToken, SECRET);' },
+            { no: 19, text: '}' }
+          ]
+        })
+
+        const codeLines = ref([
+          { t: "import jwt from 'jsonwebtoken';" },
+          { t: "import { SECRET } from '../config';" },
+          { t: '' },
+          { t: 'export function verifyToken(rawToken: string) {' },
+          { t: '  const token = rawToken?.trim();', hl: true },
+          { t: '  if (!token || isExpired(token)) throw new TokenExpiredError();', hl: true },
+          { t: '  return jwt.verify(rawToken, SECRET);' },
+          { t: '}' }
+        ])
+
+        const fileTree = ref([
+          { name: 'auth-gateway', dir: true, depth: 0 },
+          { name: 'src', dir: true, depth: 1 },
+          { name: 'auth', dir: true, depth: 2 },
+          { name: 'token.ts', depth: 3, modified: true },
+          { name: 'session.ts', depth: 3 },
+          { name: 'routes', dir: true, depth: 2 },
+          { name: 'api.ts', depth: 3 },
+          { name: 'package.json', depth: 1 }
+        ])
+
+        const openDiff = (tool) => { codePanel.value = { visible: true, tab: 'diff' } }
+        const openCode = () => { codePanel.value = { visible: true, tab: 'code' } }
+
+        const acceptDiff = () => {
+          diffData.value.state = 'accepted'
+          syncEditToolStatus('accepted')
+        }
+        const revertDiff = () => {
+          diffData.value.state = 'reverted'
+          syncEditToolStatus('reverted')
+        }
+        const syncEditToolStatus = (status) => {
+          activeMessages.value.forEach(m => {
+            if (m.role !== 'assistant') return
+            m.tools?.forEach(t => { if (t.type === 'edit') t.status = status })
+          })
+        }
+
+        const resolveBash = (tool, decision) => {
+          tool.resolved = true
+          tool.decision = decision
+        }
+
+        // ================= Skills（全局 / 项目两级） =================
+        const skills = ref([
+          { id: 1, name: 'review', icon: '🔍', scope: 'global', description: '按清单检查边界条件与安全策略，生成代码审查报告', version: '1.2.0', updatedAt: '2026-08-20', enabled: true, content: '# 代码审查技能\n\n1. 用 git diff / grep 了解变更范围\n2. 按清单检查：边界条件、错误处理、测试\n3. 输出：问题列表 + 建议修改' },
+          { id: 2, name: 'test', icon: '🧪', scope: 'global', description: '自动定位并运行相关单元测试，输出覆盖率报告', version: '1.1.0', updatedAt: '2026-08-18', enabled: true, content: '# 测试执行技能\n\n自动定位并运行相关单测' },
+          { id: 3, name: 'commit', icon: '📦', scope: 'global', description: '根据代码变更生成符合 Conventional Commits 规范的提交消息', version: '1.0.0', updatedAt: '2026-08-12', enabled: true, content: '# Commit 生成技能\n\n生成规范的 Git Commit 消息' },
+          { id: 4, name: 'review', icon: '🛡️', scope: 'project', description: '项目定制版审查：额外检查 JWT 处理与 Redis 会话一致性（覆盖全局同名）', version: '0.3.0', updatedAt: '2026-08-26', enabled: true, content: '# 项目代码审查技能（auth-gateway）\n\n1. 检查 JWT 过期/刷新处理路径\n2. 校验 Redis session 与 token 声明一致' },
+          { id: 5, name: 'deploy-check', icon: '🚀', scope: 'project', description: '部署前检查：环境变量、依赖锁定、构建产物体积', version: '0.1.0', updatedAt: '2026-08-25', enabled: false, content: '# 部署前检查技能' }
+        ])
+
+        const enabledSkills = computed(() => skills.value.filter(s => s.enabled))
+
+        const filteredSkills = computed(() => {
+          let list = skills.value
+          if (skillScope.value !== 'all') list = list.filter(s => s.scope === skillScope.value)
+          if (searchQuery.value) {
+            const q = searchQuery.value.toLowerCase()
+            list = list.filter(s => s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q))
+          }
+          return list
+        })
+
+        // ================= MCP（含 Tools 发现） =================
+        const mcpConnectors = ref([
+          {
+            id: 1, name: 'github', type: 'stdio', icon: '🐙', status: 'connected', showTools: false,
+            description: 'GitHub API 连接器，支持 Issue、PR、仓库操作',
+            command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'],
+            tools: [
+              { name: 'create_issue', desc: '在指定仓库创建 Issue' },
+              { name: 'create_pull_request', desc: '创建 Pull Request' },
+              { name: 'search_repositories', desc: '搜索仓库' },
+              { name: 'list_commits', desc: '列出提交历史' },
+              { name: 'get_file_contents', desc: '读取仓库文件内容' },
+              { name: 'create_branch', desc: '创建分支' }
+            ]
+          },
+          {
+            id: 2, name: 'filesystem', type: 'stdio', icon: '📁', status: 'connected', showTools: false,
+            description: '受限目录的文件系统访问',
+            command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '/allowed/path'],
+            tools: [
+              { name: 'read_file', desc: '读取文件' },
+              { name: 'list_directory', desc: '列目录' },
+              { name: 'search_files', desc: '文件搜索' }
+            ]
+          },
+          { id: 3, name: 'blender', type: 'stdio', icon: '🎨', status: 'disconnected', showTools: false, description: 'Blender 3D 建模软件集成', command: 'cmd', args: ['/c', 'uvx', 'blender-mcp'], tools: [] },
+          { id: 4, name: 'postgres', type: 'stdio', icon: '🐘', status: 'disconnected', showTools: false, description: 'PostgreSQL 查询与 schema 管理', command: 'npx', args: ['-y', '@modelcontextprotocol/server-postgres'], tools: [] },
+          { id: 5, name: 'remote-api', type: 'sse', icon: '📡', status: 'disconnected', showTools: false, description: '远程 SSE 服务端点', url: 'http://localhost:3000/sse', tools: [] }
+        ])
+
+        const filteredMcps = computed(() => {
+          let list = mcpConnectors.value
+          if (mcpScope.value !== 'all') list = list.filter(m => m.status === mcpScope.value)
+          if (searchQuery.value) {
+            const q = searchQuery.value.toLowerCase()
+            list = list.filter(m => m.name.toLowerCase().includes(q) || m.description.toLowerCase().includes(q))
+          }
+          return list
+        })
+
+        const mcpSummary = computed(() =>
+          mcpConnectors.value.filter(m => m.status === 'connected').map(m => `${m.name}(${m.tools.length})`).join(', ') || '无'
+        )
+
+        const toggleMcpConnection = (mcp) => {
+          if (mcp.status === 'connected') {
+            mcp.status = 'disconnected'
+            mcp.showTools = false
+          } else {
+            mcp.status = 'connected'
+            if (!mcp.tools.length) mcp.tools = [{ name: 'ping', desc: '连通性探测（示例工具）' }]
+          }
+        }
+
+        // ================= 专家团（人设卡片 + 绑定工具/Skills + 专属会话，参考 WorkBuddy） =================
+        const builtinTools = [
+          { id: 'read', icon: 'file', desc: '读取文件内容' },
+          { id: 'grep', icon: 'search', desc: '检索代码内容' },
+          { id: 'glob', icon: 'folder', desc: '按文件名找文件' },
+          { id: 'edit', icon: 'pencil', desc: '编辑文件（Diff 审阅）' },
+          { id: 'write', icon: 'file', desc: '写入新文件' },
+          { id: 'bash', icon: 'terminal', desc: '执行命令（经 Permission Gate）' }
+        ]
+        const tagPresets = ['代码审查', '单元测试', '安全审计', '重构', 'Git 提交', '性能优化', '文档撰写', '需求分析']
+
+        const experts = ref([
+          { id: 1, name: '代码审查专家', emoji: '🧐', logo: null, description: '按清单审查代码质量、边界条件与安全隐患，输出结构化审查报告', tags: ['代码审查', '质量门禁', '重构建议'], persona: '你是一名资深代码审查专家，关注边界条件、错误处理与安全隐患，输出问题清单与修改建议。', tools: ['read', 'grep', 'glob'], skills: ['review'], messages: null, sessionCount: 0 },
+          { id: 2, name: '测试工程师', emoji: '🧪', logo: null, description: '定位变更影响面，自动生成并运行单元测试，输出覆盖率与回归结果', tags: ['单元测试', '覆盖率', '回归验证'], persona: '你是一名测试工程师，优先补齐边界用例与回归测试。', tools: ['read', 'grep', 'edit', 'bash'], skills: ['test'], messages: null, sessionCount: 0 },
+          { id: 3, name: '发布管家', emoji: '📦', logo: null, description: '生成 Conventional Commits 提交信息，经 GitHub MCP 创建 PR 与登记 Issue', tags: ['Git 提交', 'PR', '发布'], persona: '你是一名发布管家，规范提交信息并跟踪发布事项。', tools: ['read', 'bash', 'mcp:github'], skills: ['commit'], messages: null, sessionCount: 0 }
+        ])
+
+        const filteredExperts = computed(() => {
+          if (!searchQuery.value) return experts.value
+          const q = searchQuery.value.toLowerCase()
+          return experts.value.filter(e => e.name.toLowerCase().includes(q) || e.description.toLowerCase().includes(q) || e.tags.some(t => t.toLowerCase().includes(q)))
+        })
+
+        const activeExpert = ref(null)
+        const connectedMcpNames = computed(() => mcpConnectors.value.filter(m => m.status === 'connected').map(m => m.name))
+        // 可绑定 Skills：按技能名去重，项目级覆盖全局同名（与技能管理的优先级语义一致）
+        const bindableSkills = computed(() => {
+          const byName = new Map()
+          skills.value.forEach(s => {
+            const prev = byName.get(s.name)
+            if (!prev || (s.scope === 'project' && prev.scope !== 'project')) byName.set(s.name, s)
+          })
+          return [...byName.values()]
+        })
+
+        const showExpertModal = ref(false)
+        const editingExpert = ref(null)
+        const expertForm = ref({ name: '', emoji: '🧑‍💻', logo: null, description: '', persona: '', tags: [], tagInput: '', tools: [], skills: [] })
+
+        const openExpertModal = (ex) => {
+          editingExpert.value = ex
+          expertForm.value = ex
+            ? { name: ex.name, emoji: ex.emoji, logo: ex.logo, description: ex.description, persona: ex.persona || '', tags: [...ex.tags], tagInput: '', tools: [...ex.tools], skills: [...ex.skills] }
+            : { name: '', emoji: '🧑‍💻', logo: null, description: '', persona: '', tags: [], tagInput: '', tools: [], skills: [] }
+          showExpertModal.value = true
+        }
+        const addExpertTag = () => {
+          const t = expertForm.value.tagInput.trim()
+          if (t && !expertForm.value.tags.includes(t)) expertForm.value.tags.push(t)
+          expertForm.value.tagInput = ''
+        }
+        const toggleExpertItem = (list, id) => {
+          const i = list.indexOf(id)
+          if (i === -1) list.push(id); else list.splice(i, 1)
+        }
+        // Logo 上传：FileReader 转 dataURL，卡片与会话头像即时生效（原型不落盘）
+        const handleExpertLogo = (event) => {
+          const file = event.target.files[0]
+          if (!file) return
+          if (!file.type.startsWith('image/')) { alert('请上传图片文件（PNG / JPG / SVG / GIF）'); return }
+          const reader = new FileReader()
+          reader.onload = () => { expertForm.value.logo = reader.result }
+          reader.readAsDataURL(file)
+          event.target.value = ''
+        }
+        const saveExpert = () => {
+          if (!expertForm.value.name.trim()) { alert('请输入专家名称'); return }
+          const data = { name: expertForm.value.name.trim(), emoji: expertForm.value.emoji, logo: expertForm.value.logo, description: expertForm.value.description, persona: expertForm.value.persona, tags: [...expertForm.value.tags], tools: [...expertForm.value.tools], skills: [...expertForm.value.skills] }
+          if (editingExpert.value) {
+            const idx = experts.value.findIndex(e => e.id === editingExpert.value.id)
+            if (idx !== -1) experts.value[idx] = { ...experts.value[idx], ...data }
+          } else {
+            experts.value.push({ id: Date.now(), messages: null, sessionCount: 0, ...data })
+          }
+          showExpertModal.value = false
+        }
+        const deleteExpert = (ex) => {
+          if (confirm(`确定删除专家「${ex.name}」吗？其会话缓存将一并删除。`)) {
+            experts.value = experts.value.filter(e => e.id !== ex.id)
+            if (activeExpert.value && activeExpert.value.id === ex.id) closeExpertChat()
+          }
+        }
+
+        // 专家专属会话：复用场景 B 的完整对话流（计划 → Tool Trace → Diff → 总结）
+        const openExpertChat = (ex) => {
+          activeExpert.value = ex
+          isChatActive.value = true
+          currentView.value = 'experts'
+          activeSessionId.value = null
+          codePanel.value = { visible: false, tab: 'files' }
+          diffData.value.state = 'pending'
+          if (ex.messages && ex.messages.length) {
+            activeMessages.value = ex.messages
+          } else {
+            activeMessages.value = [{
+              role: 'assistant',
+              skill: null,
+              intro: `你好，我是「${ex.name}」。${ex.description}`,
+              tools: [],
+              text: `已绑定工具：${ex.tools.join('、') || '无'}；可用 Skills：${ex.skills.map(s => '/' + s).join(' ') || '无'}。直接描述你的需求，我会在授权范围内完成。`
+            }]
+          }
+        }
+        const closeExpertChat = () => {
+          if (activeExpert.value) activeExpert.value.messages = activeMessages.value
+          activeExpert.value = null
+          isChatActive.value = false
+          activeMessages.value = []
+        }
+
+        // 导航切换：离开专家视图时自动存档并退出专家会话（避免与主界面串会话）
+        const goView = (view) => {
+          if (view !== 'experts' && activeExpert.value) closeExpertChat()
+          currentView.value = view
+        }
+
+        // ================= 模型配置（密钥仅掩码） =================
+        const modelConfigs = ref([
+          { id: 1, name: 'DeepSeek-V3', provider: 'deepseek', modelId: 'deepseek-chat', keyMask: 'sk-••••••••••••••8F2A', baseUrl: 'https://api.deepseek.com/v1', temperature: 0.7, maxTokens: 4096, isDefault: true, latency: 320 },
+          { id: 2, name: 'GPT-4o', provider: 'openai', modelId: 'gpt-4o', keyMask: 'sk-••••••••••••••D91C', baseUrl: '', temperature: 0.5, maxTokens: 8192, isDefault: false, latency: 580 },
+          { id: 3, name: 'Claude 3.5 Sonnet', provider: 'anthropic', modelId: 'claude-3-5-sonnet', keyMask: 'sk-••••••••••••••3B77', baseUrl: '', temperature: 0.6, maxTokens: 8192, isDefault: false, latency: 720 }
+        ])
+
+        const resetApiKey = (model) => {
+          alert(`重新设置 ${model.name} 的 API Key\n\n（模拟：打开系统级密钥录入，经 safeStorage 加密保存，界面只显示掩码）`)
+        }
+
+        // ================= 执行记录 =================
+        const records = ref([
+          { time: '08-28 10:22', session: '修复 JWT Token 过期分支', tool: 'mcp', target: 'github/create_issue', risk: 'NETWORK', ok: false, cost: '—' },
+          { time: '08-28 10:22', session: '修复 JWT Token 过期分支', tool: 'bash', target: 'npm run test:auth', risk: 'EXEC', ok: false, cost: '—' },
+          { time: '08-28 10:21', session: '修复 JWT Token 过期分支', tool: 'edit', target: 'src/auth/token.ts', risk: 'WRITE', ok: true, cost: '18ms' },
+          { time: '08-28 10:21', session: '修复 JWT Token 过期分支', tool: 'read', target: 'src/auth/token.ts', risk: 'READ', ok: true, cost: '6ms' },
+          { time: '08-28 10:21', session: '修复 JWT Token 过期分支', tool: 'grep', target: 'verifyToken', risk: 'READ', ok: true, cost: '42ms' },
+          { time: '08-27 16:05', session: '添加 Redis Session 缓存', tool: 'bash', target: 'npm i ioredis', risk: 'EXEC', ok: true, cost: '8.3s' },
+          { time: '08-27 16:03', session: '添加 Redis Session 缓存', tool: 'grep', target: 'session', risk: 'READ', ok: true, cost: '35ms' },
+          { time: '08-27 15:40', session: '重构 Pinia 鉴权 Store', tool: 'edit', target: 'src/stores/auth.ts', risk: 'WRITE', ok: true, cost: '21ms' }
+        ])
+
+        const filteredRecords = computed(() => records.value.filter(r =>
+          (recordFilterSession.value === 'all' || r.session === recordFilterSession.value) &&
+          (recordFilterTool.value === 'all' || r.tool === recordFilterTool.value)
+        ))
+
+        // ================= 用量统计（替代原设置页：Token 消耗 / 工具分布 / 执行记录） =================
+        const usageDaily = ref([
+          { day: '08-22', tokens: 18400 },
+          { day: '08-23', tokens: 26100 },
+          { day: '08-24', tokens: 12800 },
+          { day: '08-25', tokens: 40800 },
+          { day: '08-26', tokens: 22500 },
+          { day: '08-27', tokens: 31200 },
+          { day: '08-28', tokens: 24200 }
+        ])
+        const usageByModel = ref([
+          { name: 'DeepSeek-V3', provider: 'DeepSeek', reqs: 86, input: 96200, output: 24800, cacheRead: 61800, cost: 0.42 },
+          { name: 'GPT-4o', provider: 'OpenAI', reqs: 21, input: 30100, output: 8600, cacheRead: 18400, cost: 1.86 },
+          { name: 'Claude 3.5 Sonnet', provider: 'Anthropic', reqs: 9, input: 12400, output: 4100, cacheRead: 9300, cost: 0.94 }
+        ])
+        const usageByTool = ref([
+          { tool: 'grep', count: 34 },
+          { tool: 'read', count: 28 },
+          { tool: 'edit', count: 12 },
+          { tool: 'bash', count: 9 },
+          { tool: 'mcp', count: 6 }
+        ])
+        const usageTotals = computed(() => ({
+          tokens: usageByModel.value.reduce((s, m) => s + m.input + m.output, 0),
+          cost: usageByModel.value.reduce((s, m) => s + m.cost, 0),
+          calls: usageByTool.value.reduce((s, t) => s + t.count, 0),
+          sessions: allSessions.value.length,
+          cacheSaved: usageByModel.value.reduce((s, m) => s + m.cacheRead, 0),
+          cacheHit: Math.round(usageByModel.value.reduce((s, m) => s + m.cacheRead, 0) / usageByModel.value.reduce((s, m) => s + m.input, 0) * 100)
+        }))
+        const maxDaily = computed(() => Math.max(...usageDaily.value.map(d => d.tokens)))
+        const fmtK = (n) => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n)
+
+        // ================= MCP JSON 粘贴导入（兼容 Claude Desktop mcp.json） =================
+        const showMcpJsonModal = ref(false)
+        const mcpJsonError = ref('')
+        const mcpJsonText = ref(`{
+  "mcpServers": {
+    "filesystem-extra": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/allowed/path"],
+      "enabled": true
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_TOKEN": "\${GITHUB_TOKEN}" },
+      "enabled": false
+    }
+  }
+}`)
+
+        const importMcpJson = () => {
+          mcpJsonError.value = ''
+          let parsed
+          try { parsed = JSON.parse(mcpJsonText.value) }
+          catch (e) { mcpJsonError.value = 'JSON 解析失败：' + e.message; return }
+          const servers = parsed.mcpServers || parsed
+          if (!servers || typeof servers !== 'object' || Array.isArray(servers)) { mcpJsonError.value = '未找到 mcpServers 对象'; return }
+          const entries = Object.entries(servers)
+          if (!entries.length) { mcpJsonError.value = 'mcpServers 为空'; return }
+          let added = 0, updated = 0
+          entries.forEach(([name, cfg]) => {
+            const type = cfg.url ? 'sse' : 'stdio'
+            const enabled = cfg.enabled !== false
+            const existing = mcpConnectors.value.find(m => m.name === name)
+            if (existing) {
+              Object.assign(existing, { type, command: cfg.command || existing.command, args: cfg.args || existing.args, status: enabled ? 'connected' : 'disconnected' })
+              updated++
+            } else {
+              mcpConnectors.value.push({
+                id: Date.now() + added, name, type, icon: '🔌', status: enabled ? 'connected' : 'disconnected', showTools: false,
+                description: `由 JSON 导入 · ${type.toUpperCase()} server${cfg.env ? ' · env 占位符经钥匙串注入' : ''}`,
+                command: cfg.command || '', args: cfg.args || [],
+                tools: enabled ? [{ name: 'tools/list', desc: '连接后自动发现的 Tools 占位' }] : []
+              })
+              added++
+            }
+          })
+          alert(`导入完成：新增 ${added} 个，同名覆盖 ${updated} 个（enabled 的已自动连接）`)
+          showMcpJsonModal.value = false
+        }
+
+        const riskBadge = (risk) => ({
+          READ: 'bg-blue-50 text-blue-700 border border-blue-200',
+          WRITE: 'bg-indigo-50 text-indigo-700 border border-indigo-200',
+          EXEC: 'bg-amber-50 text-amber-700 border border-amber-200',
+          NETWORK: 'bg-purple-50 text-purple-700 border border-purple-200',
+          DANGEROUS: 'bg-rose-50 text-rose-600 border border-rose-200'
+        }[risk] || 'bg-stone-100 text-stone-600 border border-stone-300')
+
+        // ================= 弹窗状态 =================
+        const showSkillModal = ref(false)
+        const editingSkill = ref(null)
+        const skillForm = ref({ name: '', description: '', content: '', version: '1.0.0', scope: 'project', enabled: true })
+        const showSkillMdModal = ref(false)
+        const previewSkill = ref(null)
+
+        const openSkillModal = (skill) => {
+          editingSkill.value = skill
+          skillForm.value = skill ? { ...skill } : { name: '', description: '', content: '', version: '1.0.0', scope: 'project', enabled: true }
+          showSkillModal.value = true
+        }
+        const saveSkill = () => {
+          if (!skillForm.value.name) { alert('请输入技能名称'); return }
+          if (editingSkill.value) {
+            const idx = skills.value.findIndex(s => s.id === editingSkill.value.id)
+            if (idx !== -1) skills.value[idx] = { ...skills.value[idx], ...skillForm.value, updatedAt: '2026-08-28' }
+          } else {
+            skills.value.push({ id: Date.now(), icon: '✨', updatedAt: '2026-08-28', ...skillForm.value })
+          }
+          showSkillModal.value = false
+        }
+        const deleteSkill = (skill) => {
+          if (confirm(`确定删除技能 /${skill.name}（${skill.scope === 'project' ? '项目' : '全局'}）吗？`)) {
+            skills.value = skills.value.filter(s => s.id !== skill.id)
+          }
+        }
+        const viewSkillMd = (skill) => { previewSkill.value = skill; showSkillMdModal.value = true }
+
+        const handleZipUpload = (event) => {
+          const file = event.target.files[0]
+          if (file) {
+            alert(`导入技能包：${file.name}\n\n（模拟）解包并校验 SKILL.md frontmatter 成功，新增 1 个技能。`)
+            skills.value.push({ id: Date.now(), name: 'deploy', icon: '🚀', scope: 'global', description: '自动部署应用到指定环境', version: '1.0.0', updatedAt: '2026-08-28', enabled: true, content: '# 部署技能' })
+          }
+        }
+
+        const showMcpModal = ref(false)
+        const editingMcp = ref(null)
+        const mcpForm = ref({ name: '', description: '', type: 'stdio', command: 'npx', argsText: '', url: '', envJson: '' })
+
+        const openMcpModal = (mcp) => {
+          editingMcp.value = mcp
+          mcpForm.value = mcp
+            ? { name: mcp.name, description: mcp.description, type: mcp.type, command: mcp.command || 'npx', argsText: (mcp.args || []).join('\n'), url: mcp.url || '', envJson: '' }
+            : { name: '', description: '', type: 'stdio', command: 'npx', argsText: '', url: '', envJson: '' }
+          showMcpModal.value = true
+        }
+        const saveMcp = () => {
+          if (!mcpForm.value.name) { alert('请输入连接器名称'); return }
+          if (mcpForm.value.type === 'stdio' && !mcpForm.value.command) { alert('stdio 类型需要启动命令'); return }
+          if (mcpForm.value.type !== 'stdio' && !mcpForm.value.url) { alert('SSE/HTTP 类型需要端点 URL'); return }
+          const data = {
+            name: mcpForm.value.name, description: mcpForm.value.description, type: mcpForm.value.type,
+            command: mcpForm.value.command, args: mcpForm.value.argsText.split('\n').filter(a => a.trim()), url: mcpForm.value.url
+          }
+          if (editingMcp.value) {
+            const idx = mcpConnectors.value.findIndex(m => m.id === editingMcp.value.id)
+            if (idx !== -1) mcpConnectors.value[idx] = { ...mcpConnectors.value[idx], ...data }
+          } else {
+            mcpConnectors.value.push({ id: Date.now(), icon: mcpForm.value.type === 'stdio' ? '💻' : mcpForm.value.type === 'sse' ? '📡' : '🌐', status: 'disconnected', showTools: false, tools: [], ...data })
+          }
+          showMcpModal.value = false
+        }
+        const deleteMcp = (mcp) => {
+          if (confirm(`确定删除连接器 ${mcp.name} 吗？`)) mcpConnectors.value = mcpConnectors.value.filter(m => m.id !== mcp.id)
+        }
+
+        const showModelModal = ref(false)
+        const editingModel = ref(null)
+        const modelForm = ref({ name: '', provider: 'deepseek', modelId: '', apiKeyInput: '', baseUrl: '', temperature: 0.7, maxTokens: 4096, isDefault: false })
+
+        const openModelModal = (model) => {
+          editingModel.value = model
+          modelForm.value = model
+            ? { ...model, apiKeyInput: '' }
+            : { name: '', provider: 'deepseek', modelId: '', apiKeyInput: '', baseUrl: '', temperature: 0.7, maxTokens: 4096, isDefault: false }
+          showModelModal.value = true
+        }
+        const saveModelConfig = () => {
+          if (!modelForm.value.name || !modelForm.value.modelId) { alert('请填写名称与模型 ID'); return }
+          if (!editingModel.value && !modelForm.value.apiKeyInput) { alert('新模型需要填写 API Key'); return }
+          const keyMask = 'sk-••••••••••••••' + Math.random().toString(16).slice(2, 6).toUpperCase()
+          const data = { name: modelForm.value.name, provider: modelForm.value.provider, modelId: modelForm.value.modelId, baseUrl: modelForm.value.baseUrl, temperature: modelForm.value.temperature, maxTokens: modelForm.value.maxTokens, isDefault: modelForm.value.isDefault }
+          if (modelForm.value.isDefault) modelConfigs.value.forEach(m => m.isDefault = false)
+          if (editingModel.value) {
+            const idx = modelConfigs.value.findIndex(m => m.id === editingModel.value.id)
+            if (idx !== -1) modelConfigs.value[idx] = { ...modelConfigs.value[idx], ...data, keyMask: modelForm.value.apiKeyInput ? keyMask : modelConfigs.value[idx].keyMask }
+          } else {
+            modelConfigs.value.push({ id: Date.now(), keyMask, latency: 0, ...data })
+          }
+          showModelModal.value = false
+        }
+        const deleteModelConfig = (model) => {
+          if (confirm(`确定删除模型配置 ${model.name} 吗？`)) modelConfigs.value = modelConfigs.value.filter(m => m.id !== model.id)
+        }
+
+        const showLatencyModal = ref(false)
+        const testingModel = ref(null)
+        const testingLatency = ref(0)
+        const isTesting = ref(false)
+        const testingComplete = ref(false)
+
+        const testModelLatency = (model) => {
+          testingModel.value = model
+          testingLatency.value = model.latency
+          testingComplete.value = false
+          showLatencyModal.value = true
+        }
+        const runLatencyTest = () => {
+          isTesting.value = true
+          setTimeout(() => {
+            testingLatency.value = Math.floor(Math.random() * 800) + 200
+            isTesting.value = false
+            testingComplete.value = true
+            if (testingModel.value) {
+              const idx = modelConfigs.value.findIndex(m => m.id === testingModel.value.id)
+              if (idx !== -1) modelConfigs.value[idx].latency = testingLatency.value
+            }
+          }, 1500)
+        }
+
+        // ================= 交互动作 =================
+        // 快捷键提及：@ 选文件、# 调 MCP、/ 调技能（输入最后一个字符为触发符时弹出）
+        const mentionFiles = ref([
+          { path: 'src/auth/token.ts', modified: true },
+          { path: 'src/auth/session.ts' },
+          { path: 'src/routes/api.ts' },
+          { path: 'package.json' },
+          { path: 'AGENTS.md' }
+        ])
+        const handleInput = () => {
+          const t = inputText.value
+          showSkillMenu.value = t.endsWith('/')
+          showMcpMenu.value = t.endsWith('#')
+          showFileMenu.value = t.endsWith('@')
+        }
+        const selectSkill = (name) => { inputText.value = inputText.value.replace(/\/$/, `/${name} `); showSkillMenu.value = false }
+        const selectMcp = (name) => { inputText.value = inputText.value.replace(/#$/, `#${name} `); showMcpMenu.value = false }
+        const selectFile = (path) => { inputText.value = inputText.value.replace(/@$/, `@${path} `); showFileMenu.value = false }
+        const pickWorkspace = (ws) => {
+          currentWorkspace.value = ws
+          selectedWorkspacePath.value = ws.path
+          showWsMenu.value = false
+        }
+        const applyPreset = (preset) => { inputText.value = `${preset.label} 并对当前工作区进行诊断` }
+
+        const resetToHome = () => {
+          isChatActive.value = false
+          activeSessionId.value = null
+          activeExpert.value = null
+          inputText.value = ''
+          currentView.value = 'assistant'
+        }
+
+        const openSession = (session, ws) => {
+          activeExpert.value = null
+          currentWorkspace.value = ws
+          selectedWorkspacePath.value = ws.path
+          activeSessionId.value = session.id
+          isChatActive.value = true
+          currentView.value = 'assistant'
+          codePanel.value = { visible: session.id === 101, tab: session.id === 101 ? 'files' : 'files' }
+          diffData.value.state = 'pending'
+          activeMessages.value = buildDemoMessages(session.title)
+        }
+
+        const newSessionIn = (ws) => {
+          const title = prompt('新会话主题：', '新的开发需求')
+          if (!title) return
+          const s = { id: Date.now(), title, time: '刚刚' }
+          ws.sessions.push(s)
+          ws.open = true
+          openSession(s, ws)
+        }
+
+        const submitTask = () => {
+          if (!inputText.value.trim()) return
+          // 专家会话：在绑定工具 / Skills 范围内追加式模拟回复（复用主界面对话流 UI）
+          if (activeExpert.value && currentView.value === 'experts') {
+            const ex = activeExpert.value
+            const text = inputText.value
+            const mcpTool = ex.tools.find(t => t.startsWith('mcp:'))
+            const mockTool = ex.tools.includes('bash')
+              ? { type: 'bash', cmd: '(模拟) 在专家授权范围内执行命令', resolved: true, decision: 'once', output: '(模拟输出) exit 0 · 命令执行成功' }
+              : ex.tools.includes('edit')
+                ? { type: 'edit', file: 'expert-suggestion.md', summary: '(模拟) 专家生成修改建议，右侧 Diff 可审阅', status: 'pending' }
+                : { type: 'grep', query: text.slice(0, 32), result: '命中相关代码', detail: `（模拟）${ex.name} 使用只读工具分析请求。` }
+            activeMessages.value = [
+              ...activeMessages.value,
+              { role: 'user', content: text },
+              {
+                role: 'assistant',
+                skill: ex.skills[0] || null,
+                intro: `（专家 · ${ex.name}）收到，我将使用绑定的工具处理：${ex.tools.join('、') || '无'}。`,
+                plan: [
+                  { text: `加载人设${ex.skills.length ? '与 Skill ' + ex.skills.map(s => '/' + s).join(' ') : ''}`, done: true },
+                  { text: '调用绑定工具分析与执行', done: false },
+                  { text: '输出专家结论', done: false }
+                ],
+                tools: [
+                  mockTool,
+                  ...(mcpTool ? [{ type: 'mcp', server: mcpTool.slice(4), tool: 'invoke', resolved: false, summary: '(模拟) 专家调用绑定的 MCP 连接器，网络操作仍需确认', resultText: '调用成功' }] : [])
+                ],
+                text: `（模拟）${ex.name} 正在基于人设与绑定能力生成专业回复；未绑定的工具不会出现在本会话中。`
+              }
+            ]
+            ex.messages = activeMessages.value
+            ex.sessionCount = (ex.sessionCount || 0) + 1
+            inputText.value = ''
+            return
+          }
+          isChatActive.value = true
+          currentView.value = 'assistant'
+          const text = inputText.value
+          // Chat 模式：纯对话，不进入 Agent Loop、不调用工具
+          if (chatMode.value === 'chat') {
+            activeMessages.value = [
+              { role: 'user', content: text },
+              { role: 'assistant', intro: '（Chat 模式 · 纯对话，不调用工具、不改文件）这个问题我直接回答：建议先明确目标与约束，再决定是否进入执行。需要我操作当前工作区（读码 / 改码 / 跑命令 / MCP）时，请在输入框切换到 Agent 模式。' }
+            ]
+            inputText.value = ''
+            return
+          }
+          activeMessages.value = [
+            { role: 'user', content: text },
+            {
+              role: 'assistant',
+              skill: text.startsWith('/review') ? 'review' : null,
+              intro: '收到。我先梳理一下工作区结构，再决定需要调用的工具。',
+              plan: [
+                { text: '分析项目结构', done: true },
+                { text: '检索相关代码', done: false },
+                { text: '给出修改方案', done: false }
+              ],
+              tools: [
+                { type: 'grep', query: /^[\/@#]/.test(text) ? 'git diff' : 'main', result: '命中 3 个文件', detail: '（模拟）首轮检索完成，后续 Tool 调用将由 Agent Loop 驱动' }
+              ],
+              text: '（模拟）Agent 正在组装上下文并进入下一轮 LLM 调用；真实实现中每一轮 tool_calls 都会经 Permission Gate 判定后执行。'
+            }
+          ]
+          inputText.value = ''
+        }
+
+        const addWorkspace = () => {
+          const name = prompt('请输入新代码空间（项目目录）名称:')
+          if (name) workspaces.value.push({ name, path: `~/projects/${name}`, open: true, sessions: [] })
+        }
+
+        return {
+          ico, currentView, isChatActive, agentMode, chatMode, inputText, showSkillMenu, showMcpMenu,
+          showFileMenu, mentionFiles, showWsMenu, showPermMenu, permOptions, pickWorkspace, selectMcp, selectFile, activeSessionId,
+          searchQuery, skillScope, mcpScope, usageTab, usageDaily, usageByModel, usageByTool, usageTotals, maxDaily, fmtK, recordFilterSession, recordFilterTool,
+          navItems, workspaces, selectedWorkspacePath, currentWorkspace, allSessions,
+          quickPresets, activeMessages, codePanel, diffData, codeLines, fileTree,
+          openDiff, openCode, acceptDiff, revertDiff, resolveBash,
+          skills, enabledSkills, filteredSkills,
+          mcpConnectors, filteredMcps, mcpSummary, toggleMcpConnection, showMcpJsonModal, mcpJsonText, mcpJsonError, importMcpJson,
+          experts, filteredExperts, activeExpert, builtinTools, tagPresets, connectedMcpNames, bindableSkills,
+          showExpertModal, editingExpert, expertForm, openExpertModal, saveExpert, deleteExpert,
+          addExpertTag, toggleExpertItem, handleExpertLogo, openExpertChat, closeExpertChat, goView,
+          modelConfigs, resetApiKey, records, filteredRecords, riskBadge,
+          showSkillModal, editingSkill, skillForm, openSkillModal, saveSkill, deleteSkill,
+          showSkillMdModal, previewSkill, viewSkillMd, handleZipUpload,
+          showMcpModal, editingMcp, mcpForm, openMcpModal, saveMcp, deleteMcp,
+          showModelModal, editingModel, modelForm, openModelModal, saveModelConfig, deleteModelConfig,
+          showLatencyModal, testingModel, testingLatency, isTesting, testingComplete, testModelLatency, runLatencyTest,
+          handleInput, selectSkill, applyPreset, resetToHome, openSession, newSessionIn, submitTask, addWorkspace
+        }
+      }
+    }).mount('#app')
+  </script>
+</body>
+</html>

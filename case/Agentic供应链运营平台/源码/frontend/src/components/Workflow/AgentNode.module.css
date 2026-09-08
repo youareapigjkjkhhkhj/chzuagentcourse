@@ -1,0 +1,86 @@
+.node {
+  width: 180px;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+
+.node.idle {
+  opacity: 0.6;
+}
+
+.node.active {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 1px var(--accent-blue-glow);
+}
+
+.node.completed {
+  border-color: var(--accent-green);
+  box-shadow: 0 0 0 1px var(--accent-green-glow);
+}
+
+.node.error {
+  border-color: var(--accent-red);
+  box-shadow: 0 0 0 1px rgba(181, 51, 51, 0.12);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.statusIcon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.statusIcon.idle {
+  background: #f0eee6;
+}
+
+.statusIcon.active {
+  background: var(--accent-blue);
+  color: white;
+}
+
+.statusIcon.completed {
+  background: var(--accent-green);
+  color: white;
+}
+
+.statusIcon.error {
+  background: var(--accent-red);
+  color: white;
+}
+
+.description {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.message {
+  font-size: 10px;
+  color: #9f4d33;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}

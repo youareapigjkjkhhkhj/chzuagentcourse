@@ -1,0 +1,82 @@
+.container {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 24px;
+  overflow-x: auto;
+  min-height: 400px;
+}
+
+.canvas {
+  display: flex;
+  align-items: center;
+  min-width: max-content;
+  padding: 20px 0;
+}
+
+.startNode, .endNode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 24px;
+  background: var(--bg-card);
+  border: 2px solid var(--border-color);
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  min-width: 100px;
+}
+
+.startNode {
+  position: relative;
+}
+
+.startPulse {
+  width: 12px;
+  height: 12px;
+  background: var(--accent-blue);
+  border-radius: 50%;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.endNode {
+  border-color: #d1cfc5;
+  color: var(--text-primary);
+}
+
+.checkmark {
+  width: 24px;
+  height: 24px;
+  background: #141413;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.connector {
+  width: 60px;
+  height: 2px;
+  background: #d1cfc5;
+  margin: 0 16px;
+}
+
+.nodes {
+  display: flex;
+  align-items: center;
+}
+
+.nodeWrapper {
+  display: flex;
+  align-items: center;
+}
+
+.nodeConnector {
+  width: 60px;
+  margin: 0 8px;
+}

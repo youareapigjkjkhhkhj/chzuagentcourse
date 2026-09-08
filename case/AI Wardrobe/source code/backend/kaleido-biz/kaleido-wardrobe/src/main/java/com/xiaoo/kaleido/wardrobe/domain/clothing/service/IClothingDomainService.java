@@ -1,0 +1,132 @@
+package com.xiaoo.kaleido.wardrobe.domain.clothing.service;
+
+import com.xiaoo.kaleido.wardrobe.domain.clothing.model.aggregate.ClothingAggregate;
+import com.xiaoo.kaleido.wardrobe.domain.clothing.service.dto.ClothingImageInfoDTO;
+
+import java.math.BigDecimal;
+import java.util.Date;
+import java.util.List;
+
+/**
+ * 服装领域服务接口
+ *
+ * @author tomhui
+ * @date 2026/1/15
+ */
+public interface IClothingDomainService {
+
+
+    /**
+     * 创建服装（包含图片）
+     * 根据用户ID、服装名称、类型编码等信息创建新服装，并包含图片信息
+     * 注意：用户只提供文件路径，图片的width、height、fileSize、mimeType等字段后续通过MinIO服务获取
+     *
+     * @param userId             用户ID，不能为空（已在controller层校验）
+     * @param name               服装名称，不能为空（已在controller层校验）
+     * @param typeCode           服装类型编码，不能为空（已在controller层校验）
+     * @param colorCode          颜色编码，可为空
+     * @param seasonCode         季节编码，可为空
+     * @param brandId            品牌ID，可为空
+     * @param size               尺码，可为空
+     * @param purchaseDate       购买日期，可为空
+     * @param price              价格，可为空
+     * @param description        描述，可为空
+     * @param currentLocationId  当前位置ID，可为空
+     * @param images             图片信息列表，不能为空
+     * @return 服装聚合根，包含完整的服装信息和图片
+     */
+    ClothingAggregate createClothingWithImages(
+            String userId,
+            String name,
+            String typeCode,
+            String colorCode,
+            String seasonCode,
+            String brandId,
+            String size,
+            Date purchaseDate,
+            BigDecimal price,
+            String description,
+            String currentLocationId,
+            List<ClothingImageInfoDTO> images);
+
+    /**
+     * 根据ID查找服装，如果不存在则抛出异常
+     * 用于命令操作中需要确保服装存在的场景
+     *
+     * @param clothingId 服装ID字符串，不能为空
+     * @return 服装聚合根，包含完整的服装信息和图片列表
+     */
+    ClothingAggregate findByIdOrThrow(String clothingId);
+
+    /**
+     * 根据ID和用户ID查找服装，如果不存在或用户不匹配则抛出异常
+     * 用于需要验证用户权限的查询场景
+     *
+     * @param clothingId 服装ID字符串，不能为空
+     * @param userId 用户ID字符串，不能为空
+     * @return 服装聚合根，包含完整的服装信息和图片列表
+     */
+    ClothingAggregate findByIdAndUserIdOrThrow(String clothingId, String userId);
+
+    /**
+     * 更新服装信息（包含图片）
+     * 更新服装的基本信息和图片信息
+     *
+     * @param clothingId         服装ID，不能为空
+     * @param userId             用户ID，不能为空（已在controller层校验）
+     * @param name               新服装名称，不能为空（已在controller层校验）
+     * @param typeCode           新服装类型编码，不能为空（已在controller层校验）
+     * @param colorCode          新颜色编码，可为空
+     * @param seasonCode         新季节编码，可为空
+     * @param brandId            新品牌ID，可为空
+     * @param size               新尺码，可为空
+     * @param purchaseDate       新购买日期，可为空
+     * @param price              新价格，可为空
+     * @param description        新描述，可为空
+     * @param currentLocationId  新当前位置ID，可为空
+     * @param images             新图片信息列表，不能为空
+     * @return 更新后的服装聚合根
+     */
+    ClothingAggregate updateClothing(
+            String clothingId,
+            String userId,
+            String name,
+            String typeCode,
+            String colorCode,
+            String seasonCode,
+            String brandId,
+            String size,
+            Date purchaseDate,
+            BigDecimal price,
+            String description,
+            String currentLocationId,
+            List<ClothingImageInfoDTO> images);
+
+    /**
+     * 变更服装位置
+     *
+     * @param clothingId  服装ID，不能为空
+     * @param locationId  新位置ID，不能为空（已在controller层校验）
+     * @return 更新后的服装聚合根
+     */
+    ClothingAggregate changeClothingLocation(String clothingId, String locationId);
+
+    /**
+     * 删除服装
+
+     * 删除服装（逻辑删除或物理删除，根据业务规则）
+     *
+     * @param clothingId 服装ID，不能为空
+     * @param userId     用户ID，不能为空（已在controller层校验）
+     * @return 删除后的服装聚合根
+     */
+    ClothingAggregate deleteClothing(String clothingId, String userId);
+
+    /**
+     * 批量获取用户的服装列表
+     *
+     * @param userId 用户ID，不能为空
+     * @return 服装聚合根列表（包含基本信息，按需加载图片）
+     */
+    List<ClothingAggregate> findByUserId(String userId);
+}

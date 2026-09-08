@@ -1,0 +1,24 @@
+package com.xiaoo.kaleido.admin.types.constant;
+
+/**
+ * 系统常量类
+ * 定义管理员模块的系统级常量
+ *
+ * @author tomhui
+ */
+public class SysConstants {
+
+    /**
+     * 超级管理员角色编码
+     */
+    public static final String SUPER_ROLE_CODE = "SUPER_ADMIN";
+    public static final String SUPER_ROLE_NAME = "超级管理员";
+    public static final String SUPER_ROLE_DESC = "超级管理员";
+    public static final String SUPER_ADMIN_MOBILE = "13066668888";
+
+    /**
+     * 超级管理员权限-所有权限
+     */
+    public static final String SUPER_ROLE_PERMISSION = "*:*:*";
+
+}

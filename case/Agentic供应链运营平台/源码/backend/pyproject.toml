@@ -1,0 +1,31 @@
+[project]
+name = "supply-chain-orchestrator"
+version = "0.1.0"
+description = "Agentic Supply Chain Orchestrator"
+requires-python = ">=3.11"
+dependencies = [
+    "clickhouse-connect",
+    "deepagents>=0.4.12",
+    "fastapi",
+    "fastmcp",
+    "langchain-core",
+    "langchain-openai",
+    "langgraph",
+    "mlflow",
+    "openai",
+    "psycopg2-binary",
+    "pydantic",
+    "python-dotenv",
+    "rich>=14.3.3",
+    "uvicorn[standard]",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

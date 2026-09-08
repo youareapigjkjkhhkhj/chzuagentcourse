@@ -1,0 +1,14 @@
+# Render Blueprint - AgriGPT (Native Python, avoids Docker BuildKit issues)
+
+services:
+  - type: web
+    name: agrigpt-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: PYTHONPATH=. uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: PYTHONUNBUFFERED
+        value: "1"

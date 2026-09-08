@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="U4SAtd0V9fA3cPd2d7PSmc">
+<head data-page-node-id="P1Mx4JSlPsTQAmNLFJ1wNx">
+<meta charset="UTF-8" data-page-node-id="eOdFPn7km8thFnbysNAuPi">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="ZYpZiEaGKxSjFkidPSA2L6">
+<title>Kaleido AI 智能衣柜 · 前端原型（基于真实后端接口）</title>
+<style>
+  :root{
+    --bg:#f5f7fa; --panel:#ffffff; --border:#e4e9f0; --text:#1f2d3d; --muted:#7a8ba3;
+    --primary:#2563eb; --primary-soft:#eff6ff; --green:#16a34a; --green-soft:#f0fdf4;
+    --orange:#ea580c; --orange-soft:#fff7ed; --red:#dc2626; --red-soft:#fef2f2;
+    --code-bg:#0f172a; --code-text:#dbeafe; --radius:10px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+  .layout{display:flex;min-height:100vh}
+  /* ---------- 侧边栏 ---------- */
+  .sidebar{width:220px;background:#0f172a;color:#cbd5e1;flex-shrink:0;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+  .logo{padding:20px 18px;font-size:17px;font-weight:700;color:#fff;border-bottom:1px solid #1e293b}
+  .logo small{display:block;font-size:11px;font-weight:400;color:#64748b;margin-top:4px}
+  .nav{flex:1;padding:12px 0;overflow-y:auto}
+  .nav-group{padding:10px 18px 4px;font-size:11px;color:#475569;letter-spacing:1px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:10px 18px;cursor:pointer;font-size:13.5px;border-left:3px solid transparent}
+  .nav-item:hover{background:#1e293b;color:#fff}
+  .nav-item.active{background:#1e293b;color:#fff;border-left-color:var(--primary)}
+  .nav-item .ico{width:18px;text-align:center;opacity:.9}
+  .nav-badge{margin-left:auto;font-size:10px;background:#334155;color:#94a3b8;padding:1px 6px;border-radius:8px}
+  /* ---------- 主区 ---------- */
+  .main{flex:1;display:flex;flex-direction:column;min-width:0}
+  .topbar{height:52px;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:14px;position:sticky;top:0;z-index:10}
+  .topbar .crumb{font-weight:600;font-size:15px}
+  .topbar .tag{font-size:11px;color:var(--muted)}
+  .topbar-right{margin-left:auto;display:flex;align-items:center;gap:12px;font-size:12.5px;color:var(--muted)}
+  .gateway-chip{background:var(--code-bg);color:var(--code-text);font-family:Consolas,monospace;font-size:11.5px;padding:4px 10px;border-radius:6px}
+  .content{padding:20px 24px;flex:1}
+  .view{display:none}
+  .view.active{display:block;animation:fade .18s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  /* ---------- 通用组件 ---------- */
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:16px}
+  .card h3{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .grid{display:grid;gap:14px}
+  .g4{grid-template-columns:repeat(4,1fr)} .g3{grid-template-columns:repeat(3,1fr)} .g2{grid-template-columns:repeat(2,1fr)}
+  @media(max-width:1100px){.g4{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:1fr 1fr}}
+  .btn{display:inline-flex;align-items:center;gap:6px;border:none;border-radius:7px;padding:8px 16px;font-size:13px;cursor:pointer;background:var(--primary);color:#fff}
+  .btn.ghost{background:#fff;color:var(--text);border:1px solid var(--border)}
+  .btn.sm{padding:4px 10px;font-size:12px}
+  .btn.danger{background:var(--red-soft);color:var(--red);border:1px solid #fecaca}
+  .chip{display:inline-block;font-size:11px;padding:2px 8px;border-radius:5px;font-weight:600;font-family:Consolas,monospace}
+  .get{background:var(--green-soft);color:var(--green)} .post{background:var(--primary-soft);color:var(--primary)}
+  .put{background:var(--orange-soft);color:var(--orange)} .del{background:var(--red-soft);color:var(--red)}
+  .pill{display:inline-block;font-size:11.5px;padding:2px 9px;border-radius:10px;background:#f1f5f9;color:#475569;margin-right:6px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{background:#f8fafc;text-align:left;padding:9px 12px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border)}
+  td{padding:9px 12px;border-bottom:1px solid #f1f5f9}
+  tr:hover td{background:#f8fafc}
+  input,select,textarea{width:100%;border:1px solid var(--border);border-radius:7px;padding:8px 10px;font-size:13px;font-family:inherit;background:#fff}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary)}
+  .form-item{margin-bottom:12px} .form-item label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:5px}
+  .form-item .req{color:var(--red)}
+  /* ---------- API 对接卡 ---------- */
+  .api-card{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:var(--radius);padding:14px 16px;margin-top:16px}
+  .api-card .t{font-size:12.5px;font-weight:700;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:8px}
+  .api-row{display:flex;align-items:center;gap:8px;font-size:12.5px;margin:5px 0;flex-wrap:wrap}
+  .api-path{font-family:Consolas,monospace;background:#e2e8f0;padding:2px 7px;border-radius:4px;font-size:12px;word-break:break-all}
+  .api-note{font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.6}
+  code.inline{font-family:Consolas,monospace;background:#eef2f7;padding:1px 5px;border-radius:4px;font-size:12px;color:#b91c1c}
+  /* ---------- 衣物卡片 ---------- */
+  .clothing-card{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:#fff;transition:.15s}
+  .clothing-card:hover{box-shadow:0 4px 14px rgba(37,99,235,.10);transform:translateY(-2px)}
+  .clothing-img{height:130px;display:flex;align-items:center;justify-content:center;font-size:40px;position:relative}
+  .clothing-img .main-tag{position:absolute;top:8px;right:8px;font-size:10px;background:rgba(15,23,42,.72);color:#fff;padding:2px 7px;border-radius:4px}
+  .clothing-body{padding:11px 13px}
+  .clothing-body .nm{font-weight:600;font-size:13.5px;margin-bottom:5px}
+  .clothing-meta{font-size:11.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 10px;margin-bottom:7px}
+  .wear-bar{height:4px;background:#eef2f7;border-radius:2px;overflow:hidden;margin-top:7px}
+  .wear-bar i{display:block;height:100%;background:linear-gradient(90deg,#2563eb,#7c3aed)}
+  /* ---------- 聊天 ---------- */
+  .chat-wrap{display:flex;gap:14px;height:520px}
+  .conv-list{width:230px;background:#fff;border:1px solid var(--border);border-radius:var(--radius);display:flex;flex-direction:column}
+  .conv-list .hd{padding:12px 14px;border-bottom:1px solid var(--border);font-weight:600;font-size:13.5px;display:flex;justify-content:space-between;align-items:center}
+  .conv-item{padding:11px 14px;font-size:12.5px;border-bottom:1px solid #f1f5f9;cursor:pointer;line-height:1.5}
+  .conv-item:hover,.conv-item.on{background:var(--primary-soft)}
+  .conv-item .sub{color:var(--muted);font-size:11px;margin-top:3px}
+  .chat-main{flex:1;background:#fff;border:1px solid var(--border);border-radius:var(--radius);display:flex;flex-direction:column}
+  .chat-msgs{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px}
+  .bubble{max-width:72%;padding:10px 14px;border-radius:12px;font-size:13.5px;line-height:1.65;white-space:pre-wrap}
+  .bubble.user{align-self:flex-end;background:var(--primary);color:#fff;border-bottom-right-radius:3px}
+  .bubble.ai{align-self:flex-start;background:#f1f5f9;border-bottom-left-radius:3px}
+  .bubble.ai .src{display:block;font-size:10.5px;color:var(--muted);margin-top:6px;font-family:Consolas,monospace}
+  .chat-input{border-top:1px solid var(--border);padding:12px 14px;display:flex;gap:10px}
+  .chat-input input{flex:1}
+  .typing{font-size:11.5px;color:var(--muted);padding:0 18px 8px;font-family:Consolas,monospace}
+  /* ---------- 其他 ---------- */
+  .stat{display:flex;flex-direction:column;gap:6px}
+  .stat .v{font-size:26px;font-weight:700} .stat .k{font-size:12px;color:var(--muted)}
+  .stat .d{font-size:11px;color:var(--muted)}
+  .tree{font-size:13px;line-height:2} .tree .node{padding:1px 8px;border-radius:5px;cursor:default}
+  .tree .node:hover{background:var(--primary-soft)}
+  .tree .l1{font-weight:600} .tree .l2{padding-left:26px;color:#334155} .tree .l3{padding-left:52px;color:var(--muted);font-size:12.5px}
+  .empty-hint{font-size:12px;color:var(--orange);background:var(--orange-soft);border:1px solid #fed7aa;border-radius:7px;padding:8px 12px;margin-bottom:12px;line-height:1.6}
+  .legend{font-size:11.5px;color:var(--muted);line-height:1.8}
+  .legend .chip{margin:0 2px}
+</style>
+</head>
+<body data-page-node-id="TuVfMTn57sfXM3BrNtY5p3">
+<div class="layout" data-page-node-id="X3KpP08wrJLns49u11zzhf">
+  <!-- ================= 侧边栏 ================= -->
+  <aside class="sidebar" data-page-node-id="GsDwatnyb63iGeyePkLtbH">
+    <div class="logo" data-page-node-id="wG0xSDsZ8PxJNEOQG9gSgv">🧥 Kaleido 智能衣柜<small data-page-node-id="gSmzsOTtWWG4owhWnmgpq0">前端原型 · 基于后端真实接口（v1.0.0）</small></div>
+    <nav class="nav" data-page-node-id="Gq1iyWznQJouTp6s3iFLZ5">
+      <div class="nav-group" data-page-node-id="fY6bp1lGjCWwd8fk547HW6">用户端（C 端，待新建）</div>
+      <div class="nav-item active" data-v="dashboard" data-page-node-id="c1fkMwm4eJWRkWq98YqbuW"><span class="ico" data-page-node-id="vJMooHpZh9j6MrbipptvAX">📊</span>工作台</div>
+      <div class="nav-item" data-v="clothing" data-page-node-id="ZvP1EnNvXfVZlgg9yUvi2x"><span class="ico" data-page-node-id="PEtaienKF5k9anbIlCKXtd">👔</span>我的衣柜<span class="nav-badge" data-page-node-id="iwORE5EAWlwIKXKFKzt26F">核心</span></div>
+      <div class="nav-item" data-v="outfit" data-page-node-id="nVEc8XKF58pl4Y0dT3MdYp"><span class="ico" data-page-node-id="TyUfoMjQXue1OQ2uF5B0fM">🧺</span>穿搭搭配</div>
+      <div class="nav-item" data-v="location" data-page-node-id="JfaAiLu3nCi48XZ1y7sIvJ"><span class="ico" data-page-node-id="QMA9mbq2rH7J69EURvdpzl">📍</span>收纳位置</div>
+      <div class="nav-item" data-v="chat" data-page-node-id="xUdl65n6TyH9gJpLe1LVYe"><span class="ico" data-page-node-id="Qe1mAnfWyjOSR5D5SeYxjb">🤖</span>AI 穿搭助手<span class="nav-badge" data-page-node-id="6UDI89A2SNCoQrmRYUsBkd">核心</span></div>
+      <div class="nav-group" data-page-node-id="NS0oOKeREXscTDZJQew1Jm">管理端（admin，接真实接口）</div>
+      <div class="nav-item" data-v="admin-user" data-page-node-id="wCvNq1O53Cj6KIEux6Zyfk"><span class="ico" data-page-node-id="y5o0zZyBJkJiSdRIqZFWyz">👥</span>用户管理</div>
+      <div class="nav-item" data-v="admin-agent" data-page-node-id="Aw1NcuG2IHykP6t7fVlEvC"><span class="ico" data-page-node-id="KzRBHgjuHgZs3fVa6otT57">🧠</span>Agent 管理</div>
+      <div class="nav-item" data-v="admin-rbac" data-page-node-id="4A0aSAUo7XrYKEe4xFNOPT"><span class="ico" data-page-node-id="Je1N4INiuGwqGyKI0jWlti">🔐</span>角色 / 权限</div>
+      <div class="nav-item" data-v="api" data-page-node-id="bn9dgU909zcBGCXi5FxB77"><span class="ico" data-page-node-id="suqPRIufOVbPBid9o2lDUS">📖</span>全量接口速查</div>
+    </nav>
+  </aside>
+
+  <!-- ================= 主区 ================= -->
+  <div class="main" data-page-node-id="8EKPsnSYZrY3KqOmwrYBRM">
+    <div class="topbar" data-page-node-id="TZOMpC2lFUiBQPYjTr5bU7">
+      <span class="crumb" id="crumb" data-page-node-id="s1MuZwXn5SmnzSW0LL6JQs">工作台</span>
+      <span class="tag" data-page-node-id="7fwv6DF1Z60DiuNvXTobie">原型说明：灰色虚线框 = 后端接口对接卡，照卡实现即可</span>
+      <div class="topbar-right" data-page-node-id="0OEKKviHqREyZmSmeeEIUe">
+        <span class="gateway-chip" data-page-node-id="xjsjlosX9VctdvYPAuvAXE">网关基址 http://192.168.52.133:9010</span>
+        <span data-page-node-id="dq0dyIkoKFDFHiy7ZRMDHG">请求头 <b data-page-node-id="KaSkYsHSPyFkjD8RapkztH">kaleido-admin-token</b>（sa-token）</span>
+      </div>
+    </div>
+
+    <div class="content" data-page-node-id="lP0MqXW59i5yEQz1DlKE46">
+
+      <!-- ========== 1 工作台 ========== -->
+      <section class="view active" id="v-dashboard" data-page-node-id="GUGZ6RI63rCKUPrJgExcAL">
+        <div class="empty-hint" data-page-node-id="BSG2PkrYi377nZGhFe7kCX">⚠️ 后端目前<b data-page-node-id="KVF0oriDlLVdKdLQMyF9fm">没有统计聚合接口</b>，本页数据可先由前端聚合下列真实列表接口计算：衣物总数 = GET /wardrobe/clothing/list 长度；搭配数 = GET /wardrobe/outfits/list 长度；位置数 = GET /wardrobe/location 长度。</div>
+        <div class="grid g4" data-page-node-id="I3TLGBhLAAWxAcYhVfKRz5">
+          <div class="card stat" data-page-node-id="xIOe6eHz65DXScktH1KrVg"><span class="v" id="st-clothing" data-page-node-id="VwT3ls3QSZnZAfC26DamU6">—</span><span class="k" data-page-node-id="iA4E0nlnCnl6STuePJcqFx">衣物总数</span><span class="d" data-page-node-id="ehEPZlXosB8ET0HlS1jHXB">GET /wardrobe/clothing/list</span></div>
+          <div class="card stat" data-page-node-id="CHg1S7blbNRnkjhq173aGX"><span class="v" id="st-outfit" data-page-node-id="SEAmMuwlF9fWM0Bv4dry7R">—</span><span class="k" data-page-node-id="IsbODBhBnFNXJ3YWYhsf2j">搭配方案</span><span class="d" data-page-node-id="5oN0QMQY4ibFATpFuj1q2e">GET /wardrobe/outfits/list</span></div>
+          <div class="card stat" data-page-node-id="Ks1JZFu9CobSyxFe941YXu"><span class="v" id="st-location" data-page-node-id="LukfaW7kersGTI97gvO7Lh">—</span><span class="k" data-page-node-id="5Z9OzJEESQ3XSJxBxGcz2o">收纳位置</span><span class="d" data-page-node-id="D2noi9VKpkUeexeVPYJFLW">GET /wardrobe/location</span></div>
+          <div class="card stat" data-page-node-id="MCRFCVwxmDPTqwsJ8Uf9EI"><span class="v" id="st-agent" data-page-node-id="cgeMykXq9A8W0YN30vx1Qs">—</span><span class="k" data-page-node-id="PzUwlvudFcB5B8YtYGhZp0">可用 Agent</span><span class="d" data-page-node-id="ZgAHqp0uxgYEhG5LpS5e61">GET /ai/agent</span></div>
+        </div>
+        <div class="grid g2" data-page-node-id="NKOjoEp6PTHkpTIQDM8c5l">
+          <div class="card" data-page-node-id="ZDBZ4sJSJwEAPyTXHHqgci">
+            <h3 data-page-node-id="QdkQWMcDK048Lrb4EcA0uY">🔥 常穿衣物 Top（数据源：ClothingInfoResponse.wearCount / lastWornDate）</h3>
+            <table data-page-node-id="l67dd1shrJcHvv5CwqLMyv">
+              <tr data-page-node-id="7qyhx734zn50SOszPMeVbU"><th data-page-node-id="bhGl2Be4DUduknOBJ5HlK6">衣物</th><th data-page-node-id="d3tAtbpWrKWlYPImHCoKfn">类型</th><th data-page-node-id="2hFcxWskcmBYdMuHWoO2OA">品牌</th><th data-page-node-id="EOXQBOZ37A5e5AJROCiH6C">穿着次数</th><th data-page-node-id="zOrFwNAsSn8HOEgShmOTsT">最近穿着</th></tr>
+              <tr data-page-node-id="9VlwKbhK7ELTpKgWIuL4pz"><td data-page-node-id="z6hj71DrgYRtqqua20oUBl">🧥 深蓝羊毛大衣</td><td data-page-node-id="iknvV5RvtpfrxQwCUacBCJ">OUTERWEAR</td><td data-page-node-id="LBAAR2smH9G0R8fEfFXufj">优衣库</td><td data-page-node-id="t9fKXtYM48i5k2DnPdFR4F"><b data-page-node-id="chuIzGJI43349S8CyDiOV0">23</b></td><td data-page-node-id="OcaFXch1BAORkkMg1s81CC">2026-09-05</td></tr>
+              <tr data-page-node-id="OjoTQRpyeGFjfb0TEsxUKN"><td data-page-node-id="v1yT0wbN5omzKnl0FXbxuJ">👕 白色纯棉T恤</td><td data-page-node-id="I7YiFDPWSPNsEG2bDIClP7">TOP</td><td data-page-node-id="lKSCqpot8mItR9PMDJzcN9">无印良品</td><td data-page-node-id="jF2bv7KgOQLIiTwZkhlRws"><b data-page-node-id="JHFLNS4POScOIeN3gB7ggO">18</b></td><td data-page-node-id="lKWLTL1iHuyb6wmZQrRENh">2026-09-06</td></tr>
+              <tr data-page-node-id="zyJgzGyqvKZGHqizrmijZ4"><td data-page-node-id="b3AemZjsGDpAiBBBd10lJ1">👖 直筒牛仔裤</td><td data-page-node-id="CaDYMVcokg0cBdlZEd3EHN">BOTTOM</td><td data-page-node-id="ByI3YK59FGkHirf8O2EE9X">李维斯</td><td data-page-node-id="M3jZ54W0X4LHuFZJvkQoDY"><b data-page-node-id="NNTKaJmluDbNWePZymbwM7">15</b></td><td data-page-node-id="GYcYIwnC4YGqvY83UycRYH">2026-09-04</td></tr>
+            </table>
+          </div>
+          <div class="card" data-page-node-id="tTvKFa8tpBwR5dGeMhsRv5">
+            <h3 data-page-node-id="g5zkSZIZDww3LcqtPlLn7z">✨ AI 能力入口（真实接口，流式返回）</h3>
+            <p style="font-size:13px;color:var(--muted);line-height:1.9" data-page-node-id="1PoZzfX0jUbzMHtonoQeax">
+              AI 模块基于 Spring AI + Milvus 向量检索，默认模型 <code class="inline" data-page-node-id="zzikGHQQcdkXwABXQNNRMf">deepseek-v3</code>（AgentChatClientArmory.java:149）。<br data-page-node-id="2WTyLMJ3TqwZbYx4w20Twg">
+              聊天接口返回 <code class="inline" data-page-node-id="SEEFnm6qGTayxgj8uh934A">Flux&lt;String&gt;</code>，前端需用 <b data-page-node-id="soZFZDgBH7nEHCX79xSLth">fetch + ReadableStream</b> 或 <b data-page-node-id="cbWgqWomn4TBRPGoYFwORM">EventSource</b> 增量渲染，不要用普通 axios。
+            </p>
+            <div style="margin-top:10px;display:flex;gap:8px" data-page-node-id="MIOgNaro5PmPaEPgv1YoYx">
+              <button class="btn" onclick="go('chat')" data-page-node-id="KM96EESrzO4lGJe6FNCS4s">进入 AI 助手 →</button>
+              <button class="btn ghost" onclick="go('api')" data-page-node-id="4gwp72bKZggeCLCNaiFJ9w">查看接口速查</button>
+            </div>
+          </div>
+        </div>
+        <div class="api-card" data-page-node-id="JDYyEKUIp7XR432teYnsL6">
+          <div class="t" data-page-node-id="dpgbAiXHoAHApySadU1dWK">🔌 工作台涉及接口</div>
+          <div class="api-row" data-page-node-id="cvLeOViksUIQoFxPuJeFJu"><span class="chip get" data-page-node-id="leIA2DbBLDD7NzOArV0uyn">GET</span><span class="api-path" data-page-node-id="4fZ3f79TJzwE1MyDdebBQ3">/wardrobe/clothing/list</span>→ Result&lt;List&lt;ClothingInfoResponse&gt;&gt;</div>
+          <div class="api-row" data-page-node-id="BKxsNX4BzNadBGp5vFLrN3"><span class="chip get" data-page-node-id="8ucyHpbr4hCfzkumjg3Ce5">GET</span><span class="api-path" data-page-node-id="mDDrrAbpfUe9mPFdgUFOf7">/wardrobe/outfits/list</span>→ Result&lt;List&lt;OutfitInfoResponse&gt;&gt;</div>
+          <div class="api-row" data-page-node-id="GaRf9G5Nsv0kKW92GTpDio"><span class="chip get" data-page-node-id="RBQZKzRFOuzDCdXmJEub8R">GET</span><span class="api-path" data-page-node-id="eaCV1OlA2Tp0GeW0VOG3NG">/wardrobe/location</span>→ Result&lt;List&lt;LocationInfoResponse&gt;&gt;</div>
+          <div class="api-row" data-page-node-id="cGXH1lKSvjyfWaJkg2MwVR"><span class="chip get" data-page-node-id="mTSzyQk8vPMUTOO1wQrkkR">GET</span><span class="api-path" data-page-node-id="3wXClxZxWsJuLIsA9oF5Mc">/ai/agent</span>→ Result&lt;List&lt;AgentInfoResponse&gt;&gt;</div>
+          <div class="api-note" data-page-node-id="dq6BsYPjRPrlHS5tABZVMQ">统一响应壳：<code class="inline" data-page-node-id="YJ9RTwcckF5v7B8cJH7KNt">{code:'SUCCESS', success:true, msg, data}</code>（axios/config.ts 拦截器已适配）</div>
+        </div>
+      </section>
+
+      <!-- ========== 2 我的衣柜 ========== -->
+      <section class="view" id="v-clothing" data-page-node-id="0b1Ar9FeYN10spo2ssPml2">
+        <div class="card" style="display:flex;gap:10px;align-items:center" data-page-node-id="qMZMIPv3P8VSlDonQs6ctD">
+          <select style="width:130px" data-page-node-id="sAkwOZNU2yoId3XH3UPTEq"><option data-page-node-id="pWRZBixSZVKBOJGH6JMkWE">全部类型</option><option data-page-node-id="0XWPks7xoSn0lY53ijoIvB">上装 TOP</option><option data-page-node-id="2HqJ8ylqRZk6lr7cvGWBAU">下装 BOTTOM</option><option data-page-node-id="Swq68nhVKDOXtHM5BG3HpX">外套 OUTERWEAR</option><option data-page-node-id="1isviWyb2pSOJWn0yK9RYz">鞋 SHOES</option><option data-page-node-id="bsuqeknMAGjdTtA10A8hM0">配饰 ACCESSORY</option></select>
+          <select style="width:120px" data-page-node-id="V0D5t8rJhEOdIUD3CyNpNu"><option data-page-node-id="pUkewL72ROFcuaC4EYEN4S">全部季节</option><option data-page-node-id="eRSSafM7Bo3hwK0z8PFY0Z">SPRING</option><option data-page-node-id="fd91fkmBkEvnjA8mLwDVZb">SUMMER</option><option data-page-node-id="UMCCkW8HN4MbITxB24hH0I">AUTUMN</option><option data-page-node-id="ELCQiJH6amuvDF02x0mIsf">WINTER</option></select>
+          <select style="width:130px" data-page-node-id="EgjdNe1KNXBFFXwHXbpxSU"><option data-page-node-id="RztCGKNRpsJhKpUVmWOopg">全部品牌</option><option data-page-node-id="vfecEVOgqGNgObATciMiQF">优衣库</option><option data-page-node-id="FF9JlLD8by43tcYQDaRY3N">无印良品</option><option data-page-node-id="ybLDIZnSuzWlS8aDcgYMXC">李维斯</option></select>
+          <input style="width:200px" placeholder="按名称搜索（前端过滤）" data-page-node-id="KqHiPLrGrUCq27EJRWPql5">
+          <span style="flex:1" data-page-node-id="6Ra6I8M3PhFMeIIVO75Q6h"></span>
+          <button class="btn" onclick="go('clothing-new')" data-page-node-id="QOz5uCkPWfUijiH3cQqZz6">＋ 添加衣物</button>
+        </div>
+        <div class="grid g4" id="clothing-grid" data-page-node-id="Akxhg7xFbhPzaPGi6x6QJQ">
+          <div class="clothing-card" data-page-node-id="H84sAYrU3WWAA7XnXB4IJp"><div class="clothing-img" style="background:#eff6ff" data-page-node-id="dUKTVDpw6VW6ISAZ0i2Z8f">🧥<span class="main-tag" data-page-node-id="wqueqNLqytUuCC3eIbCQzS">主图</span></div>
+            <div class="clothing-body" data-page-node-id="mayhwonSnA5AfG6GvwhJBV"><div class="nm" data-page-node-id="Jm4hcGjzHp4yLhYvvJwsEY">深蓝羊毛大衣</div>
+            <div class="clothing-meta" data-page-node-id="TN0g3wLxzH3pZXJJp3UZmS"><span data-page-node-id="gWQIcGGcOJFDJvWj6sip73">OUTERWEAR</span><span data-page-node-id="OTSNGz2Knm6ixCzDzMA6In">深蓝</span><span data-page-node-id="n5mfdWK6BifzrolZdyfnZT">WINTER</span><span data-page-node-id="7z4BhAykAGMrLGMf7qMJtq">优衣库</span><span data-page-node-id="hy0Uz7cgEwtEtN0IR67PR1">XL</span></div>
+            <div class="clothing-meta" data-page-node-id="EQjhv7kyDMv3P2TxDYduHE"><span data-page-node-id="sj90AoQsUHsGE6RJieHEjM">📍 卧室衣柜-上层</span><span data-page-node-id="fhc9IcajB8irTCyoIe0vc2">￥899</span></div>
+            <div class="clothing-meta" data-page-node-id="6wf6HkUJvnx2lMyYD52ChE"><span data-page-node-id="HjCBjNDKdI5nzTQwdqd2Eo">穿过 <b data-page-node-id="rRb0eO5f84PdnoIQdQFbeK">23</b> 次</span><span data-page-node-id="otLrOyFuHdqEEL4BepOUcX">2026-09-05</span></div>
+            <div class="wear-bar" data-page-node-id="gHBTXordAWjRYMkugp2ogV"><i style="width:82%" data-page-node-id="8lMrsWO90VolPXY3QU80Yh"></i></div></div></div>
+          <div class="clothing-card" data-page-node-id="0zsXMGu1BC6dyru66E84ni"><div class="clothing-img" style="background:#fefce8" data-page-node-id="HHHSFVL2w6sYGxrJpQNAfD">👕</div>
+            <div class="clothing-body" data-page-node-id="Ax0FStGWIPHdb1C3JypeSN"><div class="nm" data-page-node-id="85yf5sh8CCNaMTEMUKOizK">白色纯棉T恤</div>
+            <div class="clothing-meta" data-page-node-id="9IhNAbyhv5AmICJ3BnyLla"><span data-page-node-id="8raaKa6B0hNOpBDDZZM93E">TOP</span><span data-page-node-id="CXabIv0qUyuWMwAjpFF1qp">白</span><span data-page-node-id="12jowddkAdBHGtUH3c7ooW">SUMMER</span><span data-page-node-id="fG9TbPE5HJUCGFvwUNyCDt">无印良品</span><span data-page-node-id="d21PV08Mg7FS82wYbfBGd7">M</span></div>
+            <div class="clothing-meta" data-page-node-id="LkFVqcUpqnW4yjPTEVwRWp"><span data-page-node-id="1eR589iQmIFoeQBHFmFGdT">📍 卧室衣柜-中层</span><span data-page-node-id="cRZ6kegWCWoxo98O7b05AO">￥79</span></div>
+            <div class="clothing-meta" data-page-node-id="LjnYjZRHCRHCHIAFLIBoH1"><span data-page-node-id="6SVf2DdYnuBZ02xxUmXPd4">穿过 <b data-page-node-id="7niD9i4kTDT4lWQJANmMYM">18</b> 次</span><span data-page-node-id="KAw0Oe7JVmbtxynNBFyy7w">2026-09-06</span></div>
+            <div class="wear-bar" data-page-node-id="8xSs8fDmHML5J4MYhGNwVi"><i style="width:64%" data-page-node-id="NuSBJhADaMRL2CLrTNA7l5"></i></div></div></div>
+          <div class="clothing-card" data-page-node-id="urhgkHcoOMPOv5kSvFq3FY"><div class="clothing-img" style="background:#f0fdf4" data-page-node-id="ad9nHlfXYfBwfWAM6qnKRE">👖</div>
+            <div class="clothing-body" data-page-node-id="xXc1vOt6LjFA4xMBuyEUfX"><div class="nm" data-page-node-id="H0u8EE6zmATt5kxAswPBlJ">直筒牛仔裤</div>
+            <div class="clothing-meta" data-page-node-id="91SUF8Gv2D8F96DhBge3PT"><span data-page-node-id="INa3InMpCDqCrvX3D9ROdJ">BOTTOM</span><span data-page-node-id="b5TJdFFZyd2uBUaf1a3kKG">蓝</span><span data-page-node-id="RIskRDT3iCA6qYEIABFlvj">AUTUMN</span><span data-page-node-id="RvkMZseeVsXJc7y8JGux5p">李维斯</span><span data-page-node-id="Fs6Wmdef3r7gqwVLTb9Cs3">32</span></div>
+            <div class="clothing-meta" data-page-node-id="IMvJvuzvzuWoV6Xe1ZVAZ1"><span data-page-node-id="pbIWIA8BoO84Y6GGVhDtqi">📍 衣帽间挂区</span><span data-page-node-id="kox33nPoEb2jPkCPrZXtUv">￥599</span></div>
+            <div class="clothing-meta" data-page-node-id="c9YbUu0xKYXJWAJkECLObD"><span data-page-node-id="39VtJv31twORZWYFsIY8op">穿过 <b data-page-node-id="v3RsOhBTFbUCCdzz1zEZFg">15</b> 次</span></div>
+            <div class="wear-bar" data-page-node-id="F7g0ED5cOQAPG4sBxg0t6P"><i style="width:53%" data-page-node-id="t2Dj2yzidSYdLrgT7C4jzw"></i></div></div></div>
+          <div class="clothing-card" data-page-node-id="NEs0LESpf56TXXQwE2mjWD"><div class="clothing-img" style="background:#fdf2f8" data-page-node-id="dWKyDMjS2HHpW0l2LX5NsL">👟</div>
+            <div class="clothing-body" data-page-node-id="8M8BAb4DqsOYh57xCFqd3q"><div class="nm" data-page-node-id="Gqqp9lKTjirARFky8UMTcu">白色板鞋</div>
+            <div class="clothing-meta" data-page-node-id="Pm32HlxnQBKlG0guqR7UkQ"><span data-page-node-id="dQcqo3C1WaK7Y7OHCQk770">SHOES</span><span data-page-node-id="3JCJ7GgySxcomHGS9Nttmp">白</span><span data-page-node-id="2xOzCG8B1AqG71F4qQ1QQq">SPRING</span><span data-page-node-id="tGAJlnGp2yKdUcVGn5I1uR">Nike</span><span data-page-node-id="KunHD2RcV4QQ2VMrNCn8OG">42</span></div>
+            <div class="clothing-meta" data-page-node-id="TTrHfq6p2fh5iYyb2I9ofG"><span data-page-node-id="RhFKDcX49xgnPu40FZAa2Q">📍 玄关鞋柜</span><span data-page-node-id="I9oCjgERf8QgLvMwDQ5jdE">￥469</span></div>
+            <div class="clothing-meta" data-page-node-id="5Pa98zI3BQXk9CkAkiSTc3"><span data-page-node-id="tjq2uTuQN097Qbpy6cae2n">穿过 <b data-page-node-id="7tcIQ52xinPFI2r9ViZcg1">9</b> 次</span></div>
+            <div class="wear-bar" data-page-node-id="r1vyhfvTIy5eoefdBiuwQk"><i style="width:32%" data-page-node-id="bAIxkdNwJSqvmlZWITJ5rQ"></i></div></div></div>
+        </div>
+        <div class="api-card" data-page-node-id="qyLH5c7jKxe0f26biUJPRK">
+          <div class="t" data-page-node-id="UCPGnTPdEnjJdJkj554Xxb">🔌 衣柜页接口（ClothingController · /wardrobe/clothing）</div>
+          <div class="api-row" data-page-node-id="Ss2XhjuzalVay3CRqQzfhO"><span class="chip get" data-page-node-id="kYOES8yIJeOnU0Xh25nAie">GET</span><span class="api-path" data-page-node-id="9rOeJc5r1Jhc2i8pBlMicX">/wardrobe/clothing/list</span>衣物列表</div>
+          <div class="api-row" data-page-node-id="euMzBqFFipCaeCRYZaVo3C"><span class="chip get" data-page-node-id="AAWMsyIiDld9ltTODi1BjI">GET</span><span class="api-path" data-page-node-id="RtSZ6KVsh3eWo9HakA4hLn">/wardrobe/clothing/{clothingId}</span>衣物详情</div>
+          <div class="api-row" data-page-node-id="sgBbg5Zn9NGSvTUDO4YIA9"><span class="chip post" data-page-node-id="6dER3V9qgscfxsHTyglxBT">POST</span><span class="api-path" data-page-node-id="VwZuCyRaoceMB0RKEkFoFA">/wardrobe/clothing</span>新增（带图）</div>
+          <div class="api-row" data-page-node-id="2t3TiQG5cBfaOUXrlWJ0Sq"><span class="chip put" data-page-node-id="Xcly2qOvZYh7ZVPBugwE0F">PUT</span><span class="api-path" data-page-node-id="JnUpP55Ot7LAvRS9mzIMtH">/wardrobe/clothing/{clothingId}</span>更新</div>
+          <div class="api-row" data-page-node-id="1veUaijsXEYOTSVe6ksUUO"><span class="chip del" data-page-node-id="Ug3NnH8Ua7qphCw4m0R2FG">DEL</span><span class="api-path" data-page-node-id="U0YeG5pwYbgI0SthBK43xV">/wardrobe/clothing/{clothingId}</span>删除</div>
+          <div class="api-row" data-page-node-id="wabyeSuvPJ9D8Q4hGwaHQu"><span class="chip post" data-page-node-id="NXkAMVVSJBjCQuAsPmYb2v">POST</span><span class="api-path" data-page-node-id="FO55RXbSP96SeWVeMQ0kOZ">/wardrobe/clothing/{clothingId}/tags/{tagId}</span>关联标签（tag 服务）</div>
+          <div class="api-note" data-page-node-id="BxEEWBFaONXrYDaErUHwGV">
+            <b data-page-node-id="lLR2vk4opJ2joIvS0h83eN">ClothingInfoResponse 字段</b>：clothingId / name / typeCode / colorCode / seasonCode / brandId / brandName / size / purchaseDate / price(BigDecimal) / description / currentLocationId / currentLocationName / <b data-page-node-id="5REjWI2wqREHrSfR57FIHh">wearCount</b> / lastWornDate / images[{path,isMain,imageOrder}]（kaleido-api/.../wardrobe/response/ClothingInfoResponse.java）<br data-page-node-id="qbcDBLu7pn51GcCVnifgur">
+            类型/颜色/季节的枚举值存在 <code class="inline" data-page-node-id="1c5UYtMRpylnsoFF6ijx1k">t_dict</code>，建议先调字典接口 <code class="inline" data-page-node-id="OI7qx31f3Y8wGEXMHgG9fn">/dict/*</code> 动态渲染下拉框。<br data-page-node-id="Kl5s9RnSJ2JkIND7u2s29F">
+            注意：列表接口<b data-page-node-id="nvWHGr8G0AyWQUn3GpRVRF">无分页</b>（listClothing 全量返回），数据量大时前端做筛选。
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== 3 添加衣物 ========== -->
+      <section class="view" id="v-clothing-new" data-page-node-id="BaN9pBRTbwTulyrdNUFwod">
+        <div class="grid g2" data-page-node-id="cNODi5FWfZJhatM0rlJxtV">
+          <div class="card" data-page-node-id="mbbOrpoEhFQ0v1QzO1jfOG">
+            <h3 data-page-node-id="aCkplNmkGfiSi7eWE7u0CN">👕 新增衣物</h3>
+            <div class="grid g2" data-page-node-id="SyFviGrS3RCkrkJamvd5ny">
+              <div class="form-item" data-page-node-id="GVcoS5yqjxwJm9oyA1VLeU"><label data-page-node-id="feUjDggfjtHvaafAHnjBpB">名称 <span class="req" data-page-node-id="Rxf4W8ejQT0iGSYw2eFDjZ">*</span></label><input placeholder="如：白色纯棉T恤" data-page-node-id="8yyrBUPTBD373hOJyFrsGA"></div>
+              <div class="form-item" data-page-node-id="RparBzAW7XQclVJ4wFlXC2"><label data-page-node-id="KOXiAjbrUNrcOLS82hGzLd">类型 typeCode <span class="req" data-page-node-id="m0EoUkwsXuAQHEWN5u4bLx">*</span></label><select data-page-node-id="1i9247hFQZPfAi4QQB13F2"><option data-page-node-id="aI9NEavb2XVsyjG9f8DKiF">TOP</option><option data-page-node-id="ep1XOSu1NJRg4Iu8Cjio6z">BOTTOM</option><option data-page-node-id="rIsC7ZqprTxsRBdnGk1qtI">OUTERWEAR</option><option data-page-node-id="g6rWF1GjCzxKuLxnPcd7tC">SHOES</option><option data-page-node-id="HPi3feI5DDwZJPXH5Uw8Iv">ACCESSORY</option></select></div>
+              <div class="form-item" data-page-node-id="GXBRYSmGNjWz6pnDDJ3xHV"><label data-page-node-id="AEFQgHdWGlWhycAgkgQEGF">颜色 colorCode</label><select data-page-node-id="tIB3IZVsUoBVm5FCs3KY3I"><option data-page-node-id="6a2NS3x1cFh3K3xiA45BFm">WHITE</option><option data-page-node-id="elSthHUfwogMe1Ck1CV1ul">BLACK</option><option data-page-node-id="TP5E5CjzCZqiFHHr222UCs">BLUE</option><option data-page-node-id="tsK0X28CmQQzYgijrRDSPa">RED</option></select></div>
+              <div class="form-item" data-page-node-id="kVbB5yqTAfAlUUtOu808UG"><label data-page-node-id="9BWvtCJHeKagsBiKFk85XN">季节 seasonCode</label><select data-page-node-id="dArK74WYsgx0Jn5QrC2yOl"><option data-page-node-id="CqYRRsaIyivmGB7x5nCjGd">SPRING</option><option data-page-node-id="PYiQnjlgCugfamj6J95LJa">SUMMER</option><option data-page-node-id="q1EiN28feSDp5DE3Poqt1m">AUTUMN</option><option data-page-node-id="7TW7EFcHUk68EJ3GKd15sA">WINTER</option></select></div>
+              <div class="form-item" data-page-node-id="HcwWH12CGSTjclbaz4tAec"><label data-page-node-id="GvC84nSoT1LaByGCo9NYCF">品牌 brandId</label><select data-page-node-id="WrDMFhV64vYzHH7ZU6Suxr"><option data-page-node-id="1o4yfC2zyzUEXT5YuIJLt3">（GET /wardrobe/brand 拉取）</option></select></div>
+              <div class="form-item" data-page-node-id="3FB2wSUi79uA3vaH25GWqr"><label data-page-node-id="Ta6xDJuyLGR5mT8TCRMvSi">尺码 size</label><input placeholder="S/M/L/XL 或数字" data-page-node-id="DRzO4HXyjmeGW2QXD0e05R"></div>
+              <div class="form-item" data-page-node-id="LpeW0CqbnsGdZAPaHPTEeF"><label data-page-node-id="jHNEUsyVfndhB1OjfOu72D">购买日期 purchaseDate</label><input type="date" data-page-node-id="8rSKS2lcoLH3pdIJWIEmal"></div>
+              <div class="form-item" data-page-node-id="PxSpSKB44llwhYmWGCQQNT"><label data-page-node-id="IFF8kt6OA2LlEHkQYNICBm">价格 price</label><input type="number" placeholder="0.00" data-page-node-id="xiaQMP1R2xb6E87DbwOEME"></div>
+              <div class="form-item" data-page-node-id="aeBDHwtKUrmsty2OhY8kd7"><label data-page-node-id="FxEL8kh7NLBfWhjNdpS4ay">所在位置 currentLocationId</label><select data-page-node-id="S7B4osG9yRq8BBZT3lpB40"><option data-page-node-id="6sPWMr2RGLpRwuPkteAlgd">（GET /wardrobe/location 拉取）</option></select></div>
+              <div class="form-item" data-page-node-id="rbcyVHc8XdeBjNrrVuQ7RT"><label data-page-node-id="eP3ffSEMzVxW48PFKfbUAC">图片 images[]（可多张）</label><input type="file" multiple data-page-node-id="a34Espza7hOuo7mxoFwZF0"></div>
+            </div>
+            <div class="form-item" data-page-node-id="8nD4tbleCD45TyOHH1pnd7"><label data-page-node-id="VvI1KEEbtFMb8mEKqMgDZU">描述 description</label><textarea rows="3" placeholder="材质、洗护提示等"></textarea></div>
+            <button class="btn" data-page-node-id="EOA165dM2PCaOrH9nJ3RvC">提交（POST /wardrobe/clothing）</button>
+            <span style="margin-left:10px;font-size:12px;color:var(--muted)" data-page-node-id="8Z1RLDIuDDMvB83GNEPd9L">← 先调文件上传接口拿 path</span>
+          </div>
+          <div data-page-node-id="0KTmntO57blv0VMhqlEZCq">
+            <div class="card" data-page-node-id="wxnOCNAPSQwZClHDEibWgp">
+              <h3 data-page-node-id="CGAac1fNvWRNgjmCVvcmRP">🖼️ 图片上传流程</h3>
+              <div class="api-row" data-page-node-id="i1fEpQsWiNoMjmcUodTDdd"><span class="chip post" data-page-node-id="6RPOj8akTIIrJr1BuSmZUl">POST</span><span class="api-path" data-page-node-id="p9iGScJHYURBIA4cPOSugQ">/admin/public/file/upload</span>（multipart）</div>
+              <div class="api-note" style="margin-top:8px" data-page-node-id="lhkRQ0nvbaaqiBEEueBiiu">
+                1. 用户选图 → 先传文件接口拿返回的 <code class="inline" data-page-node-id="aEQGiir0FeMDnUujsaHA0v">fileId / path</code>；<br data-page-node-id="MkeFDIB0FjZvOfUHjdsjt1">
+                2. 再提交衣物表单，<code class="inline" data-page-node-id="qHUP8z4yuy4Ojd0xw5GIyO">images: [{fileId?, path, isMain, imageOrder, description}]</code>（ClothingImageInfoCommand）。<br data-page-node-id="FFNzXCEAMhHNNCB9vbd2LQ">
+                3. 首图标记 <code class="inline" data-page-node-id="h2IPrds4t8qdnbAsekFq0d">isMain=true</code>，列表卡片用主图渲染。
+              </div>
+            </div>
+            <div class="api-card" style="margin-top:0" data-page-node-id="n4ZtZ75vFSk5n2scXzeen4">
+              <div class="t" data-page-node-id="ZEjAacRwcd7zWm4HEYGyj5">🔌 CreateClothingWithImagesCommand 入参（kaleido-api）</div>
+              <div class="api-note" data-page-node-id="O3PGDUqazrYCKyo3nlT7RO">name* / typeCode* / colorCode / seasonCode / brandId / size / purchaseDate / price / description / currentLocationId / images[{path,isMain,imageOrder,description}]</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== 4 搭配 ========== -->
+      <section class="view" id="v-outfit" data-page-node-id="xCEsArv6QMHjeZFMsEjFiY">
+        <div class="card" style="display:flex;gap:10px;align-items:center" data-page-node-id="N1svad0eGxZ2Cu7OxYfEV7">
+          <span style="font-size:13px;color:var(--muted)" data-page-node-id="lNoczpWyfxqODjcEPIOQqd">我的穿搭方案</span><span style="flex:1" data-page-node-id="79UO2cnHSvuke6UdX7Ud4V"></span>
+          <button class="btn" data-page-node-id="QKTOlD6IahkcBgXkethqqg">＋ 创建搭配</button>
+        </div>
+        <div class="grid g3" data-page-node-id="dn6OiVzqCWs31LX96576N7">
+          <div class="card" style="margin:0" data-page-node-id="KPrnYfDLM2qmkLf4RqYFAC">
+            <h3 data-page-node-id="YZIHqWKOlUgnG4AklBerZz">🍂 秋日通勤套装</h3>
+            <div style="display:flex;gap:8px;font-size:26px;margin:6px 0" data-page-node-id="MGnGDaZO7vBEab2CiLtUrd">🧥👕👖👟</div>
+            <div class="clothing-meta" data-page-node-id="bvVdLcdCDfyVe5UblQp7Ef"><span data-page-node-id="L30gp8HiEHDdvl9DElvFpc">含 4 件</span><span data-page-node-id="SMtRa2T6q0W5vBRiXWkH1l">穿过 <b data-page-node-id="JTwZ8V74kKjCKB71xaNCjh">6</b> 次</span><span data-page-node-id="g8NxBy6eH0JdL5wlewgHjZ">最近 2026-09-04</span></div>
+            <div style="margin-top:10px;display:flex;gap:8px" data-page-node-id="OqKqh0DvUV5dk2M7AKkdNq">
+              <button class="btn sm" data-page-node-id="pVALeSuDjY1H7KZzHDx8W8">✅ 今日穿这套（POST /{outfitId}/wear）</button>
+              <button class="btn sm ghost" data-page-node-id="HCHLLu5ETbLrPuhbFYfAaY">记录</button>
+            </div>
+          </div>
+          <div class="card" style="margin:0" data-page-node-id="60HBSI23wDS2le1Idjvd2I">
+            <h3 data-page-node-id="0dQCv5xY0jhMA3hwp9aWrM">☀️ 夏日清爽套装</h3>
+            <div style="display:flex;gap:8px;font-size:26px;margin:6px 0" data-page-node-id="8HPVFIDNaU9WeOsDGYizMl">👕👖🩴</div>
+            <div class="clothing-meta" data-page-node-id="sMYkWiVFteXO1HnTxsC2YH"><span data-page-node-id="KL2yRbYqUi24tVY1SttUhi">含 3 件</span><span data-page-node-id="kBwIschI9PhCBWxlJatqCh">穿过 <b data-page-node-id="ZTli7PodIPy8id1uVz77OD">12</b> 次</span></div>
+            <div style="margin-top:10px;display:flex;gap:8px" data-page-node-id="DCNFCG3J00PYM1vWh0N7Mg">
+              <button class="btn sm" data-page-node-id="p7MubakB0ruBgHBhz2QPVF">✅ 今日穿这套</button>
+              <button class="btn sm ghost" data-page-node-id="RKoReDUhKGHRVtQELtl03Q">记录</button>
+            </div>
+          </div>
+          <div class="card" style="margin:0;border-style:dashed" data-page-node-id="whyJpWBwB5A5xI6SZcNC9k">
+            <h3 data-page-node-id="00GVbkq1tXdiuPH3ciZpOQ">＋ 从 AI 推荐一键生成</h3>
+            <p style="font-size:12.5px;color:var(--muted);line-height:1.8" data-page-node-id="JQoeSyhTKA5GDQnC7S1TJw">AI 助手里让 Agent 根据天气/场合推荐搭配，确认后调用本页创建接口生成搭配方案。</p>
+          </div>
+        </div>
+        <div class="api-card" data-page-node-id="xk0iRjpiM4fsv6tDF0VsYW">
+          <div class="t" data-page-node-id="7vXQVA5ThCD7g1LGn74R1a">🔌 搭配页接口（OutfitController · /wardrobe/outfits）</div>
+          <div class="api-row" data-page-node-id="Xa8jL52EiY5MlLohGwGq0l"><span class="chip get" data-page-node-id="CezyEWANF9SAH7Dp4MnZi0">GET</span><span class="api-path" data-page-node-id="DASkbQdz3TYU2yetAIxeIi">/wardrobe/outfits/list</span>方案列表</div>
+          <div class="api-row" data-page-node-id="BHP4eeGCAEXFfvaeZQ5jzW"><span class="chip get" data-page-node-id="Lre3bzKVGp4vJlCft8JHzx">GET</span><span class="api-path" data-page-node-id="cTT6GhjIs2teHSVcS61hXW">/wardrobe/outfits/{outfitId}</span>方案详情（含 clothings / images / wearRecords）</div>
+          <div class="api-row" data-page-node-id="m0SQpZNhI9pejAZ3FL2DOO"><span class="chip get" data-page-node-id="q4qyMxys5DtgYIfERu96eS">GET</span><span class="api-path" data-page-node-id="zikYX4mn7pL65QsKFmCDp8">/wardrobe/outfits/{outfitId}/records</span>穿着记录 WearRecordResponse[]</div>
+          <div class="api-row" data-page-node-id="CAIxCJYOC6Vif6mb8H6eih"><span class="chip post" data-page-node-id="0U3Q01TeJPYUx08DdpVBbj">POST</span><span class="api-path" data-page-node-id="mXmM0uWjIMFx7J1NKAoruy">/wardrobe/outfits</span>创建 CreateOutfitWithClothingsCommand{name*, clothingIds*, images[]}</div>
+          <div class="api-row" data-page-node-id="TvyKaUl44Lp6O93VexW7iK"><span class="chip post" data-page-node-id="9qhD6hs5DCf1yRTDB7YZ1I">POST</span><span class="api-path" data-page-node-id="d8fBKMo4ADH2Ep00GJxe5C">/wardrobe/outfits/{outfitId}/wear</span>记录穿着（wearCount +1、lastWornDate 更新）</div>
+          <div class="api-row" data-page-node-id="R47Vmbua5w5vLQyJMvrOYE"><span class="chip put" data-page-node-id="5LYqWuGUiYbuMJAVftGNrO">PUT</span><span class="api-path" data-page-node-id="b0l3xirgtsQ0c2mWXxeIh0">/wardrobe/outfits/{outfitId}</span> / <span class="chip del" data-page-node-id="LM6hOLBA4uKaFSrIxADWIl">DEL</span><span class="api-path" data-page-node-id="CihXTSbORguoDfi2Ks4C8Q">/wardrobe/outfits/{outfitId}</span></div>
+          <div class="api-note" data-page-node-id="2quKxKYpjIepBRbOaQ8eK4"><b data-page-node-id="rYEdnlVQfef6JoF4PMBAFq">OutfitInfoResponse</b>：outfitId / name / description / wearCount / lastWornDate / clothings[{clothingId,name,typeCode,colorCode,brandName,primaryImagePath}] / images / wearRecords</div>
+        </div>
+      </section>
+
+      <!-- ========== 5 收纳位置 ========== -->
+      <section class="view" id="v-location" data-page-node-id="5GbZFQmYI2EQPENBY3IUFK">
+        <div class="card" style="display:flex;gap:10px;align-items:center" data-page-node-id="ZMOQHOcmTcpGCvr6j6OZM3">
+          <span style="font-size:13px;color:var(--muted)" data-page-node-id="UxQD2YVNmFxIKBz03lIiA9">家里衣物存放位置</span><span style="flex:1" data-page-node-id="SoEuJAdxq1nxGSiPajjamZ"></span>
+          <button class="btn" data-page-node-id="X5KYZbvGfifgAstFsIfbHY">＋ 添加位置</button>
+        </div>
+        <div class="grid g3" data-page-node-id="aztz8U1DqUsea4gl7c3fCU">
+          <div class="card" style="margin:0" data-page-node-id="tYaDCFGWpNlAXAZDtTx8BF"><h3 data-page-node-id="D7BlZ2flAMOh8FQKUDJBQ8">🚪 玄关鞋柜</h3><p class="legend" data-page-node-id="nCsubXryLKll21NSn9Tlwm">地址：玄关左侧 · 存放鞋类 6 件</p></div>
+          <div class="card" style="margin:0" data-page-node-id="XrsbOaq8H98H7lnDUqVHti"><h3 data-page-node-id="tPApTLQE8oufHaVgLuuD73">🛏️ 卧室衣柜</h3><p class="legend" data-page-node-id="4bC1jqRgJbrX9wAEGVYHBA">地址：卧室 · 上/中/下三层，存放 18 件</p></div>
+          <div class="card" style="margin:0" data-page-node-id="7k0E0GqK4J77vl1PAWB0KE"><h3 data-page-node-id="H4QL4doZQ06P2ouBNkwQzK">🪞 衣帽间</h3><p class="legend" data-page-node-id="d6G68ZcUM1nbhHqtDl97DW">地址：主卧隔间 · 挂区/叠放区，存放 12 件</p></div>
+        </div>
+        <div class="api-card" data-page-node-id="1gERtH1GVTuHsXDlRzI1ZI">
+          <div class="t" data-page-node-id="7ppRSOoYIEEAWewhlwBDmY">🔌 位置接口（LocationController · /wardrobe/location）</div>
+          <div class="api-row" data-page-node-id="ugmcPXZOFaJ0Fk1pdMjYVj"><span class="chip get" data-page-node-id="xVttNrutanF8WuocyF2PDC">GET</span><span class="api-path" data-page-node-id="jLe7QImZqxMEkbOOpznwV2">/wardrobe/location</span>列表</div>
+          <div class="api-row" data-page-node-id="XiD3hyWQqk6MAxUer0iM9h"><span class="chip post" data-page-node-id="hWl2rxHqOBBkUDxBGof3d8">POST</span><span class="api-path" data-page-node-id="j0zMCLTxSFJPb0v0SaRCJp">/wardrobe/location</span>创建 CreateLocationWithImagesCommand{name*, description, address, images[]}</div>
+          <div class="api-row" data-page-node-id="HTYEIOO45DOYZgEDJT3DEI"><span class="chip put" data-page-node-id="pnLppxvM6U99Jer9qwZKyU">PUT</span><span class="api-path" data-page-node-id="2jeeyxTXbAFY8ju2eBi74r">/wardrobe/location/{locationId}</span> / <span class="chip del" data-page-node-id="b8Te8qgs1KdHp6OoPojj27">DEL</span> 同路径</div>
+          <div class="api-row" data-page-node-id="g46tttZiP8jBZJIHtlmxl6"><span class="chip post" data-page-node-id="qA8x6tRVMdniSqwEUhnqk3">POST</span><span class="api-path" data-page-node-id="uL6RILpTuWzBtcOLNlFhMj">/wardrobe/location/{locationId}/tags/{tagId}</span>关联标签</div>
+          <div class="api-note" data-page-node-id="0kY8KGmefsupcVPd9A5lIQ"><b data-page-node-id="SOAgKkR9diZ5yAnjusTEHO">LocationInfoResponse</b>：locationId / name / description / address / primaryImageId / images[]。衣物创建时 <code class="inline" data-page-node-id="3ZfXryugzGcvFcSN9teMm0">currentLocationId</code> 从本页数据选择，衣柜卡片可展示「位置 → 衣物」映射。</div>
+        </div>
+      </section>
+
+      <!-- ========== 6 AI 对话 ========== -->
+      <section class="view" id="v-chat" data-page-node-id="Hj4nHHrfE0NWgo3SBLsQJt">
+        <div class="chat-wrap" data-page-node-id="huUYpIUF1kZ5qjXWdsaL7Y">
+          <div class="conv-list" data-page-node-id="9CgtYZchw8IYX1wARq35Fm">
+            <div class="hd" data-page-node-id="BKTlQXUgjwxAwvKwJw13XZ">会话列表 <button class="btn sm" onclick="newConv()" data-page-node-id="DF0kAywzMChqKHvNtKrWLp">＋</button></div>
+            <div class="conv-item on" data-page-node-id="jO5zE2cEvSysbMv44952yP"><div data-page-node-id="m8z7mDmB3PCCAABDu7JjnV">秋季通勤搭配咨询</div><div class="sub" data-page-node-id="JmeshNaKFS0fub8VaJJ4H9">2026-09-07 · POST /ai/conversation 创建</div></div>
+            <div class="conv-item" data-page-node-id="PGWZqHVTxpBobo5Y8kXFih"><div data-page-node-id="eZB4Ty5mKhIY5KJRiQfsuD">周末出游穿什么</div><div class="sub" data-page-node-id="UQuVcBfFx19LoEENF5GZfy">2026-09-06</div></div>
+            <div class="conv-item" data-page-node-id="xwIKOhQHltYpE7OraQGs3G"><div data-page-node-id="54YkVDNfROu9KP4ZLCCASX">换季衣物收纳建议</div><div class="sub" data-page-node-id="pE6mTjPl1gotVwQaMubaJ7">2026-09-05</div></div>
+          </div>
+          <div class="chat-main" data-page-node-id="1cxdzMR0V58bgBE9aZCtFF">
+            <div class="chat-msgs" id="msgs" data-page-node-id="hKVLeq2af83ugcVNqd6FSJ">
+              <div class="bubble user" data-page-node-id="g9MyQfBWooJSsbrjJ1253b">最近降温了，明天上班穿什么合适？</div>
+              <div class="bubble ai" data-page-node-id="7YN3m9A6IaTywNOCbnBQqM">根据你的衣柜数据，明天多云 16~22°C，推荐「秋日通勤套装」：深蓝羊毛大衣 + 白色纯棉T恤 + 直筒牛仔裤 🧥<span class="src" data-page-node-id="BPd6uDvvPGjy1kgE7p8tBm">POST /ai/agent/{agentId}/chat → Flux&lt;String&gt; 流式返回 · 向量检索命中 3 件衣物</span></div>
+              <div class="bubble user" data-page-node-id="GcPCQbG3YflMMJPza2uIYL">这套我上周穿过 3 次了，换个方案</div>
+              <div class="bubble ai" data-page-node-id="AG41Rf72guCSQbXY5emrE3">好的，换成：浅灰针织开衫 + 藏青衬衫 + 卡其休闲裤，这套最近 14 天没穿过，避免重复感。<span class="src" data-page-node-id="kyGsdMmYAV5wazZnPdBrjP">（建议流式打字机效果：fetch body.getReader() 逐 chunk 追加）</span></div>
+            </div>
+            <div class="typing" id="typing" data-page-node-id="y5oWtqgw6ln7VEJ03CQcQx">SSE/流式就绪 · agentId 来自 GET /ai/agent</div>
+            <div class="chat-input" data-page-node-id="NAPIsUFd6W2F7bcLyGZZLI">
+              <input id="chat-in" placeholder="问点什么，比如：明天 20 度怎么穿？" onkeydown="if(event.key==='Enter')send()" data-page-node-id="u1QuBBfGcL16LbRouYgp2Q">
+              <button class="btn" onclick="send()" data-page-node-id="NpKjqh2sj2VA5p6ANmLnQC">发送</button>
+            </div>
+          </div>
+        </div>
+        <div class="api-card" data-page-node-id="zF4W1TACm8rdszQ7loGFsb">
+          <div class="t" data-page-node-id="i0IU4CZRxhCCYhJ6y93qaW">🔌 AI 对话接口（AgentController / ConversationController）</div>
+          <div class="api-row" data-page-node-id="qS1FoCXv1mNILrHAriXbBF"><span class="chip get" data-page-node-id="Hi5uNwVU2kZw9ipfamvIrg">GET</span><span class="api-path" data-page-node-id="TRxGtFF7qL9IioBOXzBZIl">/ai/agent</span>Agent 列表（含 modelName/temperature/tools）</div>
+          <div class="api-row" data-page-node-id="xC1wZwF3APzrDAFWfA8CWO"><span class="chip post" data-page-node-id="ELsja5CCke1FtraL9gmCoF">POST</span><span class="api-path" data-page-node-id="1bC3oNqEXdDx7jCXE6J4ky">/ai/agent/{agentId}/chat</span>与指定 Agent 对话，body：<code class="inline" data-page-node-id="P5MWmOc8cxHIPnRoSDJNyZ">{message*, conversationId?}</code></div>
+          <div class="api-row" data-page-node-id="hJlrcnCDh7pxzPZ39ut0Ku"><span class="chip post" data-page-node-id="1LUsLdTTa2lcgrhhRfoBSC">POST</span><span class="api-path" data-page-node-id="3WOhG0Xu2Zej63WcPgQzq7">/ai/agent/chat</span>默认 Agent 对话（不选 Agent 时用）</div>
+          <div class="api-row" data-page-node-id="D4XEqHsiG7SSg4zbvRTGXN"><span class="chip post" data-page-node-id="YMU9cT3sGp7UFuFGcLEbaW">POST</span><span class="api-path" data-page-node-id="ZUR2wtYeax64nIRRzOgusz">/ai/conversation</span>创建会话 → ConversationInfoResponse{conversationId,userId,title,messages[{role,content}]}</div>
+          <div class="api-row" data-page-node-id="zXWF8z7FoPDTzg8Fd6nqGM"><span class="chip get" data-page-node-id="SE7AZ4c8AAwfeFeXg1eBCb">GET</span><span class="api-path" data-page-node-id="aEXhsG03G13tlZYMddPtnw">/ai/conversation</span>会话列表 / <span class="chip put" data-page-node-id="mMAeTKbmiZXUf7W8TlnNb9">PUT</span><span class="api-path" data-page-node-id="oA0aUKnR6Dj7yRoAQLqfV1">/{conversationId}/title</span> 改标题 / <span class="chip del" data-page-node-id="bqM61eFalOw899F2hsCpVK">DEL</span> 删除</div>
+          <div class="api-row" data-page-node-id="d7d44gRMUw3x66VGBUh7Pc"><span class="chip get" data-page-node-id="bFOyQAR22fBhtRwShOOzLR">GET</span><span class="api-path" data-page-node-id="TtXGAMJr0wqE3Bg8mlHqC8">/ai/workflow/{workflowId}</span>工作流详情 / <span class="chip post" data-page-node-id="0hZkHcwiKfWEfyMqFmwbHw">POST</span><span class="api-path" data-page-node-id="Witjgteo2X7F9TVC7vF3Li">/ai/workflow/execute</span>执行 / <span class="chip get" data-page-node-id="EqSJKGMe6ClPNQWHlhA0F0">GET</span><span class="api-path" data-page-node-id="zqoKycA1JtH7gHOP5XI4bT">/ai/workflow/executions/my</span>我的执行记录</div>
+          <div class="api-note" data-page-node-id="Cx8Kc4FkhCefrSRaaCvGQA">
+            ⚠️ 两个 chat 接口返回 <code class="inline" data-page-node-id="mRmZwg7s19dT25PMBIY5v6">Flux&lt;String&gt;</code>（text/event-stream），前端必须流式消费：<code class="inline" data-page-node-id="BAZCGDZgCeRFyzT38F51OQ">const res=await fetch(url,{method:'POST',headers,body}); const reader=res.body.getReader()</code> 逐段 decode 拼接。<br data-page-node-id="SHFjwbEQ5uPWFjY9Y6I7l0">
+            ⚠️ 部署提醒：kaleido-ai 的 Nacos 配置引用 <code class="inline" data-page-node-id="UH3P0gFqSISnlQi5V7yDCi">${AI_BASE_URL}/${CHAT_MODEL}/${EMBEDDING_MODEL}</code> 环境变量，compose 里尚未注入——接前端前先补上真实 API Key，否则对话必报错。
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== 7 管理端：用户管理 ========== -->
+      <section class="view" id="v-admin-user" data-page-node-id="a69toLjdijPqFRUGi6P8b7">
+        <div class="card" data-page-node-id="YKlXSJVWOG0wGVqkFUfgEz">
+          <div style="display:flex;gap:10px;margin-bottom:12px" data-page-node-id="RTlK1MF3MY772Hrig62vBN">
+            <input style="width:220px" placeholder="按手机号查询（/user/by-telephone/{telephone}）" data-page-node-id="zihEsVOzeppfjzzH6nZtzY">
+            <button class="btn ghost" data-page-node-id="EYzl6scmrYjgsFCjMEFC6S">查询</button><span style="flex:1" data-page-node-id="ZWkWJpm5nzTi2Dd69UUqRd"></span>
+            <span style="font-size:12px;color:var(--muted)" data-page-node-id="1sXzp8IFbRRdx2bqQIBbt4">C 端用户表 t_user_0/1 分表，管理员可冻结/解冻</span>
+          </div>
+          <table data-page-node-id="bCeE57opDm1pAs6GX9mGkX">
+            <tr data-page-node-id="t1AfZ3KzYs8tO63r2zrCe3"><th data-page-node-id="AqxKXRLsQvHzfuuEnPEnvL">userId</th><th data-page-node-id="Fjmlj74ApDt8zj1S91w6Np">手机号</th><th data-page-node-id="vo6xZSc6O0rAFHuaduPLrp">昵称</th><th data-page-node-id="03bkzxM1JHjfo9Tazomlif">状态</th><th data-page-node-id="U9tNEdUdL5u2dHIAKnmQYa">注册时间</th><th data-page-node-id="8LrQCWWQT4L4XahNZ959UH">操作</th></tr>
+            <tr data-page-node-id="nVVqmPHdZKeb2eWmgYkw3s"><td data-page-node-id="DItAMkdpyWnOYr4wgbdeRw">10001</td><td data-page-node-id="SGRT38oYyL0L4spUboafeK">138****1234</td><td data-page-node-id="xLFvQG3RPpcskF2wiodfqE">小明</td><td data-page-node-id="pUW4GTHlZPfu2OJKMEvFJd"><span class="pill" style="background:var(--green-soft);color:var(--green)" data-page-node-id="J2bxohVaDg0qoJAMnp9DqN">正常</span></td><td data-page-node-id="QZ0R1LLjggPv447s8IfUf6">2026-08-01</td>
+              <td data-page-node-id="PgACZg4yjIfoUcYf7wfAm7"><button class="btn sm danger" data-page-node-id="OGYNYjiex4lHz7ffPsTaVw">❄️ 冻结</button> <button class="btn sm ghost" data-page-node-id="54ICMaVO8sstDfzZwy9ulr">详情</button> <button class="btn sm danger" data-page-node-id="frZnJnlkHrTVfTpGCifUqU">删除</button></td></tr>
+            <tr data-page-node-id="k2yPFnbxTH45qv27mAbLXQ"><td data-page-node-id="3mCi9jYdyeUJCueB7Pgi7N">10002</td><td data-page-node-id="xBQKG6rbQEfKRNBnU2QL8I">159****8876</td><td data-page-node-id="PEurJG6aewJkNQWwJetZ7r">阿琳</td><td data-page-node-id="YmoWdQS2DURCV0F3Z3AxiV"><span class="pill" style="background:var(--orange-soft);color:var(--orange)" data-page-node-id="jNXCjjpPTzswGFO1HjnMoa">已冻结</span></td><td data-page-node-id="br75d8qbJj0pcZVgrlfwBb">2026-08-03</td>
+              <td data-page-node-id="vcnPjfATZ9ewG7JED6X61C"><button class="btn sm" data-page-node-id="4pPqVMzSORYSN6xGMHmYML">🔓 解冻</button> <button class="btn sm ghost" data-page-node-id="Ue692o61JOE4YTG8cYy6nS">详情</button></td></tr>
+          </table>
+        </div>
+        <div class="api-card" data-page-node-id="Ii0492GbL0vwlo7BIfmtWD">
+          <div class="t" data-page-node-id="jHmc6mAa27i6i0UU6EBOlX">🔌 用户管理（admin 模块 UserController · /admin/user）</div>
+          <div class="api-row" data-page-node-id="GbIhtLAgdMKE14y3Ss5nyC"><span class="chip get" data-page-node-id="tDRFnr8Vn5RzJ54xZa2XUs">GET</span><span class="api-path" data-page-node-id="dRmpm8RbLMQemxnQkxPfU4">/admin/user/page</span>分页列表</div>
+          <div class="api-row" data-page-node-id="8dohfZ5s7C4XDzoLLdiuDz"><span class="chip get" data-page-node-id="5OSKtRXFeezcoAvfEHb76i">GET</span><span class="api-path" data-page-node-id="jA84v3wJXE1XUdZLOzoW6u">/admin/user/{userId}</span> / <span class="chip get" data-page-node-id="uThY2w5lO8MHrYjXY4fY2s">GET</span><span class="api-path" data-page-node-id="6xn8eFxDe6XlrElSM0TLid">/admin/user/by-telephone/{telephone}</span></div>
+          <div class="api-row" data-page-node-id="WTTwnL3rfe6luh1B9DS1ir"><span class="chip put" data-page-node-id="fgmSwbOYmSDeOHENBi6ofH">PUT</span><span class="api-path" data-page-node-id="TPmiPGpbssCJORZff0pdvB">/admin/user/{userId}/freeze</span> / <span class="chip put" data-page-node-id="o2jcOW57L2cTUlMzlYfaSC">PUT</span><span class="api-path" data-page-node-id="xOxU5QW6wqJZZh1Wk5czKO">/admin/user/{userId}/unfreeze</span></div>
+          <div class="api-row" data-page-node-id="LuNW0s2kP6CnhKe9ElYIf9"><span class="chip del" data-page-node-id="bqCw05vGjkL9PIpbkAGUPC">DEL</span><span class="api-path" data-page-node-id="irObDkyhugvmu3yJzRWwp4">/admin/user/{userId}</span></div>
+        </div>
+      </section>
+
+      <!-- ========== 8 管理端：Agent 管理 ========== -->
+      <section class="view" id="v-admin-agent" data-page-node-id="vLG6SB0PXB1LYtWBhZkiYd">
+        <div class="grid g2" data-page-node-id="I7x6EfiAnZ32voTRDBdFEb">
+          <div class="card" data-page-node-id="LEhelCkfHGNnSIXewAR3Rm">
+            <h3 data-page-node-id="nEL4uJfhuf6ELKM4XSu1eu">🧠 Agent 配置（t_ai_agent）</h3>
+            <table data-page-node-id="dGUFqPKCPB5MJ5QHLHrByd">
+              <tr data-page-node-id="REOleSt6hO9RvB3JSMTmaV"><th data-page-node-id="7h6WsWInifdFXwvwjAIUDI">code</th><th data-page-node-id="U6n8oi3IUeNuF5qUpNvn7o">名称</th><th data-page-node-id="cUQjoS0i3ep26yePz0qBfF">模型</th><th data-page-node-id="vCuRTS4E0H3qmMPVNezkNb">温度</th><th data-page-node-id="Yz5aVfLCFapuPosX34mzQT">状态</th><th data-page-node-id="VwzJ1gzaWQLNnn4COCGTC7">操作</th></tr>
+              <tr data-page-node-id="rK0ZM1d8QOfUY8cx0qLP5H"><td data-page-node-id="92hKJ9p2v5kkEx4C6RemAs">STYLIST</td><td data-page-node-id="NdmXIOMeLa8Tqvj5lqjHC9">穿搭顾问</td><td data-page-node-id="F9XAD4PFay8QSLQsUWfHzJ">deepseek-v3</td><td data-page-node-id="UIbHFkfefSaUF6AmRrZiFs">0.7</td><td data-page-node-id="12yAyvMB21iiDItR9ZFtFL"><span class="pill" style="background:var(--green-soft);color:var(--green)" data-page-node-id="vpCf84rFlLfwpd3LmqIhoK">启用</span></td>
+                <td data-page-node-id="eDqeOZsvp8JVHmpeboJ9fQ"><button class="btn sm ghost" data-page-node-id="9naIar3XnBH4ybpver14o8">编辑</button><button class="btn sm danger" data-page-node-id="PPhYaWh5arOlHkpchUaGJI">停用</button></td></tr>
+              <tr data-page-node-id="Cr37sg7Mu7MYcjQKnGljPX"><td data-page-node-id="VZBrddSEO0Lu3rmLleXwaJ">ORGANIZER</td><td data-page-node-id="TPPZQ9xDc087mwBDdmFvzB">收纳整理师</td><td data-page-node-id="fM2IyZgzCuskXzjTVtDED5">deepseek-v3</td><td data-page-node-id="NKsVjQWGNPFAjyL2Kc7k3N">0.5</td><td data-page-node-id="6WaR69Y7DqmkHOAXF01Iff"><span class="pill" style="background:var(--green-soft);color:var(--green)" data-page-node-id="Etnm1tSvgYk95SUVEMbPfE">启用</span></td>
+                <td data-page-node-id="1AgiaeAVYE2MHOL3fdQxjm"><button class="btn sm ghost" data-page-node-id="1hV20RoQbMOsfAc2KACbbR">编辑</button></td></tr>
+            </table>
+            <p class="legend" style="margin-top:8px" data-page-node-id="dpVDAA1Ufk3nR03de3GhqB">Agent 字段来自 AgentInfoResponse：agentId / code / name / description / systemPrompt / modelName / temperature / maxTokens / status / tools[]。模型默认 deepseek-v3（AgentAggregate.java:119）。</p>
+          </div>
+          <div class="card" data-page-node-id="Xh0Kv6Ne1mboOcMxYks3BQ">
+            <h3 data-page-node-id="p7vkPlVk3ouVF60pkJiDX6">🔧 Agent 工具挂载（tools）</h3>
+            <div class="pill" data-page-node-id="OzkainMcJFlRZfizCUj9St">query_clothing 向量检索衣物</div><div class="pill" data-page-node-id="0pfsDZ2rw8RAQXbVQjVCf8">query_outfit 查搭配</div><div class="pill" data-page-node-id="I1aj32nC7G6ueLKbDtfarj">query_location 查位置</div>
+            <div style="margin-top:10px;display:flex;gap:8px" data-page-node-id="PxlmJoImqHGdthhbAmKnt8"><button class="btn sm" data-page-node-id="ayeNGM51Pft2AzutgtjMDB">＋ 挂载工具</button><button class="btn sm danger" data-page-node-id="KVysMHzZAnVjUvwPwD4FuW">移除选中</button></div>
+            <div class="api-card" style="margin-top:14px" data-page-node-id="zF8qRZipH2uQjOpcBf6nzY">
+              <div class="t" data-page-node-id="FuwAYKZseGOVA6shRB5aIM">🔌 接口（admin/AiController · /admin/ai）</div>
+              <div class="api-row" data-page-node-id="129zFZWTzi60wDsJUZWXdE"><span class="chip post" data-page-node-id="HbzZOb7nNZ9PasQ8CkPGNJ">POST</span><span class="api-path" data-page-node-id="Z5onL5lIGGGxGr5BJk3zx8">/admin/ai/agent</span>创建 / <span class="chip put" data-page-node-id="GQDLdpCfIXZWkoH0SV5jQQ">PUT</span><span class="api-path" data-page-node-id="pYeBXOrl3nJ4bSoCRFsefM">/agent/{agentId}</span>更新</div>
+              <div class="api-row" data-page-node-id="pS6LdeGzwO4lRkt0OIR3b6"><span class="chip put" data-page-node-id="PkbFE0IZ0X984HfSyoCXor">PUT</span><span class="api-path" data-page-node-id="XyU3GMsj8rcUYwHIuK2Gsy">/admin/ai/agent/{agentId}/enable</span> / <span class="chip put" data-page-node-id="HR5kSz0yfUmZAzuddM8lpa">PUT</span><span class="api-path" data-page-node-id="u3KqHmhgk78DmEQl1N0OfM">/disable</span></div>
+              <div class="api-row" data-page-node-id="LQ0CBX7tLwIzDROcvPAUPT"><span class="chip post" data-page-node-id="t2QESkRNFb40tOW9Ed1fPf">POST</span><span class="api-path" data-page-node-id="0QTvUeGT2gi42yxvyxN9lr">/admin/ai/agent/{agentId}/tools</span>挂载 / <span class="chip del" data-page-node-id="a2Z5rIPlT69uvHG3DXuO7t">DEL</span><span class="api-path" data-page-node-id="rjAtZfyNt46rhAhYQ3NSOM">/tools/{toolCode}</span>移除</div>
+              <div class="api-row" data-page-node-id="dDJZ1efUVaDAh5Bl5yf6Ej"><span class="chip get" data-page-node-id="jVZLumGZELGwyLwEbf7vze">GET</span><span class="api-path" data-page-node-id="1efDCDQYUjopGkx6X60MDF">/admin/ai/agent/by-code/{code}</span>按 code 查询</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== 9 管理端：角色/权限 ========== -->
+      <section class="view" id="v-admin-rbac" data-page-node-id="twzZ1r4w1WCUAWLEZZDWGi">
+        <div class="grid g2" data-page-node-id="PUv82pV07eoDHWvwtD6N3s">
+          <div class="card" data-page-node-id="SWkcB2Btzg4BvgktSmDXb5">
+            <h3 data-page-node-id="Gsjxr1BkJCturUXJnLyt5u">👑 角色列表（t_role）</h3>
+            <table data-page-node-id="2ELkS6bfWzEv1Sj4YiWZyx">
+              <tr data-page-node-id="Oz1VJ2Pr15YBJEykNSFOyG"><th data-page-node-id="2AVXY45Gk3B2CIzh6vlbyA">角色</th><th data-page-node-id="2nVS9CpDX8DmMlQhKfAOGA">code</th><th data-page-node-id="iHSThe7kwk75i61qWemWTl">权限数</th><th data-page-node-id="HG3Ba8eThPG04fFdD0ncCE">操作</th></tr>
+              <tr data-page-node-id="4HiCAhuEmgOA7lwNBZlGQH"><td data-page-node-id="mT4hORPtdNAqTTpKEKY3VC">超级管理员</td><td data-page-node-id="oviWBsrS8ZVuvGi1WCY5MV">SUPER_ADMIN</td><td data-page-node-id="6y1g18UaNJo9veuVESgHho">32</td><td data-page-node-id="5HGSIESu7s4CrpQUTeyOZd"><button class="btn sm ghost" data-page-node-id="NNo0CPPA6T6DMAXN1CbGn9">分配权限</button></td></tr>
+              <tr data-page-node-id="x6KAGWxR8KUKA3CwneUpZl"><td data-page-node-id="kS0Lu9fvAR7499nuLt6t7d">运营</td><td data-page-node-id="ZJgAw3yAuat75qtdzBMBir">OPERATOR</td><td data-page-node-id="C522GcFAF5JvTJA4pguxfR">12</td><td data-page-node-id="DYUi9Ki1ITLb2YJ4L9zEv6"><button class="btn sm ghost" data-page-node-id="kC2Qyu7zF7YYFNUuy3XDqJ">分配权限</button></td></tr>
+            </table>
+            <div class="api-card" style="margin-top:12px" data-page-node-id="ILDZ8HjLnRbgBGqrZSuYux">
+              <div class="t" data-page-node-id="EQwMDXu0LbAAIrRrF8vHcc">🔌 RoleController · /role</div>
+              <div class="api-row" data-page-node-id="rsfbvyzgeaOXHHW5JSxQ3B"><span class="chip get" data-page-node-id="oQMGKnMVYGW62CoIWcOXjT">GET</span><span class="api-path" data-page-node-id="irZoR0eJr0kCREacyFVeG2">/role/list</span> / <span class="chip post" data-page-node-id="UE1q6ZdNwt2JrPzOPgElXv">POST</span><span class="api-path" data-page-node-id="iVGW5BhxUymgOytLoOSaTh">/role</span>创建 / <span class="chip put" data-page-node-id="LYfCd2AiW6ndazNJH57dQ3">PUT</span><span class="api-path" data-page-node-id="TEvFuP77TJ40fSEFa96zVj">/role/{roleId}</span></div>
+              <div class="api-row" data-page-node-id="5Di2oCW4OGz71Vwezm3feL"><span class="chip post" data-page-node-id="BTi5lkgwuLHB6boRFlqO84">POST</span><span class="api-path" data-page-node-id="He3vbk1PJOwV34frSHq0Gf">/role/{roleId}/permissions</span>分配权限（核心）</div>
+            </div>
+          </div>
+          <div class="card" data-page-node-id="KeJrfk22hGlMq2sOgfj4wj">
+            <h3 data-page-node-id="wpzihf7VY2MAiiprg7gybc">🌳 权限树（t_permission · GET /permission/tree）</h3>
+            <div class="tree" data-page-node-id="EnmviHWOBZ4WGS1u9Mgyeb">
+              <div class="node l1" data-page-node-id="8YJ6aRRaw1DMDhN9zAJzn9">📁 系统管理</div>
+              <div class="node l2" data-page-node-id="sE8eHpQBcBYMAaJjN8e0xa">├ 👥 用户管理 <span class="pill" data-page-node-id="YqxUt1A5MqWel8q0FEM6x7">menu</span></div>
+              <div class="node l2" data-page-node-id="UabFNCAAr2YK56BoXkCBvV">├ 🔐 角色管理 <span class="pill" data-page-node-id="kCH1K6tfPdgi0GDiEcnB9t">menu</span></div>
+              <div class="node l3" data-page-node-id="CXaD4fMKoZOjzQyyRHGEQt">├ user:freeze <span class="pill" data-page-node-id="BwrEiPjBUZrqfbULhzeFln">api</span></div>
+              <div class="node l3" data-page-node-id="xxaDiGeoO2LSJCezp9M7hT">└ role:assign <span class="pill" data-page-node-id="ARfnc7g0gFJ6375cVlZXZO">api</span></div>
+              <div class="node l1" data-page-node-id="cz5f61dSj0zPugSvP0i6c9">📁 衣柜管理</div>
+              <div class="node l2" data-page-node-id="yORvGvHCUFqW7ekc2hJbZK">├ 👔 衣物管理 <span class="pill" data-page-node-id="4AVA1aAL71WgIJVMjzucPI">menu</span></div>
+              <div class="node l2" data-page-node-id="yeNTLcuWbVT5GWl8RHDlot">└ 🏷️ 品牌管理 <span class="pill" data-page-node-id="ycXJ4kFCURQalxtRWayaYC">menu</span></div>
+            </div>
+            <div class="api-card" style="margin-top:12px" data-page-node-id="KMuW5HJ0qmQXnFGUktksYz">
+              <div class="t" data-page-node-id="sZLhaPrlFXiT1mVs1VnRXI">🔌 PermissionController · /permission</div>
+              <div class="api-row" data-page-node-id="T3aEEXefpfkfYIlZu2Av6S"><span class="chip get" data-page-node-id="j9V6rLvS9IEtBO1JNgHUMc">GET</span><span class="api-path" data-page-node-id="mTATDHLdSio8hWb7RB0eeh">/permission/tree</span>权限树（页面用这棵树渲染勾选框）</div>
+              <div class="api-row" data-page-node-id="wiNVQz1LpcbXsqcHkLjlAW"><span class="chip post" data-page-node-id="0AgzYbYaUCpiX2Y4UhDc07">POST</span><span class="api-path" data-page-node-id="phWCCgJ9NA0kfZavtCx4t2">/permission</span>创建 / <span class="chip put" data-page-node-id="2vz2EV8RpEBEwDrNSWVqCP">PUT</span><span class="api-path" data-page-node-id="Ha3IgBNKuu4d1J5A6ksuuX">/{permissionId}</span> / <span class="chip del" data-page-node-id="oFlkENkjjFTSfgz9p9faA9">DEL</span></div>
+              <div class="api-row" data-page-node-id="eIKz8nq5GA2Q1aWBLcqUQj"><span class="chip get" data-page-node-id="Hb5ExvuBzVRqsCZU88BN2y">GET</span><span class="api-path" data-page-node-id="BhTuNyR2HDlYLgNVv7Bgz5">/permission/parent/{parentId}</span>按父节点查子树</div>
+            </div>
+          </div>
+        </div>
+        <div class="empty-hint" data-page-node-id="ZLf4WrKbpMxkbvNfhVHMwX">💡 提示：管理端前端 <code class="inline" data-page-node-id="ldd9qiiEbOAapE8sKTrQMU">src/api</code> 下的 department/role/menu 接口目前全是 /mock/*，把对应函数的 url 换成本卡片里的真实路径、按 Result 壳改字段映射即可完成接线。</div>
+      </section>
+
+      <!-- ========== 10 接口速查 ========== -->
+      <section class="view" id="v-api" data-page-node-id="lpU63L8n5K1UAOgwoDcWyo">
+        <div class="card" data-page-node-id="xEA9ZzcX6aHkbfRLlUVbIL">
+          <h3 data-page-node-id="BZCBIDytUWe0qCvYigRps7">📖 全量真实接口速查（来自控制器代码，网关前缀已省略）</h3>
+          <table data-page-node-id="9hcevgVwhmukXWFvDt5ktZ">
+            <tr data-page-node-id="j8nhOxln7HjYL9jEx1YcCL"><th style="width:110px" data-page-node-id="24DZhbBhwpjjpWkm6KEGwt">模块</th><th data-page-node-id="RaP7HMq0ropqGz8QmuROpL">接口</th><th data-page-node-id="ofPzku9lShEgXuptVgRUtY">说明</th></tr>
+            <tr data-page-node-id="uyDc5C9OpxvEcDMqKvtXKv"><td rowspan="6" data-page-node-id="4Aim9dbzE9ZZMmv3Z5o60m"><b data-page-node-id="N9MDbdroJAzvXDTBjvk8Ih">wardrobe</b><br data-page-node-id="5WY5b6c4FkkYDNNuDY1TN0">衣柜服务</td>
+              <td data-page-node-id="mOA0S17eL4xM4MNFj0eHaU"><span class="chip get" data-page-node-id="hBQDXWPBMhFUT7OAAKnEbA">GET</span> /wardrobe/clothing/list · /{clothingId}</td><td data-page-node-id="CoFJi7bDpg2gXDN7GDyEVt">衣物列表（全量）/详情</td></tr>
+            <tr data-page-node-id="oJKDeg3Ds5kPF8G6iNylNR"><td data-page-node-id="xY7QQ3AvE16J1OiezUXi1T"><span class="chip post" data-page-node-id="kENvpWRtusK2hJn5HHcEV3">POST</span> /wardrobe/clothing · <span class="chip put" data-page-node-id="bgNOK6C5F8dGD7VbkAi2cC">PUT</span>/<span class="chip del" data-page-node-id="C1fEaYvmpC9DbJnAEBLjbn">DEL</span> /{clothingId}</td><td data-page-node-id="1Q8BeMrGPUFGyX0gelXsGz">增改删（带 Sentinel 降级/兜底方法）</td></tr>
+            <tr data-page-node-id="CjkQSV766OqzS9qhbeqUwH"><td data-page-node-id="YdfaFo89Pwvl4iCIVe4NBk"><span class="chip get" data-page-node-id="R5Auel2ACjKQqG8TpbnYHY">GET</span> /wardrobe/outfits/list · /{outfitId} · /{outfitId}/records</td><td data-page-node-id="89WpcE902wBpuBy62qC7eW">搭配列表/详情/穿着记录</td></tr>
+            <tr data-page-node-id="nfGpISUErSqdWJfLLggpfU"><td data-page-node-id="lFY4siHGf25lBshjhyyqU3"><span class="chip post" data-page-node-id="dGeEZIL1OI9ORYECfBwj9K">POST</span> /wardrobe/outfits · /{outfitId}/wear</td><td data-page-node-id="jgoQNwLJVj3K3dUDNsVSGz">创建搭配 / 记录穿着</td></tr>
+            <tr data-page-node-id="8Bf5n7JRXxRlxa10ilHoWk"><td data-page-node-id="iD61Qr9YJRnFnCK4XHEQRd"><span class="chip get" data-page-node-id="wKM6CdMu2dqdB4zvtpLsIa">GET</span> /wardrobe/brand · /{brandId}</td><td data-page-node-id="DQR56mEEMtN806p8ajPZk1">品牌列表/详情</td></tr>
+            <tr data-page-node-id="1c70HZEGRPJGx0Qn5CDNX9"><td data-page-node-id="1ggZhMBqbWiWVdyM6CtfBc"><span class="chip get" data-page-node-id="FMYIMki3bHkxJ9RqLjVZVE">GET</span> /wardrobe/location · <span class="chip post" data-page-node-id="0ndcymfF5eAPfqqeJjIPId">POST</span>/<span class="chip put" data-page-node-id="00Oi18rEUGHbhdOukob1vG">PUT</span>/<span class="chip del" data-page-node-id="v0wiD4pA9hD0UDYDxQsOhG">DEL</span></td><td data-page-node-id="NEDRspwzjXbfcqVcdluU9V">收纳位置 CRUD + 标签关联</td></tr>
+            <tr data-page-node-id="6wFhx7imCjG7rBNeiV06Pj"><td rowspan="3" data-page-node-id="YAM4f99D4UQKBQCMJRq1Am"><b data-page-node-id="t8OBlAjFUCQeCmrjb09iPB">ai</b><br data-page-node-id="HoCbKp6hPDKKQrovpQRCcl">AI 服务</td>
+              <td data-page-node-id="AJn7mNUnOCRl1xMmqVolaY"><span class="chip post" data-page-node-id="wR27MCPo3rHF1ikvhbvoVK">POST</span> /ai/agent/{agentId}/chat · /ai/agent/chat</td><td data-page-node-id="gX6Ohg1pVEeUgICmzcYqZR"><b data-page-node-id="YLr2hGHVvfPT2ssg2eycLD">Flux&lt;String&gt; 流式对话</b>，body {message*, conversationId?}</td></tr>
+            <tr data-page-node-id="3gCgsj9oOuYA5deflSN83m"><td data-page-node-id="eSVzaodTCbt54osnlGPd61"><span class="chip post" data-page-node-id="cIz51glR7iEf3LOSB35Cg3">POST</span> /ai/conversation · <span class="chip get" data-page-node-id="eMyJnEDiNMDg5iAlTRGcFe">GET</span> / · <span class="chip put" data-page-node-id="XejA3qwhKR9UBtryMzBe2h">PUT</span> /{id}/title · <span class="chip del" data-page-node-id="Fg7AGXtlf9XGYzxtkgMSrx">DEL</span> /{id}</td><td data-page-node-id="Xj1hho1ella0wPnbAV8v5S">会话管理（消息存 MongoDB）</td></tr>
+            <tr data-page-node-id="AcTTOf2V4BONytRbgx4OA9"><td data-page-node-id="kGYIseVvXlEkMtkyt9LnaM"><span class="chip get" data-page-node-id="X6q8sBd1UaHKilVTb2B4lq">GET</span> /ai/workflow/{workflowId} · <span class="chip post" data-page-node-id="9vXyA55MDZwhEyigXK81Hg">POST</span> /execute · <span class="chip get" data-page-node-id="6ADpgCSjj9OsDQAFpwBAYo">GET</span> /executions/my</td><td data-page-node-id="yQVx6BqnpP9Etpl7T0zeZq">工作流查询/执行/执行记录</td></tr>
+            <tr data-page-node-id="PmGU7HXGvDPKswWu2El6bs"><td rowspan="4" data-page-node-id="CkL95DOSIfcCi9mliCzUm7"><b data-page-node-id="UtPGUrNuSNnk1Cko7lRBNR">admin</b><br data-page-node-id="e9nu6Gv2y1VqwqyyWU0DHW">管理后台</td>
+              <td data-page-node-id="G6tkrqYaBpB7T9VDAhnbpK"><span class="chip get" data-page-node-id="1q2ioUsT24tfQnKwXGzZ5y">GET</span> /admin/user/page · /{userId} · <span class="chip put" data-page-node-id="GG0rOLsv13EV3skXNb6cGx">PUT</span> freeze/unfreeze · <span class="chip del" data-page-node-id="Fy8kqm6ZicsWFEMWEeMJLK">DEL</span></td><td data-page-node-id="fN8rxG7Uq2ekSt4hCyCdf0">用户管理</td></tr>
+              <tr data-page-node-id="F25hNHRZUJhU5qKBM4REBg"><td data-page-node-id="KqeA4K5HL9EcxGPfEG9A9n"><span class="chip post" data-page-node-id="yQEah6kEfagnJsiDrZV5NE">POST</span> /role · <span class="chip post" data-page-node-id="hbGVsWJP2DcqlDQlMN5X12">POST</span> /{roleId}/permissions · <span class="chip get" data-page-node-id="xsrciEUL17ZhDGVFqiXCuj">GET</span> /permission/tree</td><td data-page-node-id="OM06MUNgUHXCegwhmMbrDD">RBAC 角色/权限</td></tr>
+              <tr data-page-node-id="qk6fCZ43y1MU4RSlY6G3YJ"><td data-page-node-id="tD8sUaeEysMZqeGl5o1fuZ"><span class="chip post" data-page-node-id="uGD5g66FG4zduEuY9uDvnO">POST</span> /admin/ai/agent · tools 挂载 · enable/disable</td><td data-page-node-id="HXlfiZlYhw7i06kYhWbd8w">Agent 配置</td></tr>
+              <tr data-page-node-id="vBN4oNOjL4lP493gWV4S26"><td data-page-node-id="RL5hrSiX7Yy3T63mNDN4SI"><span class="chip post" data-page-node-id="NIvzSd1tqHlim2u9cHT1kf">POST</span> /admin/public/file/upload · <span class="chip post" data-page-node-id="aXNT2J9wEEuSDBgdKxNtQg">POST</span> /dict · /admin/notice/*</td><td data-page-node-id="XVkEDTuSNOTlPHu2YOhVv2">文件上传 / 字典 / 通知模板</td></tr>
+            <tr data-page-node-id="7AdCHu1dcv2caBWZy5TMNj"><td data-page-node-id="vDIdzl42JreS4V6IyeptSE"><b data-page-node-id="9rSc2FYa8p2Gsnh5JJgnPC">auth</b></td><td data-page-node-id="RLFdnzrv4I1NRqJiJQriYM"><span class="chip post" data-page-node-id="kpeJoqosSttqWNSSKNkUAY">POST</span> /kaleido-auth/public/admin/login · /public/sms/verify-code</td><td data-page-node-id="brzD9v3Z42br72QzyzGQpR">登录（已接入 ✅）</td></tr>
+          </table>
+          <p class="legend" style="margin-top:12px" data-page-node-id="C1gaBSufb9jEw5mCi0Pp5L">
+            <b data-page-node-id="8Dp9CxjNSyozbzPabXX6T2">实现要点</b>：① 统一响应壳 Result{code:'SUCCESS',success,msg,data}；② 网关 http://192.168.52.133:9010，路由前缀按服务名（如 /kaleido-auth，wardrobe/ai/admin 走 Nacos 路由配置）；③ 登录后请求头带 <code class="inline" data-page-node-id="Hj49ViBPf8uVSDGJjztiPh">kaleido-admin-token</code>；④ AI 聊天必须流式消费；⑤ 字典下拉数据先查 /dict。
+          </p>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  // 导航切换
+  const crumbMap={dashboard:'工作台',clothing:'我的衣柜','clothing-new':'添加衣物',outfit:'穿搭搭配',location:'收纳位置',chat:'AI 穿搭助手','admin-user':'用户管理','admin-agent':'Agent 管理','admin-rbac':'角色 / 权限',api:'全量接口速查'};
+  document.querySelectorAll('.nav-item').forEach(el=>{
+    el.addEventListener('click',()=>go(el.dataset.v));
+  });
+  function go(v){
+    document.querySelectorAll('.view').forEach(s=>s.classList.remove('active'));
+    document.getElementById('v-'+v)?.classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.v===v));
+    document.getElementById('crumb').textContent=crumbMap[v]||v;
+    window.scrollTo(0,0);
+  }
+  // 原型交互：模拟流式聊天（真实实现见接口卡）
+  function send(){
+    const inp=document.getElementById('chat-in');
+    const t=inp.value.trim(); if(!t)return;
+    const box=document.getElementById('msgs');
+    box.insertAdjacentHTML('beforeend','<div class="bubble user"></div>');
+    box.lastElementChild.textContent=t; inp.value='';
+    const ai=box.insertAdjacentHTML('beforeend','<div class="bubble ai"><span id="cur"></span></div>');
+    const cur=document.getElementById('cur');
+    const reply='（原型演示）这里是流式返回的 AI 回复。真实实现时：POST /ai/agent/{agentId}/chat，fetch+getReader() 逐段渲染。';
+    let i=0; const timer=setInterval(()=>{ cur.textContent=reply.slice(0,i+=2); box.scrollTop=box.scrollHeight; if(i>=reply.length)clearInterval(timer); },30);
+  }
+  function newConv(){ alert('真实实现：POST /ai/conversation 创建会话，用返回的 conversationId 关联后续 chat'); }
+</script>
+</body>
+</html>

@@ -1,0 +1,103 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.xiaoo</groupId>
+        <artifactId>kaleido-common</artifactId>
+        <version>1.0.0</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>kaleido-api</artifactId>
+    <name>kaleido-api</name>
+    <description>kaleido-api</description>
+    <version>1.0.0</version>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.xiaoo</groupId>
+            <artifactId>kaleido-base</artifactId>
+        </dependency>
+        <!-- Dubbo API依赖（provided scope，仅用于注解） -->
+        <dependency>
+            <groupId>org.apache.dubbo</groupId>
+            <artifactId>dubbo</artifactId>
+            <version>3.3.0</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- 验证API (Spring Boot 3使用Jakarta EE 9+) -->
+        <dependency>
+            <groupId>jakarta.validation</groupId>
+            <artifactId>jakarta.validation-api</artifactId>
+            <version>3.0.0</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <!-- PageHelper for PageInfo -->
+        <dependency>
+            <groupId>com.github.pagehelper</groupId>
+            <artifactId>pagehelper-spring-boot-starter</artifactId>
+            <version>${pagehelper.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.xiaoo</groupId>
+            <artifactId>kaleido-doc</artifactId>
+        </dependency>
+    </dependencies>
+
+
+    <build>
+        <plugins>
+            <!-- smart-doc Maven 插件 -->
+            <plugin>
+                <groupId>com.github.shalousun</groupId>
+                <artifactId>smart-doc-maven-plugin</artifactId>
+                <version>${smart-doc.version}</version>
+                <configuration>
+                    <!-- 配置文件路径（相对于模块根目录） -->
+                    <configFile>src/main/resources/smart-doc-rpc-config.json</configFile>
+                    <!-- 项目名称 -->
+                    <projectName>Dubbo API 接口文档</projectName>
+                    <includes>
+                        <!-- 使用了mybatis-plus的Page分页需要include所使用的源码包 -->
+                        <include>com.baomidou:mybatis-plus-extension</include>
+                        <!-- 使用了mybatis-plus的IPage分页需要include mybatis-plus-core-->
+                        <include>com.baomidou:mybatis-plus-core</include>
+                        <!-- 使用了pagehelper的PageInfo分页需要include com.github.pagehelper-->
+                        <include>com.github.pagehelper:pagehelper</include>
+                    </includes>
+                </configuration>
+                <executions>
+                    <!-- 禁用父pom的默认配置 -->
+                    <execution>
+                        <id>default</id>
+                        <phase>none</phase>
+                    </execution>
+                    
+                    <!-- 配置RPC文档生成 -->
+                    <execution>
+                        <id>rpc-docs</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>rpc-html</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+
+    </build>
+</project>

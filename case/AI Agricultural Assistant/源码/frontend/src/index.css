@@ -1,0 +1,188 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+@layer base {
+  :root {
+
+    --background: 45 30% 97%;
+    --foreground: 150 25% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 150 25% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 150 25% 12%;
+
+    --primary: 145 63% 32%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 42 40% 92%;
+    --secondary-foreground: 150 25% 12%;
+
+    --muted: 45 25% 93%;
+    --muted-foreground: 150 15% 45%;
+
+    --accent: 38 92% 50%;
+    --accent-foreground: 150 25% 12%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 45 20% 88%;
+    --input: 45 25% 93%;
+    --ring: 145 63% 32%;
+
+    --radius: 1rem;
+
+    --farm-green: 145 63% 32%;
+    --farm-green-light: 145 50% 92%;
+    --farm-green-dark: 145 70% 22%;
+    --farm-earth: 30 35% 45%;
+    --farm-earth-light: 35 30% 85%;
+    --farm-cream: 45 30% 97%;
+    --farm-gold: 38 92% 50%;
+    --farm-sky: 200 80% 55%;
+    --farm-sun: 45 95% 60%;
+
+    --gradient-hero: linear-gradient(135deg, hsl(145 63% 32%) 0%, hsl(145 50% 45%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(45 30% 98%) 100%);
+    --gradient-sky: linear-gradient(180deg, hsl(200 80% 85%) 0%, hsl(200 60% 95%) 100%);
+
+
+    --shadow-sm: 0 1px 2px 0 hsl(145 20% 20% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(145 20% 20% / 0.08), 0 2px 4px -2px hsl(145 20% 20% / 0.05);
+    --shadow-lg: 0 10px 15px -3px hsl(145 20% 20% / 0.08), 0 4px 6px -4px hsl(145 20% 20% / 0.05);
+    --shadow-glow: 0 0 20px hsl(145 63% 32% / 0.15);
+
+    --sidebar-background: 45 30% 97%;
+    --sidebar-foreground: 150 25% 12%;
+    --sidebar-primary: 145 63% 32%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 42 40% 92%;
+    --sidebar-accent-foreground: 150 25% 12%;
+    --sidebar-border: 45 20% 88%;
+    --sidebar-ring: 145 63% 32%;
+  }
+
+  .dark {
+    --background: 150 20% 7%;
+    --foreground: 45 30% 95%;
+
+    --card: 150 18% 10%;
+    --card-foreground: 45 30% 95%;
+
+    --popover: 150 18% 10%;
+    --popover-foreground: 45 30% 95%;
+
+    --primary: 145 55% 45%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 150 15% 15%;
+    --secondary-foreground: 45 30% 95%;
+
+    --muted: 150 15% 15%;
+    --muted-foreground: 45 20% 60%;
+
+    --accent: 38 85% 55%;
+    --accent-foreground: 150 25% 12%;
+
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 150 15% 18%;
+    --input: 150 15% 18%;
+    --ring: 145 55% 45%;
+
+    --farm-green: 145 55% 45%;
+    --farm-green-light: 145 30% 20%;
+    --farm-green-dark: 145 60% 35%;
+
+    --gradient-hero: linear-gradient(135deg, hsl(145 55% 35%) 0%, hsl(145 45% 50%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(150 18% 10%) 0%, hsl(150 15% 8%) 100%);
+
+    --shadow-glow: 0 0 25px hsl(145 55% 45% / 0.2);
+
+    --sidebar-background: 150 20% 7%;
+    --sidebar-foreground: 45 30% 95%;
+    --sidebar-primary: 145 55% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 150 15% 15%;
+    --sidebar-accent-foreground: 45 30% 95%;
+    --sidebar-border: 150 15% 18%;
+    --sidebar-ring: 145 55% 45%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-muted/50;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/20 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/30;
+  }
+}
+
+@layer components {
+
+  .glass {
+    @apply bg-card/80 backdrop-blur-md border border-border/50;
+  }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent;
+  }
+
+  .float-shadow {
+    box-shadow: var(--shadow-lg), var(--shadow-glow);
+  }
+
+  .pulse-ring {
+    @apply relative;
+  }
+
+  .pulse-ring::before {
+    content: '';
+    @apply absolute inset-0 rounded-full animate-ping bg-primary/20;
+  }
+}
+
+@layer utilities {
+
+  .animation-delay-100 { animation-delay: 100ms; }
+  .animation-delay-200 { animation-delay: 200ms; }
+  .animation-delay-300 { animation-delay: 300ms; }
+  .animation-delay-400 { animation-delay: 400ms; }
+  .animation-delay-500 { animation-delay: 500ms; }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}

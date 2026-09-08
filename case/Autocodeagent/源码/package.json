@@ -1,0 +1,22 @@
+{
+  "name": "agentbuddy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AgentBuddy — 本地轻量编程代理（P0：应用壳与流式聊天）",
+  "workspaces": [
+    "packages/shared",
+    "packages/agent-core",
+    "apps/desktop"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test -w packages/agent-core",
+    "dev": "npm run dev -w apps/desktop",
+    "start": "npm run start -w apps/desktop",
+    "build": "npm run build -w apps/desktop"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.9"
+  }
+}

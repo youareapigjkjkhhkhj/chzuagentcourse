@@ -1,0 +1,75 @@
+package com.xiaoo.kaleido.admin.domain.user.service;
+
+import com.xiaoo.kaleido.admin.domain.user.model.aggregate.RoleAggregate;
+
+import java.util.List;
+
+/**
+ * 角色领域服务
+ * 处理跨聚合的角色业务逻辑
+ *
+ * @author tomhui
+ * @date 2025/12/31
+ */
+public interface IRoleDomainService {
+
+    /**
+     * 创建角色
+     *
+     * @param code        角色编码
+     * @param name        角色名称
+     * @param description 角色描述
+     * @return 创建的角色
+     */
+    RoleAggregate createRole(String code, String name, String description);
+
+    /**
+     * 更新角色信息
+     *
+     * @param roleId      角色ID
+     * @param name        角色名称
+     * @param description 角色描述
+     * @return 更新后的角色
+     */
+    RoleAggregate updateRole(String roleId, String name, String description);
+
+    /**
+     * 分配权限给角色
+     *
+     * @param roleId        角色ID
+     * @param permissionIds 权限ID列表
+     * @return 更新后的角色
+     */
+    RoleAggregate assignPermissions(String roleId, List<String> permissionIds);
+
+    /**
+     * 根据ID查找角色，不存在则抛出异常
+     *
+     * @param roleId 角色ID
+     * @return 角色
+     */
+    RoleAggregate findByIdOrThrow(String roleId);
+
+    /**
+     * 根据编码查找角色，不存在则抛出异常
+     *
+     * @param code 角色编码
+     * @return 角色
+     */
+    RoleAggregate findByCodeOrThrow(String code);
+
+    /**
+     * 查找所有角色
+     *
+     * @return 角色列表
+     */
+    List<RoleAggregate> findAllRoles();
+
+    /**
+     * 检查角色编码是否存在
+     *
+     * @param code 角色编码
+     * @return 是否存在
+     */
+    boolean existsByCode(String code);
+}

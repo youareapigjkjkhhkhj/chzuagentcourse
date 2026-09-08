@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xiaoo.kaleido.wardrobe.infrastructure.dao.LocationDao">
+
+    <resultMap id="BaseResultMap" type="com.xiaoo.kaleido.wardrobe.infrastructure.dao.po.LocationPO">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="name" property="name"/>
+        <result column="description" property="description"/>
+        <result column="address" property="address"/>
+        <result column="primary_image_id" property="primaryImageId"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, user_id, name, description, address, primary_image_id
+    </sql>
+
+    <select id="findById" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM t_wardrobe_storage_location
+        WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM t_wardrobe_storage_location
+        WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="findByUserId" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM t_wardrobe_storage_location
+        WHERE user_id = #{userId} AND deleted = 0
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="existsByNameAndUserId" resultType="boolean">
+        SELECT COUNT(1) > 0
+        FROM t_wardrobe_storage_location
+        WHERE name = #{name} AND user_id = #{userId} AND deleted = 0
+    </select>
+
+    <select id="hasClothingReferences" resultType="boolean">
+        SELECT COUNT(1) > 0
+        FROM t_wardrobe_clothing
+        WHERE current_location_id = #{locationId} AND deleted = 0
+    </select>
+
+    <select id="findByIds" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM t_wardrobe_storage_location
+        WHERE id IN
+        <foreach collection="locationIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        AND deleted = 0
+    </select>
+
+</mapper>

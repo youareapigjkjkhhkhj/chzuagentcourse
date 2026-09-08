@@ -1,0 +1,94 @@
+package com.xiaoo.kaleido.wardrobe.application.command;
+
+import com.xiaoo.kaleido.api.tag.IRpcTagService;
+import com.xiaoo.kaleido.api.tag.command.AssociateEntityCommand;
+import com.xiaoo.kaleido.api.tag.command.DissociateEntityCommand;
+import com.xiaoo.kaleido.api.wardrobe.command.CreateBrandCommand;
+import com.xiaoo.kaleido.api.wardrobe.command.UpdateBrandCommand;
+import com.xiaoo.kaleido.base.result.Result;
+import com.xiaoo.kaleido.rpc.constant.RpcConstants;
+import com.xiaoo.kaleido.wardrobe.domain.clothing.adapter.repository.IBrandRepository;
+import com.xiaoo.kaleido.wardrobe.domain.clothing.model.aggregate.BrandAggregate;
+import com.xiaoo.kaleido.wardrobe.domain.clothing.service.IBrandDomainService;
+import com.xiaoo.kaleido.wardrobe.types.constant.EntityTypeConstants;
+import com.xiaoo.kaleido.wardrobe.types.exception.WardrobeErrorCode;
+import com.xiaoo.kaleido.wardrobe.types.exception.WardrobeException;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.dubbo.config.annotation.DubboReference;
+import org.springframework.stereotype.Service;
+
+/**
+ * 品牌命令服务
+ *
+ * @author tomhui
+ * @date 2026/1/16
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class BrandCommandService {
+
+    private final IBrandDomainService brandDomainService;
+    private final IBrandRepository brandRepository;
+
+    @DubboReference(version = RpcConstants.DUBBO_VERSION)
+    private IRpcTagService rpcTagService;
+
+    /**
+     * 创建品牌
+     *
+     * @param command 创建品牌命令
+     * @return 创建的品牌ID
+     */
+    public String createBrand(CreateBrandCommand command) {
+        // 1.调用领域服务创建品牌
+        BrandAggregate brand = brandDomainService.createBrand(
+                command.getName(),
+                command.getLogoPath(),
+                command.getDescription()
+        );
+
+        // 2.保存品牌
+        brandRepository.save(brand);
+
+        // 3.记录日志
+        log.info("品牌创建成功，品牌ID: {}, 品牌名称: {}", brand.getId(), brand.getName());
+
+        return brand.getId();
+    }
+
+    /**
+     * 更新品牌信息
+     *
+     * @param command 更新品牌命令
+     */
+    public void updateBrand(String brandId, UpdateBrandCommand command) {
+        // 1.调用领域服务更新品牌
+        BrandAggregate brand = brandDomainService.updateBrand(
+                brandId,
+                command.getLogoPath(),
+                command.getDescription()
+        );
+
+        // 2.更新品牌
+        brandRepository.update(brand);
+
+        // 3.记录日志
+        log.info("品牌更新成功，品牌ID: {}", brandId);
+    }
+
+    /**
+     * 删除品牌（逻辑删除）
+     *
+     * @param brandId 品牌ID
+     */
+    public void deleteBrand(String brandId) {
+
+        // 1.删除品牌
+        brandRepository.delete(brandId);
+
+        // 2.记录日志
+        log.info("品牌删除成功，品牌ID: {}", brandId);
+    }
+}

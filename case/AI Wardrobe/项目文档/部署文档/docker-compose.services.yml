@@ -1,0 +1,87 @@
+name: kaleido-services
+
+x-common: &common
+  restart: always
+  env_file: .env
+  networks:
+    - kaleido-env-network
+  depends_on:
+    nacos-init:
+      condition: service_completed_successfully
+
+services:
+  nacos-init:
+    image: curlimages/curl:latest
+    networks:
+      - kaleido-env-network
+    command: >
+      sh -c "until curl -sf http://nacos:8848/nacos/v1/console/health/readiness;
+      do echo waiting-nacos; sleep 5; done"
+
+  gateway:
+    <<: *common
+    image: kaleido/gateway:1.0.0
+    container_name: kaleido-gateway
+    ports:
+      - "9010:9010"
+
+  auth:
+    <<: *common
+    image: kaleido/auth:1.0.0
+    container_name: kaleido-auth
+
+  user:
+    <<: *common
+    image: kaleido/user:1.0.0
+    container_name: kaleido-user
+
+  admin:
+    <<: *common
+    image: kaleido/admin:1.0.0
+    container_name: kaleido-admin
+
+  notice:
+    <<: *common
+    image: kaleido/notice:1.0.0
+    container_name: kaleido-notice
+
+  wardrobe:
+    <<: *common
+    image: kaleido/wardrobe:1.0.0
+    container_name: kaleido-wardrobe
+
+  coin:
+    <<: *common
+    image: kaleido/coin:1.0.0
+    container_name: kaleido-coin
+
+  tag:
+    <<: *common
+    image: kaleido/tag:1.0.0
+    container_name: kaleido-tag
+
+  ai:
+    <<: *common
+    image: kaleido/ai:1.0.0
+    container_name: kaleido-ai
+
+  message:
+    <<: *common
+    image: kaleido/message:1.0.0
+    container_name: kaleido-message
+
+  recommend:
+    <<: *common
+    image: kaleido/recommend:1.0.0
+    container_name: kaleido-recommend
+
+  frontend:
+    <<: *common
+    image: kaleido/frontend:1.0.0
+    container_name: kaleido-frontend
+    ports:
+      - "80:80"
+
+networks:
+  kaleido-env-network:
+    external: true

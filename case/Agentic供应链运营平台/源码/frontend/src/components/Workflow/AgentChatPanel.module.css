@@ -1,0 +1,80 @@
+.container {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 20px;
+  flex: 1;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.empty {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.message {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  background: #f5f4ed;
+  border-radius: 12px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.message.system {
+  background: rgba(106, 139, 116, 0.08);
+  border: 1px solid rgba(106, 139, 116, 0.14);
+}
+
+.badge {
+  min-width: 92px;
+  height: fit-content;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(201, 100, 66, 0.08);
+  color: #9f4d33;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  flex-shrink: 0;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+}
+
+.agentName {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: capitalize;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.text {
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.4;
+  word-break: break-word;
+}

@@ -1,0 +1,154 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.state {
+  min-height: 320px;
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+}
+
+.hero,
+.panel {
+  padding: 24px;
+  border: 1px solid var(--border-color);
+  border-radius: 24px;
+  background: var(--bg-card);
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: end;
+}
+
+.eyebrow {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.hero h1 {
+  margin-top: 8px;
+  max-width: 16ch;
+  font-family: Georgia, serif;
+  font-size: clamp(1.55rem, 2vw, 2rem);
+  font-weight: 500;
+}
+
+.policy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 999px;
+  background: rgba(106, 139, 116, 0.1);
+  color: #4d6454;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.list,
+.guardrails,
+.registry {
+  display: grid;
+  gap: 12px;
+}
+
+.row,
+.guardrail,
+.agentCard {
+  padding: 16px;
+  border-radius: 18px;
+  background: #f5f4ed;
+  border: 1px solid var(--border-color);
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.row span,
+.agentCard p,
+.reliabilityLabel {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-secondary);
+}
+
+.numeric {
+  text-align: right;
+}
+
+.registry {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.agentTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.status {
+  padding: 6px 10px;
+  border-radius: 999px;
+  text-transform: capitalize;
+  font-size: 12px;
+}
+
+.healthy {
+  background: rgba(106, 139, 116, 0.12);
+  color: #4d6454;
+}
+
+.watch {
+  background: rgba(201, 100, 66, 0.1);
+  color: #9f4d33;
+}
+
+.reliabilityBar {
+  margin-top: 14px;
+  height: 10px;
+  background: #e8e6dc;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.reliabilityBar div {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #c96442, #6a8b74);
+}
+
+@media (max-width: 1100px) {
+  .grid,
+  .registry {
+    grid-template-columns: 1fr;
+  }
+
+  .hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

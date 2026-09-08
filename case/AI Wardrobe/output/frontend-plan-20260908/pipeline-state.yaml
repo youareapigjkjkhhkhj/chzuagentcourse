@@ -1,0 +1,44 @@
+request_id: frontend-plan-20260908
+created_at: 2026-09-08T11:32:00+08:00
+entry_type: full_pipeline
+current_stage: stage3
+user_intent: "写一个 Word 的前端实现规划和方案：后端已完善，需交给同学实现完善前端页面功能以对应后端真实接口"
+output_docx_path: "G:\\AIagent\\case\\AI Wardrobe\\output\\frontend-plan-20260908\\stage3\\Kaleido智能衣柜前端实现规划与方案.docx"
+output_docx_user_specified: false
+stage_1:
+  status: completed
+  completed_at: 2026-09-08T11:38:00+08:00
+  executor: doc-writer
+  output_path: "stage1/final_draft.md"
+  genre: general
+  expert_used: general-writer
+  route_tag: general_writing
+  critic_decision: null
+  fallback: true
+  fallback_reason: "未命中任何 L2 专家，按 doc-writer §4 降级到 general-writer 兜底（预期行为）"
+stage_2:
+  status: completed
+  completed_at: 2026-09-08T11:52:00+08:00
+  executor: doc-formatter
+  intermediate_dir: "G:\\AIagent\\case\\AI Wardrobe\\output\\frontend-plan-20260908\\stage2\\intermediate"
+  route: html
+  html_sub: template
+  output_path: "stage2/formatted-前端实现规划与方案.html"
+  output_format: html
+  skills_invoked: [design-token, doc-typeset, html-review]
+  template_used: business-report
+  html_review_attempts: 1
+  fallback: false
+stage_3:
+  status: completed
+  completed_at: 2026-09-08T12:05:00+08:00
+  executor: doc-converter
+  input_format: html
+  output_path: "G:\\AIagent\\case\\AI Wardrobe\\output\\frontend-plan-20260908\\stage3\\Kaleido智能衣柜前端实现规划与方案.docx"
+  skill_used: ["html-to-docx"]
+  present_files_opened: true
+  fallback: false
+  fallback_reason: null
+  warnings: []
+consistency_check: ok（S1 md → S2 html(review 100) → S3 docx，链路完整）
+consistency_check: pending

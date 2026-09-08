@@ -1,0 +1,56 @@
+# Flask Web框架
+Flask==3.0.0
+Flask-RESTful==0.3.10
+Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.0.5
+Flask-JWT-Extended==4.6.0
+Flask-CORS==4.0.0
+Flask-Limiter==3.5.0
+
+# 数据库
+# 注意: 2.0.31+ 才支持 Python 3.13（2.0.23 在 Py3.13 下报 TypingOnly 断言错误）
+SQLAlchemy>=2.0.31
+pymysql==1.1.0
+cryptography==41.0.7
+
+# Redis
+redis==5.0.1
+celery==5.3.6
+
+# AI框架 - LangChain 1.0+ 稳定版
+langchain>=1.0.0
+langchain-openai>=0.2.0
+# langchain-community 已被官方弃用（sunset），且 0.4.x 已移除 Milvus；
+# 向量存储改用独立包 langchain-milvus
+langchain-community>=0.3.0
+langchain-milvus>=0.3.0
+langgraph>=0.2.0
+openai>=1.50.0
+tiktoken>=0.8.0
+
+# 向量数据库（langchain-milvus 0.3.x 要求 pymilvus>=2.6.0,<3.0）
+pymilvus>=2.6.0,<3.0
+cachetools>=5.0.0
+
+# 工具库
+python-dotenv==1.0.0
+gunicorn==21.2.0
+werkzeug==3.0.1
+marshmallow==3.20.1
+
+# 安全
+bcrypt==4.1.2
+pyjwt==2.8.0
+
+# 日志
+loguru==0.7.2
+
+# 测试
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-flask==1.3.0
+
+# 代码质量
+flake8==6.1.0
+black==23.12.1
+isort==5.13.2

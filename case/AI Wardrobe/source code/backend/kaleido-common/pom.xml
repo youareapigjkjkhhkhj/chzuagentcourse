@@ -1,0 +1,71 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.xiaoo</groupId>
+        <artifactId>kaleido</artifactId>
+        <version>1.0.0</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>kaleido-common</artifactId>
+    <name>kaleido-common</name>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+
+    <modules>
+        <module>kaleido-base</module>
+        <module>kaleido-cache</module>
+        <module>kaleido-ds</module>
+        <module>kaleido-nacos</module>
+        <module>kaleido-web</module>
+        <module>kaleido-doc</module>
+        <module>kaleido-api</module>
+        <module>kaleido-rpc</module>
+        <module>kaleido-distribute</module>
+        <module>kaleido-aop</module>
+        <module>kaleido-sms</module>
+        <module>kaleido-sa-token</module>
+        <module>kaleido-job</module>
+        <module>kaleido-dynamic-tp</module>
+        <module>kaleido-mq</module>
+        <module>kaleido-file</module>
+        <module>kaleido-sentinel</module>
+        <module>kaleido-limiter</module>
+        <module>kaleido-lock</module>
+        <module>kaleido-seata</module>
+        <module>kaleido-monitor</module>
+    </modules>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

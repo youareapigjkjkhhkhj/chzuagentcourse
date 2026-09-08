@@ -1,0 +1,18 @@
+# 虚拟环境
+.venv/
+venv/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 环境变量（含密钥，禁止提交）
+.env
+
+# 运行时数据（索引可重建，笔记为用户输入）
+data/vector_store/
+data/notes/
+
+# 测试临时产物
+.pytest_cache/

@@ -1,0 +1,16 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# 运行时产物
+generated_reports/
+runtime_cache/
+runtime_logs/
+
+# 敏感配置
+.env
+
+# 杂项
+*.log
+.DS_Store

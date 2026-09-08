@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.xiaoo</groupId>
+        <artifactId>kaleido-biz</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>kaleido-ai</artifactId>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>com.xiaoo</groupId>
+            <artifactId>kaleido-base</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.xiaoo</groupId>
+            <artifactId>kaleido-ds</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.xiaoo</groupId>
+            <artifactId>kaleido-distribute</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.xiaoo</groupId>
+            <artifactId>kaleido-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.xiaoo</groupId>
+            <artifactId>kaleido-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.xiaoo</groupId>
+            <artifactId>kaleido-rpc</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.xiaoo</groupId>
+            <artifactId>kaleido-nacos</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.xiaoo</groupId>
+            <artifactId>kaleido-cache</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
+        </dependency>
+
+
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-client-webflux</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-tika-document-reader</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-chat-memory-repository-mongodb</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-advisors-vector-store</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-vector-store-milvus</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-rag</artifactId>
+        </dependency>
+
+
+        <dependency>
+            <groupId>com.xiaoo</groupId>
+            <artifactId>kaleido-sa-token</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>cn.dev33</groupId>
+                    <artifactId>sa-token-reactor-spring-boot3-starter</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <dependency>
+            <groupId>com.xiaoo</groupId>
+            <artifactId>kaleido-mq</artifactId>
+        </dependency>
+    </dependencies>
+
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

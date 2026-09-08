@@ -1,0 +1,80 @@
+spring:
+  application:
+    name: langchain4j-interview
+    version: @kaleido.version@
+  profiles:
+    active: dev
+
+  datasource:
+    driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
+    url: jdbc:shardingsphere:classpath:sharding.yaml
+
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      password: ${REDIS_PASSWORD}
+      database: 11
+      ssl:
+        enabled: true
+  redis:
+    redisson:
+      config: |
+        singleServerConfig:
+          idleConnectionTimeout: 10000
+          connectTimeout: 10000
+          timeout: 3000
+          retryAttempts: 3
+          retryInterval: 1500
+          password: ${REDIS_PASSWORD}
+          subscriptionsPerConnection: 5
+          clientName: null
+          address: "redis://${REDIS_HOST}:${REDIS_PORT}"
+          subscriptionConnectionMinimumIdleSize: 1
+          subscriptionConnectionPoolSize: 50
+          connectionMinimumIdleSize: 24
+          connectionPoolSize: 64
+          database: 11
+          dnsMonitoringInterval: 5000
+        threads: 16
+        nettyThreads: 32
+        codec: !<org.redisson.client.codec.StringCodec> {}
+        transportMode: "NIO"
+
+# 服务器配置
+server:
+  port: 9024
+  servlet:
+    # 上下文路径：所有API的前缀路径
+    context-path: /kaleido-interview
+
+langchain4j:
+  open-ai:
+    chat-model:
+      api-key: ${AI_API_KEY}
+      base-url: ${AI_BASE_URL}
+      model-name: ${CHAT_MODEL}
+    streaming-chat-model:
+      api-key: ${AI_API_KEY}
+      base-url: ${AI_BASE_URL}
+      model-name: ${CHAT_MODEL}
+    embedding-model:
+      api-key: ${AI_API_KEY}
+      base-url: ${AI_BASE_URL}/v1
+      model-name: ${EMBEDDING_MODEL}
+
+milvus:
+  host: ${MILVUS_HOST}
+  port: ${MILVUS_PORT}
+  username: ${MILVUS_USERNAME}
+  password: ${MILVUS_PASSWORD}
+  database-name: kaleido
+  collection-name: test2
+  dimension: 1536
+
+# MyBatis配置
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true # 将数据库字段的下划线命名转换为驼峰命名
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl # 配置SQL语句打印到控制台
+  mapper-locations: classpath:mapper/*.xml # MyBatis映射文件所在的位置，这里是使用XML的配置方式时需要配置的部分

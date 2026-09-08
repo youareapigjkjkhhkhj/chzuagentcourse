@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>课堂进行中 · 机器学习入门 | EduAgentX</title>
+<link rel="stylesheet" href="styles.css" />
+<style>
+  html, body { height: 100%; overflow: hidden; }
+
+  /* 顶栏 */
+  .cls-header {
+    display: flex; align-items: center; gap: 16px;
+    height: 56px; padding: 0 20px;
+    background: #fff; border-bottom: 1px solid var(--td-component-stroke);
+  }
+  .cls-header .back {
+    display: flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: var(--td-radius-default); cursor: pointer;
+    color: var(--td-text-secondary);
+  }
+  .cls-header .back:hover { background: var(--td-bg-container-hover); color: var(--td-text-primary); }
+  .cls-header__title { font-size: 15px; font-weight: 600; }
+  .cls-header__meta { display: flex; align-items: center; gap: 8px; }
+  .cls-header .spacer { flex: 1; }
+  .live-dot { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--td-error-color); font-weight: 600; }
+  .live-dot::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--td-error-color); animation: pulse-ring 1.4s infinite; }
+
+  /* 主体布局 */
+  .cls-body { display: flex; height: calc(100vh - 56px); }
+
+  /* 左侧舞台 */
+  .stage-wrap { flex: 1; display: flex; flex-direction: column; padding: 20px 20px 0; min-width: 0; background: var(--td-bg-page); }
+  .stage { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+  .slide {
+    position: relative; width: 100%; max-width: 960px; aspect-ratio: 16/9;
+    background: #fff; border-radius: var(--td-radius-medium);
+    box-shadow: var(--td-shadow-2); overflow: hidden;
+  }
+  .slide-page { position: absolute; inset: 0; padding: 48px 56px; display: flex; flex-direction: column; }
+  .slide-kicker { font-size: 14px; color: var(--td-brand-color); font-weight: 600; letter-spacing: 2px; margin-bottom: 10px; }
+  .slide-title { font-size: 30px; font-weight: 600; line-height: 1.4; }
+  .slide-title small { display: block; font-size: 15px; color: var(--td-text-secondary); font-weight: 400; margin-top: 8px; }
+  .slide-body { flex: 1; display: flex; gap: 40px; margin-top: 28px; min-height: 0; }
+  .slide-points { flex: 1; display: flex; flex-direction: column; gap: 16px; justify-content: center; }
+  .slide-points li {
+    list-style: none; font-size: 16px; line-height: 1.7; color: var(--td-text-primary);
+    padding-left: 22px; position: relative;
+  }
+  .slide-points li::before { content: ""; position: absolute; left: 0; top: 12px; width: 8px; height: 8px; border-radius: 2px; background: var(--td-brand-color); }
+  .slide-points li b { color: var(--td-brand-color); }
+  .slide-figure { width: 42%; display: flex; align-items: center; justify-content: center; background: var(--td-brand-color-light); border-radius: var(--td-radius-medium); padding: 16px; }
+  .slide-foot { display: flex; justify-content: space-between; font-size: 12px; color: var(--td-text-placeholder); padding-top: 14px; border-top: 1px solid var(--td-component-stroke); }
+
+  /* 封面式 slide */
+  .slide-page--cover { align-items: center; justify-content: center; text-align: center; background: linear-gradient(135deg, #003cab 0%, #0052d9 55%, #366ef4 100%); color: #fff; }
+  .slide-page--cover .slide-kicker { color: rgba(255,255,255,0.75); }
+  .slide-page--cover h2 { font-size: 40px; font-weight: 700; line-height: 1.4; }
+  .slide-page--cover p { margin-top: 16px; color: rgba(255,255,255,0.8); font-size: 16px; }
+  .slide-page--cover .cover-tags { display: flex; gap: 10px; margin-top: 32px; }
+  .slide-page--cover .cover-tags span { padding: 5px 14px; border: 1px solid rgba(255,255,255,0.4); border-radius: 999px; font-size: 13px; color: rgba(255,255,255,0.9); }
+
+  /* 教具工具条 */
+  .stage-tools {
+    position: absolute; right: 24px; top: 50%; transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 4px;
+    background: #fff; border-radius: var(--td-radius-medium); box-shadow: var(--td-shadow-2); padding: 6px;
+  }
+  .stage-tools .tool {
+    width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+    border-radius: var(--td-radius-default); cursor: pointer; color: var(--td-text-secondary); transition: all 0.2s;
+  }
+  .stage-tools .tool:hover { background: var(--td-bg-container-hover); color: var(--td-text-primary); }
+  .stage-tools .tool.is-active { background: var(--td-brand-color-light); color: var(--td-brand-color); }
+  .stage-tools .tool svg { width: 18px; height: 18px; }
+
+  /* 字幕条 */
+  .subtitle {
+    margin: 14px auto 0; max-width: 820px; width: 100%;
+    display: flex; align-items: flex-start; gap: 10px;
+    background: #fff; border: 1px solid var(--td-component-stroke);
+    border-radius: var(--td-radius-medium); padding: 10px 16px;
+    font-size: 14px; line-height: 1.7; box-shadow: var(--td-shadow-1);
+  }
+  .subtitle .who { flex-shrink: 0; font-weight: 600; color: var(--td-brand-color); }
+  .subtitle .text { color: var(--td-text-primary); }
+  .subtitle .cursor { display: inline-block; width: 2px; height: 16px; background: var(--td-brand-color); vertical-align: -2px; animation: typing-dot 1s infinite; }
+
+  /* 播放控制条 */
+  .player-bar {
+    display: flex; align-items: center; gap: 14px;
+    margin: 14px 0 16px; padding: 10px 18px;
+    background: #fff; border-radius: var(--td-radius-medium); box-shadow: var(--td-shadow-1);
+  }
+  .player-bar .pg-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 32px; padding: 0 14px; border-radius: var(--td-radius-default);
+    border: 1px solid var(--td-component-border); background: #fff;
+    font-size: 13px; cursor: pointer; color: var(--td-text-primary); transition: all 0.2s;
+  }
+  .player-bar .pg-btn:hover { border-color: var(--td-brand-color); color: var(--td-brand-color); }
+  .player-bar .pg-btn svg { width: 15px; height: 15px; }
+  .page-indicator { font-size: 13px; color: var(--td-text-secondary); min-width: 86px; text-align: center; }
+  .page-indicator b { color: var(--td-brand-color); font-family: var(--td-font-mono); font-size: 15px; }
+  .play-btn {
+    width: 38px; height: 38px; border-radius: 50%; border: none; cursor: pointer;
+    background: var(--td-brand-color); color: #fff;
+    display: flex; align-items: center; justify-content: center; transition: background 0.2s;
+  }
+  .play-btn:hover { background: var(--td-brand-color-hover); }
+  .play-btn svg { width: 17px; height: 17px; }
+  .player-progress { flex: 1; display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--td-text-placeholder); font-family: var(--td-font-mono); }
+  .player-progress .t-progress { flex: 1; cursor: pointer; }
+  .speed-btn { border: none; background: transparent; font-size: 12px; color: var(--td-text-secondary); cursor: pointer; padding: 4px 8px; border-radius: var(--td-radius-default); }
+  .speed-btn:hover { background: var(--td-bg-container-hover); }
+
+  /* 右侧面板 */
+  .panel { width: 380px; flex-shrink: 0; background: #fff; border-left: 1px solid var(--td-component-stroke); display: flex; flex-direction: column; }
+  .panel__tabs { display: flex; align-items: center; padding: 0 12px; }
+  .panel__tabs .t-tabs { flex: 1; border-bottom: none; }
+  .panel__tabs { border-bottom: 1px solid var(--td-component-stroke); }
+
+  /* 智能体横幅 */
+  .agents-strip { display: flex; gap: 4px; padding: 12px 16px; border-bottom: 1px solid var(--td-component-stroke); overflow-x: auto; }
+  .agent-chip { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 6px; border-radius: var(--td-radius-medium); min-width: 68px; cursor: pointer; transition: background 0.2s; position: relative; }
+  .agent-chip:hover { background: var(--td-bg-container-hover); }
+  .agent-chip .t-avatar { width: 42px; height: 42px; font-size: 15px; }
+  .agent-chip .name { font-size: 12px; color: var(--td-text-primary); }
+  .agent-chip .role { font-size: 11px; color: var(--td-text-placeholder); }
+  .agent-chip.is-speaking .t-avatar { animation: pulse-ring 1.4s infinite; outline: 2px solid var(--td-brand-color); outline-offset: 2px; }
+  .agent-chip .eq { position: absolute; top: 4px; right: 4px; display: none; align-items: flex-end; gap: 2px; height: 12px; }
+  .agent-chip.is-speaking .eq { display: flex; }
+  .agent-chip .eq i { width: 3px; height: 12px; background: var(--td-brand-color); border-radius: 1.5px; transform-origin: bottom; animation: eq-bar 0.9s ease-in-out infinite; }
+  .agent-chip .eq i:nth-child(2) { animation-delay: 0.25s; }
+  .agent-chip .eq i:nth-child(3) { animation-delay: 0.5s; }
+
+  /* 消息区 */
+  .chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; background: var(--td-bg-page); }
+  .msg { display: flex; gap: 10px; max-width: 100%; }
+  .msg .t-avatar { width: 32px; height: 32px; font-size: 12px; margin-top: 2px; }
+  .msg__main { max-width: calc(100% - 42px); }
+  .msg__name { font-size: 12px; color: var(--td-text-placeholder); margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+  .msg__bubble {
+    background: #fff; border-radius: 2px 8px 8px 8px;
+    padding: 9px 12px; font-size: 13.5px; line-height: 1.7; color: var(--td-text-primary);
+    box-shadow: var(--td-shadow-1); width: fit-content;
+  }
+  .msg--me { flex-direction: row-reverse; }
+  .msg--me .msg__name { justify-content: flex-end; }
+  .msg--me .msg__bubble { background: var(--td-brand-color); color: #fff; border-radius: 8px 2px 8px 8px; margin-left: auto; }
+  .msg__quote {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
+    padding: 5px 10px; background: var(--td-brand-color-light); border-left: 3px solid var(--td-brand-color);
+    border-radius: 3px; font-size: 12px; color: var(--td-brand-color); cursor: pointer; width: fit-content;
+  }
+  .msg--sys { align-self: center; font-size: 12px; color: var(--td-text-placeholder); background: rgba(0,0,0,0.04); padding: 4px 12px; border-radius: 999px; }
+  .msg--typing .msg__bubble { display: flex; gap: 5px; padding: 13px 14px; }
+  .msg--typing .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--td-text-placeholder); animation: typing-dot 1.2s infinite; }
+  .msg--typing .dot:nth-child(2) { animation-delay: 0.2s; }
+  .msg--typing .dot:nth-child(3) { animation-delay: 0.4s; }
+  .msg__actions { display: flex; gap: 4px; margin-top: 6px; }
+  .msg__actions span { font-size: 12px; color: var(--td-text-placeholder); cursor: pointer; padding: 2px 6px; border-radius: 3px; }
+  .msg__actions span:hover { background: rgba(0,0,0,0.05); color: var(--td-brand-color); }
+
+  /* 输入区 */
+  .chat-input { padding: 12px 16px 16px; border-top: 1px solid var(--td-component-stroke); background: #fff; }
+  .chat-input .box { display: flex; gap: 8px; align-items: flex-end; }
+  .chat-input textarea { flex: 1; height: 64px; }
+  .raise-hand {
+    display: flex; align-items: center; justify-content: center; gap: 5px;
+    height: 32px; padding: 0 12px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--td-warning-color); color: var(--td-warning-color); background: var(--td-warning-color-light);
+    font-size: 13px; transition: all 0.2s; margin-bottom: 10px; width: fit-content;
+  }
+  .raise-hand:hover { background: #fde7cf; }
+  .raise-hand.is-raised { background: var(--td-warning-color); color: #fff; }
+
+  /* 大纲 */
+  .outline { flex: 1; overflow-y: auto; padding: 12px; }
+  .outline__chapter { margin-bottom: 6px; }
+  .outline__chapter-title { display: flex; align-items: center; gap: 8px; padding: 9px 10px; font-size: 13px; font-weight: 600; color: var(--td-text-primary); }
+  .outline__chapter-title svg { width: 14px; height: 14px; color: var(--td-text-placeholder); }
+  .outline__page {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px 8px 30px; border-radius: var(--td-radius-default);
+    font-size: 13px; color: var(--td-text-secondary); cursor: pointer; transition: all 0.15s;
+  }
+  .outline__page:hover { background: var(--td-bg-container-hover); }
+  .outline__page.is-current { background: var(--td-brand-color-light); color: var(--td-brand-color); font-weight: 500; }
+  .outline__page .no { font-family: var(--td-font-mono); font-size: 11px; width: 22px; color: var(--td-text-placeholder); }
+  .outline__page.is-current .no { color: var(--td-brand-color); }
+  .outline__page .done { color: var(--td-success-color); }
+
+  /* 白板 */
+  .whiteboard { flex: 1; display: flex; flex-direction: column; background: var(--td-bg-page); }
+  .whiteboard__canvas { flex: 1; margin: 14px; background: #fff; border-radius: var(--td-radius-medium); box-shadow: var(--td-shadow-1); position: relative; overflow: hidden; }
+  .whiteboard__tools { display: flex; gap: 6px; padding: 0 14px 14px; }
+  .whiteboard__tools .wb-tool { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; background: #fff; border-radius: var(--td-radius-default); box-shadow: var(--td-shadow-1); cursor: pointer; color: var(--td-text-secondary); }
+  .whiteboard__tools .wb-tool.is-active { color: var(--td-brand-color); outline: 1px solid var(--td-brand-color); }
+  .whiteboard__tools .wb-tool svg { width: 16px; height: 16px; }
+
+  .tab-pane { display: none; flex: 1; flex-direction: column; min-height: 0; }
+  .tab-pane.is-active { display: flex; }
+
+  .export-popup { top: 48px; right: 76px; }
+</style>
+</head>
+<body>
+
+<!-- 顶栏 -->
+<header class="cls-header">
+  <span class="back" onclick="location.href='index.html'" title="返回首页">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 5l-7 7 7 7"/></svg>
+  </span>
+  <div>
+    <div class="cls-header__title">机器学习入门：从感知机到神经网络</div>
+    <div class="cls-header__meta" style="margin-top:3px">
+      <span class="live-dot">课堂进行中</span>
+      <span class="t-tag">1 位教师</span>
+      <span class="t-tag">3 位 AI 同学</span>
+    </div>
+  </div>
+  <span class="spacer"></span>
+  <button class="t-btn t-btn--base" onclick="toast('原型演示：举手已发送，等待教师点名')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 11V5.5a1.5 1.5 0 0 1 3 0V10m0-4.5v-1a1.5 1.5 0 0 1 3 0V10m0-4.5a1.5 1.5 0 0 1 3 0V12m0-3a1.5 1.5 0 0 1 3 0v5a6 6 0 0 1-6 6h-1.4a6 6 0 0 1-4.8-2.4L4 15.6a1.6 1.6 0 0 1 2.6-1.9L7 14.5"/></svg>
+    举手
+  </button>
+  <button class="t-btn t-btn--primary" id="exportBtn" onclick="togglePopup(event)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+    导出课件
+  </button>
+  <button class="t-btn t-btn--base t-btn--icon" onclick="location.href='settings.html'" title="设置">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg>
+  </button>
+  <div class="t-popup export-popup" id="exportPopup">
+    <div class="t-popup__item" onclick="toast('原型演示：导出 PPTX 课件')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>导出 PPTX</div>
+    <div class="t-popup__item" onclick="toast('原型演示：导出可交互 HTML')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13 5l-2 14"/></svg>导出 HTML</div>
+    <div class="t-popup__item" onclick="toast('原型演示：导出 PDF 讲义')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h8l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v4h4"/></svg>导出 PDF</div>
+    <div class="t-popup__divider"></div>
+    <div class="t-popup__item" onclick="toast('原型演示：复制课堂分享链接')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 14a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11.5 5.5"/><path d="M14 10a5 5 0 0 0-7.07 0l-2.83 2.83a5 5 0 0 0 7.07 7.07l1.4-1.4"/></svg>分享课堂链接</div>
+  </div>
+</header>
+
+<div class="cls-body">
+  <!-- 左侧舞台 -->
+  <div class="stage-wrap">
+    <div class="stage">
+      <div class="slide" id="slide"></div>
+      <div class="stage-tools">
+        <span class="tool" title="激光笔" onclick="setTool(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7" stroke-dasharray="3 3"/></svg></span>
+        <span class="tool" title="聚光灯" onclick="setTool(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.8.7 1 1.5 1 2.5h6c0-1 .2-1.8 1-2.5A6 6 0 0 0 12 3Z"/></svg></span>
+        <span class="tool" title="画笔" onclick="setTool(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m14 6 4 4L8.5 19.5a2.1 2.1 0 0 1-3-3L14 6ZM13 7l4 4M16 4l4 4"/></svg></span>
+        <span class="tool" title="橡皮擦" onclick="setTool(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m9 15 8.5-8.5a2.1 2.1 0 0 1 3 3L12 18H8l-3 3h13"/></svg></span>
+        <span class="tool" title="清除标注" onclick="toast('原型演示：清除本页所有标注')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M9 7V4h6v3"/></svg></span>
+      </div>
+    </div>
+
+    <!-- 字幕 -->
+    <div class="subtitle">
+      <span class="who">沈老师</span>
+      <span class="text" id="subtitleText">大家看右边这条曲线——损失函数随着迭代不断下降，而梯度下降法就像“下山”：每一步都沿着最陡的方向走一小步，最终到达谷底，也就是误差最小的位置。</span>
+      <span class="cursor" id="subtitleCursor"></span>
+    </div>
+
+    <!-- 播放控制 -->
+    <div class="player-bar">
+      <button class="play-btn" id="playBtn" onclick="togglePlay()" title="暂停">
+        <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+      </button>
+      <button class="pg-btn" onclick="prevPage()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 5l-7 7 7 7"/></svg>上一页</button>
+      <span class="page-indicator">第 <b id="pageNo">3</b> / 12 页</span>
+      <button class="pg-btn" onclick="nextPage()">下一页<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 5l7 7-7 7"/></svg></button>
+      <div class="player-progress">
+        <span>07:32</span>
+        <div class="t-progress"><div class="t-progress__inner" style="width:30%"></div></div>
+        <span>25:00</span>
+      </div>
+      <button class="speed-btn" onclick="cycleSpeed(this)">1.0x</button>
+      <button class="pg-btn" onclick="toast('原型演示：字幕已关闭')" style="border:none">字幕</button>
+    </div>
+  </div>
+
+  <!-- 右侧面板 -->
+  <aside class="panel">
+    <div class="panel__tabs">
+      <div class="t-tabs" id="panelTabs">
+        <div class="t-tabs__item is-active" data-tab="discuss" onclick="switchTab(this)">讨论</div>
+        <div class="t-tabs__item" data-tab="outline" onclick="switchTab(this)">课程大纲</div>
+        <div class="t-tabs__item" data-tab="board" onclick="switchTab(this)">白板</div>
+      </div>
+      <span class="t-tag t-tag--primary" style="margin-right:4px">在线 5</span>
+    </div>
+
+    <!-- 讨论 -->
+    <div class="tab-pane is-active" id="pane-discuss">
+      <div class="agents-strip">
+        <div class="agent-chip is-speaking">
+          <span class="eq"><i></i><i></i><i></i></span>
+          <span class="t-avatar" style="background:linear-gradient(135deg,#0052d9,#618eff)">沈</span>
+          <span class="name">沈老师</span><span class="role">AI 教师</span>
+        </div>
+        <div class="agent-chip">
+          <span class="eq"><i></i><i></i><i></i></span>
+          <span class="t-avatar" style="background:linear-gradient(135deg,#00a870,#33c68f)">林</span>
+          <span class="name">林晓</span><span class="role">AI 同学</span>
+        </div>
+        <div class="agent-chip">
+          <span class="eq"><i></i><i></i><i></i></span>
+          <span class="t-avatar" style="background:linear-gradient(135deg,#ed7b2f,#f5a06b)">陈</span>
+          <span class="name">陈默</span><span class="role">AI 同学</span>
+        </div>
+        <div class="agent-chip">
+          <span class="eq"><i></i><i></i><i></i></span>
+          <span class="t-avatar" style="background:linear-gradient(135deg,#6a5fd0,#948be0)">苏</span>
+          <span class="name">苏雨</span><span class="role">AI 同学</span>
+        </div>
+        <div class="agent-chip">
+          <span class="t-avatar" style="background:linear-gradient(135deg,#333,#666)">我</span>
+          <span class="name">我</span><span class="role">学生</span>
+        </div>
+      </div>
+
+      <div class="chat" id="chat">
+        <div class="msg--sys">课堂已开始 · 当前讲解：3.2 梯度下降法</div>
+
+        <div class="msg">
+          <span class="t-avatar" style="background:linear-gradient(135deg,#0052d9,#618eff)">沈</span>
+          <div class="msg__main">
+            <div class="msg__name">沈老师 · AI 教师</div>
+            <div class="msg__bubble">
+              <div class="msg__quote" onclick="goPage(3)">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                引用 · 第 3 页「梯度下降法」
+              </div>
+              这一页的重点是：<b>学习率决定了每一步走多远</b>。步子太大容易跨过谷底来回震荡，步子太小又下得很慢。大家可以观察右侧曲线上的蓝色箭头。
+            </div>
+            <div class="msg__actions"><span>引用</span><span>划重点</span><span>生成笔记</span></div>
+          </div>
+        </div>
+
+        <div class="msg">
+          <span class="t-avatar" style="background:linear-gradient(135deg,#00a870,#33c68f)">林</span>
+          <div class="msg__main">
+            <div class="msg__name">林晓 · AI 同学</div>
+            <div class="msg__bubble">老师，那实际训练里学习率一般怎么选？是固定的吗？</div>
+          </div>
+        </div>
+
+        <div class="msg">
+          <span class="t-avatar" style="background:linear-gradient(135deg,#0052d9,#618eff)">沈</span>
+          <div class="msg__main">
+            <div class="msg__name">沈老师 · AI 教师</div>
+            <div class="msg__bubble">好问题。实践中常用 0.1 到 0.0001 之间起步，再配合<b>学习率衰减</b>——开始大步快走，接近谷底后小步微调。我们下一页会讲三种常见的衰减策略。</div>
+          </div>
+        </div>
+
+        <div class="msg">
+          <span class="t-avatar" style="background:linear-gradient(135deg,#ed7b2f,#f5a06b)">陈</span>
+          <div class="msg__main">
+            <div class="msg__name">陈默 · AI 同学</div>
+            <div class="msg__bubble">我补充一个直觉理解：可以把损失曲面想象成碗，球滚进去最终停在碗底。但真实问题是高维的"碗"，可能有很多小坑（局部最优）。</div>
+            <div class="msg__actions"><span>+1</span><span>引用</span></div>
+          </div>
+        </div>
+
+        <div class="msg msg--me">
+          <span class="t-avatar" style="background:linear-gradient(135deg,#333,#666)">我</span>
+          <div class="msg__main">
+            <div class="msg__name">我</div>
+            <div class="msg__bubble">那是不是意味着梯度下降不保证找到全局最优解？</div>
+          </div>
+        </div>
+
+        <div class="msg msg--typing" id="typingMsg">
+          <span class="t-avatar" style="background:linear-gradient(135deg,#6a5fd0,#948be0)">苏</span>
+          <div class="msg__main">
+            <div class="msg__name">苏雨 · AI 同学 · 正在输入</div>
+            <div class="msg__bubble"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-input">
+        <div class="raise-hand" id="raiseHand" onclick="raiseHand()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 11V5.5a1.5 1.5 0 0 1 3 0V10m0-4.5v-1a1.5 1.5 0 0 1 3 0V10m0-4.5a1.5 1.5 0 0 1 3 0V12m0-3a1.5 1.5 0 0 1 3 0v5a6 6 0 0 1-6 6h-1.4a6 6 0 0 1-4.8-2.4L4 15.6a1.6 1.6 0 0 1 2.6-1.9L7 14.5"/></svg>
+          <span id="raiseText">举手提问</span>
+        </div>
+        <div class="box">
+          <textarea class="t-textarea" id="chatBox" placeholder="向老师或同学提问，Enter 发送，Shift+Enter 换行" onkeydown="onSend(event)"></textarea>
+          <button class="t-btn t-btn--primary" style="height:38px" onclick="sendMsg()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z"/></svg>
+            发送
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 大纲 -->
+    <div class="tab-pane" id="pane-outline">
+      <div class="outline" id="outlineList"></div>
+    </div>
+
+    <!-- 白板 -->
+    <div class="tab-pane" id="pane-board">
+      <div class="whiteboard">
+        <div class="whiteboard__canvas">
+          <svg width="100%" height="100%" viewBox="0 0 340 380">
+            <rect x="24" y="30" width="292" height="180" rx="6" fill="#f2f3ff"/>
+            <text x="170" y="58" text-anchor="middle" font-size="14" fill="#0052d9" font-weight="600">课堂板书 · 梯度下降示意</text>
+            <path d="M50 170 Q 120 90 170 150 T 300 165" fill="none" stroke="#0052d9" stroke-width="2.5" stroke-linecap="round"/>
+            <circle cx="92" cy="137" r="4" fill="#ed7b2f"/>
+            <circle cx="140" cy="131" r="4" fill="#ed7b2f"/>
+            <circle cx="196" cy="158" r="4" fill="#ed7b2f"/>
+            <circle cx="262" cy="163" r="4" fill="#00a870"/>
+            <text x="262" y="185" text-anchor="middle" font-size="11" fill="#00a870">最优点</text>
+            <path d="M92 137 L 140 131 M140 131 L 196 158 M196 158 L 262 163" stroke="#ed7b2f" stroke-width="1.2" stroke-dasharray="4 3"/>
+            <text x="40" y="245" font-size="13" fill="rgba(0,0,0,0.85)" font-weight="600">要点回顾</text>
+            <text x="40" y="270" font-size="12" fill="rgba(0,0,0,0.6)">1. 梯度方向 = 最陡上升方向，取负即下降</text>
+            <text x="40" y="292" font-size="12" fill="rgba(0,0,0,0.6)">2. 学习率 η 控制步长：过大震荡，过小收敛慢</text>
+            <text x="40" y="314" font-size="12" fill="rgba(0,0,0,0.6)">3. 批量 / 随机 / 小批量三种实现</text>
+            <rect x="28" y="338" width="130" height="26" rx="13" fill="#fef3e6"/>
+            <text x="93" y="355" text-anchor="middle" font-size="11" fill="#ed7b2f">思考题：如何自适应调整 η？</text>
+          </svg>
+        </div>
+        <div class="whiteboard__tools">
+          <span class="wb-tool is-active" title="画笔"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m14 6 4 4L8.5 19.5a2.1 2.1 0 0 1-3-3L14 6ZM16 4l4 4"/></svg></span>
+          <span class="wb-tool" title="文本"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg></span>
+          <span class="wb-tool" title="图形"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="10" height="10" rx="1"/><circle cx="16" cy="16" r="5"/></svg></span>
+          <span class="wb-tool" title="橡皮"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m9 15 8.5-8.5a2.1 2.1 0 0 1 3 3L12 18H8l-3 3h13"/></svg></span>
+          <span style="flex:1"></span>
+          <span class="wb-tool" title="同步给全班" onclick="toast('原型演示：板书已同步给所有同学')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z"/></svg></span>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<div class="t-message" id="toast"></div>
+
+<script>
+  /* ---------- 幻灯片数据（原型内置 3 种版式循环） ---------- */
+  var TOTAL = 12, page = 3;
+
+  function slideCover() {
+    return '<div class="slide-page slide-page--cover fade-up">' +
+      '<div class="slide-kicker">OPENMAIC · AI 生成课程</div>' +
+      '<h2>机器学习入门</h2>' +
+      '<p>从感知机到神经网络 · 12 页互动课 · 约 25 分钟</p>' +
+      '<div class="cover-tags"><span>AI 教师授课</span><span>随堂提问</span><span>小组讨论</span></div>' +
+      '<div class="slide-foot" style="position:absolute;left:56px;right:56px;bottom:24px;border-top-color:rgba(255,255,255,.25);color:rgba(255,255,255,.6)"><span>EduAgentX 多智能体互动课堂</span><span>01 / 12</span></div></div>';
+  }
+  function slidePerceptron() {
+    return '<div class="slide-page fade-up">' +
+      '<div class="slide-kicker">第三章 · 神经网络基础</div>' +
+      '<div class="slide-title">3.1 感知机：最简单的神经元<small>PERCEPTRON — 1957, Frank Rosenblatt</small></div>' +
+      '<div class="slide-body"><ul class="slide-points">' +
+      '<li>感知机接收多个输入 <b>x₁…xₙ</b>，各自乘以权重 <b>w</b> 后求和</li>' +
+      '<li>加上偏置 <b>b</b>，再经过阶跃激活函数得到输出 0 或 1</li>' +
+      '<li>本质是在特征空间中寻找一个<b>线性可分</b>的超平面</li>' +
+      '<li>局限：无法解决异或（XOR）这类线性不可分问题</li>' +
+      '</ul><div class="slide-figure">' +
+      '<svg width="100%" viewBox="0 0 300 190">' +
+      '<circle cx="40" cy="40" r="12" fill="#fff" stroke="#0052d9" stroke-width="1.5"/><text x="40" y="44" text-anchor="middle" font-size="10" fill="#0052d9">x₁</text>' +
+      '<circle cx="40" cy="95" r="12" fill="#fff" stroke="#0052d9" stroke-width="1.5"/><text x="40" y="99" text-anchor="middle" font-size="10" fill="#0052d9">x₂</text>' +
+      '<circle cx="40" cy="150" r="12" fill="#fff" stroke="#0052d9" stroke-width="1.5"/><text x="40" y="154" text-anchor="middle" font-size="10" fill="#0052d9">xₙ</text>' +
+      '<circle cx="150" cy="95" r="16" fill="#0052d9"/><text x="150" y="99" text-anchor="middle" font-size="11" fill="#fff">Σ</text>' +
+      '<circle cx="240" cy="95" r="16" fill="#fff" stroke="#0052d9" stroke-width="1.5"/><text x="240" y="99" text-anchor="middle" font-size="11" fill="#0052d9">f</text>' +
+      '<line x1="52" y1="40" x2="134" y2="88" stroke="#90b2f5" stroke-width="1.5"/><line x1="52" y1="95" x2="134" y2="95" stroke="#90b2f5" stroke-width="1.5"/><line x1="52" y1="150" x2="134" y2="102" stroke="#90b2f5" stroke-width="1.5"/>' +
+      '<line x1="166" y1="95" x2="224" y2="95" stroke="#0052d9" stroke-width="1.8"/>' +
+      '<text x="195" y="85" text-anchor="middle" font-size="10" fill="rgba(0,0,0,.5)">y = f(Σwx + b)</text>' +
+      '</svg></div></div>' +
+      '<div class="slide-foot"><span>机器学习入门 · EduAgentX</span><span>02 / 12</span></div></div>';
+  }
+  function slideGradient() {
+    return '<div class="slide-page fade-up">' +
+      '<div class="slide-kicker">第三章 · 神经网络基础</div>' +
+      '<div class="slide-title">3.2 梯度下降法<small>GRADIENT DESCENT — 如何让模型“学会”</small></div>' +
+      '<div class="slide-body"><ul class="slide-points">' +
+      '<li>定义<b>损失函数</b> L(w)：预测值与真实值之间的误差</li>' +
+      '<li>计算梯度 ∇L，朝着<b>负梯度方向</b>更新参数：w ← w − η·∇L</li>' +
+      '<li>学习率 <b>η</b> 控制步长：过大震荡发散，过小收敛缓慢</li>' +
+      '<li>迭代直到损失不再明显下降，即到达（局部）最优点</li>' +
+      '</ul><div class="slide-figure">' +
+      '<svg width="100%" viewBox="0 0 300 190">' +
+      '<line x1="30" y1="160" x2="285" y2="160" stroke="#dcdcdc"/><line x1="30" y1="160" x2="30" y2="20" stroke="#dcdcdc"/>' +
+      '<path d="M35 45 Q 110 60 160 140 T 285 152" fill="none" stroke="#0052d9" stroke-width="2.5"/>' +
+      '<circle cx="60" cy="52" r="5" fill="#ed7b2f"/><circle cx="105" cy="86" r="5" fill="#ed7b2f"/><circle cx="142" cy="122" r="5" fill="#ed7b2f"/><circle cx="200" cy="148" r="5" fill="#00a870"/>' +
+      '<path d="M60 52 L105 86 M105 86 L142 122 M142 122 L200 148" stroke="#ed7b2f" stroke-width="1.4" stroke-dasharray="5 4" marker-end="none"/>' +
+      '<text x="200" y="170" text-anchor="middle" font-size="11" fill="#00a870">L 最小</text>' +
+      '<text x="268" y="30" font-size="11" fill="rgba(0,0,0,.5)">损失 L</text><text x="255" y="180" font-size="11" fill="rgba(0,0,0,.5)">参数 w</text>' +
+      '</svg></div></div>' +
+      '<div class="slide-foot"><span>机器学习入门 · EduAgentX</span><span>03 / 12</span></div></div>';
+  }
+
+  var slideFns = [slideCover, slidePerceptron, slideGradient];
+  function renderSlide() {
+    document.getElementById('slide').innerHTML = slideFns[(page - 1) % 3]();
+    document.getElementById('pageNo').textContent = page;
+    document.querySelectorAll('.outline__page').forEach(function(el){
+      el.classList.toggle('is-current', +el.dataset.no === page);
+    });
+  }
+  function goPage(n){ page = n; renderSlide(); }
+  function prevPage(){ if (page > 1) { page--; renderSlide(); } else toast('已经是第一页了'); }
+  function nextPage(){ if (page < TOTAL) { page++; renderSlide(); } else toast('已经是最后一页，课堂即将结束'); }
+
+  /* ---------- 播放 ---------- */
+  var playing = true;
+  var subtitles = [
+    '大家看右边这条曲线——损失函数随着迭代不断下降，而梯度下降法就像“下山”：每一步都沿着最陡的方向走一小步，最终到达谷底。',
+    '注意公式里的 η，也就是学习率。它决定了每一步走多远：太大容易跨过谷底，太小又下得很慢。',
+    '接下来我们做个小实验：把学习率从 0.1 调到 0.5，大家观察一下曲线会发生什么变化……',
+  ];
+  var subIdx = 0;
+  setInterval(function(){
+    if (!playing) return;
+    subIdx = (subIdx + 1) % subtitles.length;
+    document.getElementById('subtitleText').textContent = subtitles[subIdx];
+  }, 9000);
+
+  function togglePlay() {
+    playing = !playing;
+    document.getElementById('playIcon').innerHTML = playing
+      ? '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>'
+      : '<path d="M8 5.5v13l11-6.5-11-6.5Z"/>';
+    document.getElementById('playBtn').title = playing ? '暂停' : '播放';
+    document.getElementById('subtitleCursor').style.display = playing ? '' : 'none';
+    toast(playing ? '课堂继续' : '课堂已暂停');
+  }
+  var speeds = ['1.0x', '1.25x', '1.5x', '2.0x'], spIdx = 0;
+  function cycleSpeed(btn){ spIdx = (spIdx + 1) % speeds.length; btn.textContent = speeds[spIdx]; }
+
+  /* ---------- 面板 Tabs ---------- */
+  function switchTab(el) {
+    document.querySelectorAll('#panelTabs .t-tabs__item').forEach(function(i){ i.classList.remove('is-active'); });
+    el.classList.add('is-active');
+    document.querySelectorAll('.tab-pane').forEach(function(p){ p.classList.remove('is-active'); });
+    document.getElementById('pane-' + el.dataset.tab).classList.add('is-active');
+  }
+
+  /* ---------- 教具 ---------- */
+  function setTool(el) {
+    document.querySelectorAll('.stage-tools .tool').forEach(function(t){ t.classList.remove('is-active'); });
+    el.classList.add('is-active');
+    toast('原型演示：已切换到「' + el.title + '」');
+  }
+
+  /* ---------- 聊天 ---------- */
+  function onSend(e){ if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); } }
+  function sendMsg() {
+    var box = document.getElementById('chatBox');
+    var text = box.value.trim();
+    if (!text) return;
+    var chat = document.getElementById('chat');
+    var div = document.createElement('div');
+    div.className = 'msg msg--me fade-up';
+    div.innerHTML = '<span class="t-avatar" style="background:linear-gradient(135deg,#333,#666)">我</span>' +
+      '<div class="msg__main"><div class="msg__name">我</div><div class="msg__bubble"></div></div>';
+    div.querySelector('.msg__bubble').textContent = text;
+    chat.insertBefore(div, document.getElementById('typingMsg'));
+    box.value = '';
+    chat.scrollTop = chat.scrollHeight;
+
+    /* 模拟教师回复 */
+    setTimeout(function(){
+      var reply = document.createElement('div');
+      reply.className = 'msg fade-up';
+      reply.innerHTML = '<span class="t-avatar" style="background:linear-gradient(135deg,#0052d9,#618eff)">沈</span>' +
+        '<div class="msg__main"><div class="msg__name">沈老师 · AI 教师</div>' +
+        '<div class="msg__bubble">很好的问题！这正是本页要解决的困惑——我们结合右边这张图的例子来看一下。</div></div>';
+      chat.insertBefore(reply, document.getElementById('typingMsg'));
+      chat.scrollTop = chat.scrollHeight;
+    }, 1200);
+  }
+
+  /* ---------- 举手 ---------- */
+  var raised = false;
+  function raiseHand() {
+    raised = !raised;
+    var el = document.getElementById('raiseHand');
+    el.classList.toggle('is-raised', raised);
+    document.getElementById('raiseText').textContent = raised ? '已举手，等待点名…' : '举手提问';
+    if (raised) toast('已向沈老师发送举手信号');
+  }
+
+  /* ---------- 导出弹层 ---------- */
+  function togglePopup(e) {
+    e.stopPropagation();
+    document.getElementById('exportPopup').classList.toggle('is-show');
+  }
+  document.addEventListener('click', function(){
+    document.getElementById('exportPopup').classList.remove('is-show');
+  });
+
+  /* ---------- 大纲 ---------- */
+  var chapters = [
+    { title: '第一章 · 什么是机器学习', pages: ['课程导入：身边的机器学习', '监督 / 无监督 / 强化学习', '一个完整的学习流程'] },
+    { title: '第二章 · 线性模型', pages: ['线性回归与最小二乘', '逻辑回归与分类边界'] },
+    { title: '第三章 · 神经网络基础', pages: ['感知机：最简单的神经元', '梯度下降法', '反向传播直觉', '动手：训练你的第一个网络'] },
+    { title: '第四章 · 总结与练习', pages: ['本章知识地图', '随堂测验', '课后拓展阅读'] },
+  ];
+  var ol = document.getElementById('outlineList'), no = 0;
+  chapters.forEach(function(c){
+    var ch = document.createElement('div');
+    ch.className = 'outline__chapter';
+    ch.innerHTML = '<div class="outline__chapter-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>' + c.title + '</div>';
+    c.pages.forEach(function(p){
+      no++;
+      var pg = document.createElement('div');
+      pg.className = 'outline__page' + (no === 3 ? ' is-current' : '');
+      pg.dataset.no = no;
+      pg.innerHTML = '<span class="no">' + String(no).padStart(2, '0') + '</span><span style="flex:1">' + p + '</span>' +
+        (no < 3 ? '<svg class="done" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>' : '');
+      pg.onclick = function(){ goPage(no); };
+      ch.appendChild(pg);
+    });
+    ol.appendChild(ch);
+  });
+
+  /* ---------- 工具 ---------- */
+  function toast(text) {
+    var el = document.getElementById('toast');
+    el.textContent = text;
+    el.classList.add('is-show');
+    clearTimeout(window.__t);
+    window.__t = setTimeout(function(){ el.classList.remove('is-show'); }, 2200);
+  }
+
+  renderSlide();
+  document.getElementById('chat').scrollTop = document.getElementById('chat').scrollHeight;
+</script>
+</body>
+</html>

@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="docx-page-size" content="A4">
+  <title>Kaleido AI 智能衣柜 · 前端实现规划与方案</title>
+  <style>
+  @page {
+    @bottom-center { content: counter(page); }
+  }
+  @page cover {
+    @bottom-center { content: none; }
+  }
+  section[role="cover"] { page: cover; }
+
+  :root {
+    /* ---- design tokens: business-modern ---- */
+    --typography-fontFamily-heading: 宋体, SimSun, serif;
+    --typography-fontFamily-body: 仿宋, FangSong, STFangsong, serif;
+    --typography-fontFamily-code: Consolas, "Source Code Pro", monospace;
+    --typography-fontSize-coverTitle: 22pt;
+    --typography-fontSize-coverCategory: 14pt;
+    --typography-fontSize-h1: 18pt;
+    --typography-fontSize-h2: 14pt;
+    --typography-fontSize-h3: 12pt;
+    --typography-fontSize-body: 10.5pt;
+    --typography-fontSize-small: 9pt;
+    --typography-fontSize-tiny: 7.5pt;
+    --typography-lineHeight-body: 1.6;
+    --typography-fontWeight-heading: 700;
+    --color-primary: #1565C0;
+    --color-accent: #00897B;
+    --color-text: #212121;
+    --color-textSecondary: #616161;
+    --color-heading: #1A237E;
+    --color-divider: #E0E0E0;
+    --color-background: #FFFFFF;
+    --color-surface: #F5F7FA;
+    --spacing-paragraph: 0.75em;
+    --spacing-sectionGap: 2.5em;
+    --spacing-cardPadding: 1.5em;
+    --layout-marginTop: 2.5cm;
+
+    /* ---- supplementary semantic tokens ---- */
+    --color-danger: #C62828;
+    --color-success: #2E7D32;
+    --color-danger-soft: #FDECEA;
+    --color-code-bg: #0F172A;
+    --color-code-text: #DBEAFE;
+    --spacing-xxs: 0.3em;
+    --spacing-xs: 0.5em;
+    --spacing-sm: 0.8em;
+    --spacing-tiny: 4px;
+    --spacing-cell: 6px 9px;
+    --spacing-card-cell: 10px 12px;
+    --spacing-callout: 8px 12px;
+    --spacing-codeblock: 12px 14px;
+    --spacing-inline-code: 1px 4px;
+    --spacing-heading-indent: 8px;
+    --spacing-list-indent: 1.8em;
+    --spacing-toc-indent: 1.5em;
+
+    /* ---- derived ---- */
+    --fs-h1: var(--typography-fontSize-h1);
+    --fs-h2: var(--typography-fontSize-h2);
+    --fs-h3: var(--typography-fontSize-h3);
+    --fs-body: var(--typography-fontSize-body);
+    --fs-small: var(--typography-fontSize-small);
+    --fs-tiny: var(--typography-fontSize-tiny);
+    --ff-heading: var(--typography-fontFamily-heading);
+    --ff-body: var(--typography-fontFamily-body);
+    --ff-code: var(--typography-fontFamily-code);
+    --lh-body: var(--typography-lineHeight-body);
+    --fw-heading: var(--typography-fontWeight-heading);
+    --color-muted: var(--color-textSecondary);
+    --color-border: var(--color-divider);
+    --color-highlight: var(--color-surface);
+    --margin-page: var(--layout-marginTop);
+    --page-content-width: 15.6cm;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--ff-body); font-size: var(--fs-body); line-height: var(--lh-body); color: var(--color-text); background: var(--color-background); max-width: var(--page-content-width); margin-left: auto; margin-right: auto; }
+
+  /* Cover */
+  .report-cover {
+    display: block; min-height: 60vh; padding: var(--margin-page);
+    background: var(--color-surface);
+  }
+  .cover-logo-placeholder { width: 80px; height: 40px; background: var(--color-border); margin-bottom: var(--spacing-sectionGap); }
+  .cover-category { font-size: var(--typography-fontSize-coverCategory); font-family: var(--ff-heading); font-weight: var(--fw-heading); color: var(--color-primary); letter-spacing: 0.08em; margin-bottom: var(--spacing-sm); text-align: left; }
+  section[role="cover"] > h1.cover-title { font-size: var(--typography-fontSize-coverTitle); font-family: var(--ff-heading); font-weight: var(--fw-heading); color: var(--color-primary); margin-bottom: var(--spacing-xs); text-align: left; }
+  .cover-subtitle { font-size: var(--fs-h1); color: var(--color-muted); margin-bottom: var(--spacing-sectionGap); text-align: left; }
+  .cover-meta { font-size: var(--fs-small); color: var(--color-muted); text-align: left; }
+
+  /* TOC */
+  .doc-toc { padding: var(--spacing-cardPadding) 0; background: var(--color-background); border-bottom: 1px solid var(--color-border); margin-bottom: var(--spacing-cardPadding); }
+  .toc-title { font-weight: var(--fw-heading); font-size: var(--fs-h2); margin-bottom: var(--spacing-xs); }
+  .toc-list, .toc-list ol, .toc-list ul { list-style: none; list-style-type: none; padding-left: var(--spacing-toc-indent); }
+  .toc-list li { margin-bottom: var(--spacing-xxs); text-indent: 0; }
+
+  /* Executive summary */
+  .executive-summary {
+    margin: var(--spacing-cardPadding) 0;
+    padding: var(--spacing-cardPadding);
+    border-left: 4px solid var(--color-primary);
+    background: var(--color-surface);
+  }
+  .summary-header { margin-bottom: var(--spacing-cardPadding); }
+  .summary-header h2 { font-size: var(--fs-h2); font-family: var(--ff-heading); font-weight: var(--fw-heading); }
+  .summary-badge { font-size: var(--fs-small); color: var(--color-muted); font-style: italic; }
+  .summary-intro { margin-bottom: var(--spacing-paragraph); }
+  .summary-note { font-size: var(--fs-small); color: var(--color-muted); }
+
+  /* data cards (table-carried) */
+  .data-cards { width: 100%; border-collapse: separate; border-spacing: 6px 0; margin-bottom: var(--spacing-cardPadding); }
+  .data-cards thead th { width: 25%; background: var(--color-background); border: 1px solid var(--color-border); padding: var(--spacing-card-cell); vertical-align: bottom; font-size: var(--fs-small); color: var(--color-muted); font-weight: var(--typography-fontWeight-heading, 500); text-align: left; }
+  .data-cards tbody td { background: var(--color-background); border: 1px solid var(--color-border); border-top: none; padding: var(--spacing-card-cell); vertical-align: top; }
+  .data-card-value { font-size: var(--fs-h2); font-family: var(--ff-heading); font-weight: var(--fw-heading); color: var(--color-primary); }
+
+  /* Main body */
+  .report-body { padding: 0; }
+  .report-body h2 { font-size: var(--fs-h2); font-family: var(--ff-heading); font-weight: var(--fw-heading); color: var(--color-heading); border-left: 4px solid var(--color-primary); padding-left: var(--spacing-heading-indent); margin-top: var(--spacing-sectionGap); margin-bottom: var(--spacing-paragraph); }
+  .report-body h3 { font-size: var(--fs-h3); font-family: var(--ff-heading); font-weight: var(--fw-heading); margin-top: var(--spacing-cardPadding); margin-bottom: var(--spacing-paragraph); }
+  .report-body p { margin-bottom: var(--spacing-paragraph); }
+  .report-body ul, .report-body ol { margin: 0 0 var(--spacing-paragraph) var(--spacing-list-indent); }
+  .report-body li { margin-bottom: var(--spacing-xxs); }
+
+  /* tables */
+  table.data { width: 100%; border-collapse: collapse; margin-bottom: var(--spacing-paragraph); font-size: var(--fs-small); }
+  table.data th { background: var(--color-surface); border: 1px solid var(--color-border); padding: var(--spacing-cell); text-align: left; font-weight: var(--fw-heading); color: var(--color-heading); }
+  table.data td { border: 1px solid var(--color-border); padding: var(--spacing-cell); vertical-align: top; }
+  table.data td.mono, .mono { font-family: var(--ff-code); font-size: var(--fs-tiny); word-break: break-all; }
+
+  /* code block */
+  pre.codeblock { background: var(--color-code-bg); color: var(--color-code-text); font-family: var(--ff-code); font-size: var(--fs-tiny); padding: var(--spacing-codeblock); border-radius: 6px; margin-bottom: var(--spacing-paragraph); white-space: pre-wrap; word-break: break-all; line-height: 1.5; }
+  code.inline { font-family: var(--ff-code); font-size: var(--fs-tiny); background: var(--color-surface); padding: var(--spacing-inline-code); }
+
+  /* callout paragraphs */
+  p.callout-warn { border-left: 4px solid var(--color-danger); background: var(--color-danger-soft); padding: var(--spacing-callout); margin-bottom: var(--spacing-paragraph); }
+  p.callout-info { border-left: 4px solid var(--color-primary); background: var(--color-surface); padding: var(--spacing-callout); margin-bottom: var(--spacing-paragraph); }
+  .data-emphasis { color: var(--color-danger); font-weight: 700; }
+
+  /* Appendix */
+  .appendix { margin-top: var(--spacing-sectionGap); padding-top: var(--spacing-cardPadding); border-top: 2px solid var(--color-primary); }
+  .appendix h2 { font-size: var(--fs-h2); font-family: var(--ff-heading); font-weight: var(--fw-heading); color: var(--color-heading); margin-bottom: var(--spacing-paragraph); }
+  .appendix-foot { font-size: var(--fs-small); color: var(--color-muted); margin-top: var(--spacing-paragraph); }
+  </style>
+</head>
+<body>
+  <section role="cover" class="report-cover">
+    <div class="cover-logo-placeholder"></div>
+    <p class="cover-category">前端团队开发规划</p>
+    <h1 class="cover-title">Kaleido AI 智能衣柜<br>前端实现规划与方案</h1>
+    <p class="cover-subtitle">后端接口全量对接 · 分模块开发指南</p>
+    <div class="cover-meta">
+      <p>版本 v1.0 ｜ 2026 年 9 月 8 日 ｜ 面向前端实现团队成员</p>
+    </div>
+  </section>
+
+  <section role="body" class="report-body" data-page-restart="1">
+    <nav class="doc-toc" aria-label="文档目录">
+      <p class="toc-title">目录</p>
+      <ol class="toc-list">
+        <li>一、项目背景与现状</li>
+        <li>二、技术栈与开发环境约定</li>
+        <li>三、通用技术规范（全员必须遵守）</li>
+        <li>四、任务分解与分工（M1-M9）</li>
+        <li>五、里程碑与排期建议</li>
+        <li>六、验收标准（整体）</li>
+        <li>七、风险与注意事项</li>
+        <li>附录：全套真实接口速查</li>
+      </ol>
+    </nav>
+
+    <div class="executive-summary">
+      <div class="summary-header">
+        <h2>执行摘要</h2>
+        <span class="summary-badge">Executive Summary</span>
+      </div>
+      <table class="data-cards">
+        <thead>
+          <tr><th>后端服务（已完成）</th><th>前端任务模块</th><th>预估工作量</th><th>建议周期（3 人并行）</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="data-card-value">11 个</span></td><td><span class="data-card-value">9 个</span></td><td><span class="data-card-value">约 23 人日</span></td><td><span class="data-card-value">17 天</span></td></tr>
+        </tbody>
+      </table>
+      <p class="summary-intro">Kaleido AI 智能衣柜后端已完成 11 个微服务、39 张数据库表及 Spring AI + Milvus 向量检索能力，所有接口均经代码实测核验。本方案将前端工作拆分为 9 个任务模块：管理端（M2-M5）把模板壳演示页改造为真实接口页面；用户端（M6-M8）新建衣柜、搭配、AI 助手等 C 端页面；M1 公共层与 M9 工作台收尾。</p>
+      <p class="summary-note">配套资料：《项目完整性审计报告.md》（接口实测）、《衣柜系统前端原型.html》（页面交互原型，每页附接口对接卡）。</p>
+    </div>
+
+    <h2>一、项目背景与现状</h2>
+    <p>本章帮助每位成员快速建立对项目的整体认知：我们在做什么、后端已经具备了什么能力、前端目前的真实进度在哪里。开工前请务必通读 1.2 节的现状盘点表，避免重复开发已完成的功能。</p>
+    <h3>1.1 项目定位</h3>
+    <p>Kaleido AI 智能衣柜是一个基于 Spring Boot 3 / Spring Cloud 微服务架构的智能衣柜管理系统，后端已完成网关、认证、通知、管理后台、用户、衣柜、AI、标签、金币、消息、推荐共 11 个微服务，覆盖 39 张数据库表，并集成 Spring AI + Milvus 向量检索的 AI 搭配推荐能力。当前核心诉求：<strong>后端已完善，前端由团队成员按本方案补齐，使前端功能与后端真实接口一一对应。</strong></p>
+    <h3>1.2 前端现状盘点（代码实测结论）</h3>
+    <table class="data">
+      <thead><tr><th style="width:22%">模块</th><th style="width:50%">现状</th><th>结论</th></tr></thead>
+      <tbody>
+      <tr><td>管理端框架</td><td>vue-element-plus-admin 模板壳，Vue 3 + TypeScript + Element Plus</td><td>已就绪，可直接开发</td></tr>
+      <tr><td>登录页</td><td>已接真实接口：手机号 + 短信验证码（POST /kaleido-auth/public/admin/login）</td><td>已完成，勿改动核心逻辑</td></tr>
+      <tr><td>授权管理四页（用户/角色/菜单/部门）</td><td>页面存在，但 API 层全部调用 /mock/* 演示数据</td><td>需接线改造</td></tr>
+      <tr><td>工作台 Dashboard</td><td>图表数据全部来自 /mock/*</td><td>需接真实数据</td></tr>
+      <tr><td>用户端（C 端）</td><td>完全不存在，无任何页面</td><td>需从零新建</td></tr>
+      <tr><td>AI 对话界面</td><td>不存在</td><td>需新建（后端能力已就绪）</td></tr>
+      </tbody>
+    </table>
+    <h3>1.3 本方案的目标</h3>
+    <ol>
+      <li>管理端：把模板壳的演示页面改造为调用真实后端接口的功能页面；</li>
+      <li>用户端：新建一套面向 C 端用户的页面（衣柜管理、穿搭、收纳、AI 助手）；</li>
+      <li>统一请求规范：所有页面遵循同一套响应解析、鉴权、错误处理约定；</li>
+      <li>分工到人、里程碑到周，可按模块并行开发。</li>
+    </ol>
+
+    <h2>二、技术栈与开发环境约定</h2>
+    <p>为保证团队产出风格一致、联调顺畅，以下技术选型与环境约定为强制基线，任何人不得私自更换框架或绕过统一封装。</p>
+    <h3>2.1 技术栈</h3>
+    <table class="data">
+      <thead><tr><th style="width:18%">项</th><th style="width:42%">选型</th><th>说明</th></tr></thead>
+      <tbody>
+      <tr><td>框架</td><td>Vue 3 + TypeScript</td><td>沿用现有前端工程，不引入新框架</td></tr>
+      <tr><td>UI 组件库</td><td>Element Plus</td><td>管理端已内置；用户端建议同样使用，保持一致</td></tr>
+      <tr><td>状态管理</td><td>Pinia</td><td>现有工程已配置</td></tr>
+      <tr><td>HTTP</td><td>axios（封装于 src/axios）</td><td>统一走现有 service 封装</td></tr>
+      <tr><td>构建</td><td>Vite + pnpm</td><td>构建命令 pnpm build:pro</td></tr>
+      </tbody>
+    </table>
+    <h3>2.2 环境与联调约定</h3>
+    <table class="data">
+      <thead><tr><th style="width:22%">项</th><th>值</th></tr></thead>
+      <tbody>
+      <tr><td>网关基址</td><td class="mono">http://192.168.52.133:9010（服务器联调）</td></tr>
+      <tr><td>本地联调</td><td>基础中间件用 docker compose，后端服务可在 IDE 启动</td></tr>
+      <tr><td>鉴权请求头</td><td class="mono">kaleido-admin-token: &lt;登录返回的 token&gt;</td></tr>
+      <tr><td>统一响应壳</td><td class="mono">{ code: 'SUCCESS', success: true, msg, data }</td></tr>
+      <tr><td>登录测试账号</td><td>手机号 13066668888 / 13266668888，验证码从短信接口响应 data.code 字段直接获取（短信为空实现，验证码回显）</td></tr>
+      <tr><td>参考原型</td><td>《衣柜系统前端原型.html》，每个页面已标注接口对接卡</td></tr>
+      </tbody>
+    </table>
+
+    <h2>三、通用技术规范（全员必须遵守）</h2>
+    <p>以下五条规范来自本次后端接口实测中发现的实现要点与易错点，是全部模块的公共约定。各模块开发前请先精读本章，实现过程中遇到本规范未覆盖的情况请先在群内确认再动手。</p>
+    <h3>3.1 请求与响应处理</h3>
+    <ol>
+      <li>所有请求必须走 src/axios 统一封装，禁止在组件内直接 new axios 实例；</li>
+      <li>响应拦截器已适配 Result 壳：success 为 true 时返回 data，为 false 时统一 ElMessage.error(msg)；</li>
+      <li>401 / token 失效统一走 userStore.logout()，不逐页处理；</li>
+      <li>后端列表类接口（衣物、位置、品牌等）当前为全量返回、无分页，前端做客户端筛选与分页组件包裹，<strong>禁止自行假设后端有 page/size 参数</strong>。</li>
+    </ol>
+    <h3>3.2 字典驱动原则</h3>
+    <p>衣物类型（typeCode）、颜色（colorCode）、季节（seasonCode）等枚举值存储在后端字典表 t_dict 中，<strong>所有下拉框必须先调字典接口动态渲染，禁止在前端硬编码枚举</strong>。新增字典项由管理端字典管理页维护。</p>
+    <h3>3.3 文件上传两步走</h3>
+    <p>图片上传遵循固定流程：第一步调 POST /admin/public/file/upload（multipart）获取文件 path；第二步将 path 放入业务表单的 images 数组提交。images 数组元素结构：<code class="inline">{ path, isMain, imageOrder, description }</code>，首图必须标记 <code class="inline">isMain: true</code>。</p>
+    <h3>3.4 AI 流式响应消费（重点难点）</h3>
+    <p>AI 聊天接口返回 Flux&lt;String&gt;（SSE 流式文本），<strong>不能使用普通 axios</strong>。标准实现：</p>
+    <pre class="codeblock">const res = await fetch(baseURL + '/ai/agent/{agentId}/chat', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'kaleido-admin-token': token },
+  body: JSON.stringify({ message, conversationId })
+})
+const reader = res.body!.getReader()
+const decoder = new TextDecoder()
+// 循环 read() -&gt; decoder.decode(value, { stream: true }) -&gt; 追加渲染</pre>
+    <p>要求实现打字机效果，中途断流需有错误提示与重试入口。</p>
+    <h3>3.5 鉴权与路由</h3>
+    <ol>
+      <li>用户端与管理端共用登录体系，登录成功后 token 存 Pinia + localStorage；</li>
+      <li>路由守卫：无 token 访问业务页一律重定向登录页（permission.ts 已有基础，按需扩展）；</li>
+      <li>dynamicRouter 已关闭（走前端静态路由），新增页面在 src/router 静态注册。</li>
+    </ol>
+
+    <h2>四、任务分解与分工（核心章节）</h2>
+    <p>任务按模块 M1-M9 拆分，工作量单位为"人日"，供排期参考。每个模块均给出页面清单、对接接口、关键实现与验收标准，实现时请对照《衣柜系统前端原型.html》对应页面的接口对接卡。M1 为后续所有模块的地基，须最先完成。</p>
+
+    <h3>M1 请求层收尾与公共组件（1 人日，基础依赖，最先完成）</h3>
+    <table class="data">
+      <thead><tr><th style="width:18%">项</th><th>内容</th></tr></thead>
+      <tbody>
+      <tr><td>范围</td><td>axios 拦截器补齐（统一错误码表、断网提示）；封装 useDict 字典 hook、useUpload 上传 hook、SseChat 流式聊天 hook</td></tr>
+      <tr><td>验收</td><td>任意页面可通过 useDict('CLOTHING_TYPE') 拿到字典数组；上传 hook 返回 path；流式 hook 可逐字渲染</td></tr>
+      <tr><td>备注</td><td>本模块完成后其他模块才能并行</td></tr>
+      </tbody>
+    </table>
+
+    <h3>M2 管理端 · 用户管理（2 人日）</h3>
+    <table class="data">
+      <thead><tr><th style="width:18%">项</th><th>内容</th></tr></thead>
+      <tbody>
+      <tr><td>页面</td><td>用户列表（分页表格）、用户详情、冻结/解冻</td></tr>
+      <tr><td>接口</td><td class="mono">GET /admin/user/page ｜ GET /admin/user/{userId} ｜ GET /admin/user/by-telephone/{telephone} ｜ PUT /admin/user/{userId}/freeze ｜ PUT /admin/user/{userId}/unfreeze ｜ DELETE /admin/user/{userId}</td></tr>
+      <tr><td>改造点</td><td>将 src/api 下调用 /mock/* 的用户接口替换为真实路径，字段按后端 DTO 映射</td></tr>
+      <tr><td>验收</td><td>列表能加载真实用户数据；冻结后状态标签即时变更；按手机号可查到对应用户</td></tr>
+      </tbody>
+    </table>
+
+    <h3>M3 管理端 · 角色与权限 RBAC（3 人日）</h3>
+    <table class="data">
+      <thead><tr><th style="width:18%">项</th><th>内容</th></tr></thead>
+      <tbody>
+      <tr><td>页面</td><td>角色列表、角色创建/编辑、权限分配弹窗（树形勾选）、权限树管理页</td></tr>
+      <tr><td>接口</td><td class="mono">GET /role/list ｜ POST /role ｜ PUT /role/{roleId} ｜ DELETE /role/{roleId} ｜ POST /role/{roleId}/permissions ｜ GET /permission/tree ｜ POST /permission ｜ PUT /permission/{permissionId} ｜ DELETE /permission/{permissionId}</td></tr>
+      <tr><td>改造点</td><td>现有角色页数据源为 /mock/role/table，需整页替换；权限树用 Element Plus Tree 组件渲染 GET /permission/tree 的返回</td></tr>
+      <tr><td>验收</td><td>创建角色后可在列表看到；给角色勾选权限保存后，重新打开回显正确</td></tr>
+      </tbody>
+    </table>
+
+    <h3>M4 管理端 · 字典与通知模板（2 人日）</h3>
+    <table class="data">
+      <thead><tr><th style="width:18%">项</th><th>内容</th></tr></thead>
+      <tbody>
+      <tr><td>页面</td><td>字典管理（按 typeCode 分组列表 + 增删改）、通知模板管理（列表 + 编辑）</td></tr>
+      <tr><td>接口</td><td class="mono">POST /dict ｜ PUT /dict/{typeCode}/{dictCode} ｜ DELETE /dict/{typeCode}/{dictCode} ｜ GET /dict/page ｜ GET /admin/notice/{id} ｜ GET /admin/notice/target/{target} ｜ POST /admin/notice/page ｜ POST /admin/notice/template</td></tr>
+      <tr><td>验收</td><td>新增字典项后，衣物类型下拉框（M6）能立即出现新选项（验证字典驱动闭环）</td></tr>
+      </tbody>
+    </table>
+
+    <h3>M5 管理端 · Agent 管理（2 人日）</h3>
+    <table class="data">
+      <thead><tr><th style="width:18%">项</th><th>内容</th></tr></thead>
+      <tbody>
+      <tr><td>页面</td><td>Agent 列表（名称/模型/温度/maxTokens/状态）、Agent 创建/编辑表单、工具挂载管理</td></tr>
+      <tr><td>接口</td><td class="mono">POST /admin/ai/agent ｜ PUT /admin/ai/agent/{agentId} ｜ PUT /admin/ai/agent/{agentId}/enable、/disable ｜ POST /admin/ai/agent/{agentId}/tools ｜ DELETE /admin/ai/agent/{agentId}/tools/{toolCode} ｜ GET /admin/ai/agent/{agentId} ｜ GET /admin/ai/agent/by-code/{code}</td></tr>
+      <tr><td>字段</td><td>AgentInfoResponse：agentId / code / name / description / systemPrompt / modelName / temperature / maxTokens / status / tools</td></tr>
+      <tr><td>验收</td><td>创建一个 Agent 后，用户端 AI 助手（M8）的 Agent 下拉中能看到并可用</td></tr>
+      </tbody>
+    </table>
+
+    <h3>M6 用户端 · 我的衣柜（4 人日，用户端最重模块）</h3>
+    <table class="data">
+      <thead><tr><th style="width:18%">项</th><th>内容</th></tr></thead>
+      <tbody>
+      <tr><td>页面</td><td>衣物卡片墙（图片 + 名称 + 类型/颜色/季节标签 + 穿着次数进度条）、衣物详情抽屉、添加/编辑衣物表单、删除确认</td></tr>
+      <tr><td>接口</td><td class="mono">GET /wardrobe/clothing/list ｜ GET /wardrobe/clothing/{clothingId} ｜ POST /wardrobe/clothing ｜ PUT /wardrobe/clothing/{clothingId} ｜ DELETE /wardrobe/clothing/{clothingId} ｜ POST /wardrobe/clothing/{clothingId}/tags/{tagId} ｜ DELETE /wardrobe/clothing/{clothingId}/tags/{tagId}</td></tr>
+      <tr><td>关键实现</td><td>1. 卡片主图取 images 中 isMain=true 的 path；2. 表单的类型/颜色/季节/品牌/位置下拉分别来自字典、GET /wardrobe/brand、GET /wardrobe/location；3. 图片走两步上传（规范 3.3）；4. 价格字段 BigDecimal，前端用数字输入框限制两位小数</td></tr>
+      <tr><td>DTO</td><td class="mono">ClothingInfoResponse：clothingId / name / typeCode / colorCode / seasonCode / brandId / brandName / size / purchaseDate / price / description / currentLocationId / currentLocationName / wearCount / lastWornDate / images</td></tr>
+      <tr><td>验收</td><td>添加一件带 3 张图的衣物，卡片墙主图正确；编辑后列表即时刷新；删除有二次确认</td></tr>
+      </tbody>
+    </table>
+
+    <h3>M7 用户端 · 搭配与收纳位置（3 人日）</h3>
+    <table class="data">
+      <thead><tr><th style="width:18%">项</th><th>内容</th></tr></thead>
+      <tbody>
+      <tr><td>页面</td><td>搭配列表（方案卡片：含衣物缩略图组合）、创建搭配（多选衣物）、穿着记录时间线；收纳位置列表/表单（位置 + 图片）</td></tr>
+      <tr><td>接口</td><td class="mono">GET /wardrobe/outfits/list ｜ GET /wardrobe/outfits/{outfitId} ｜ GET /wardrobe/outfits/{outfitId}/records ｜ POST /wardrobe/outfits ｜ PUT /wardrobe/outfits/{outfitId} ｜ DELETE /wardrobe/outfits/{outfitId} ｜ POST /wardrobe/outfits/{outfitId}/wear ｜ GET /wardrobe/location ｜ POST /wardrobe/location ｜ PUT /wardrobe/location/{locationId} ｜ DELETE /wardrobe/location/{locationId}</td></tr>
+      <tr><td>关键实现</td><td>记录穿着（POST /{outfitId}/wear）成功后本地立即 wearCount +1；OutfitInfoResponse.clothings 内嵌 ClothingInfo 数组，卡片直接渲染</td></tr>
+      <tr><td>验收</td><td>创建一个含 3 件衣物的搭配并点击"今日穿这套"，wearCount 与最近穿着日期更新；位置增删改正常</td></tr>
+      </tbody>
+    </table>
+
+    <h3>M8 用户端 · AI 穿搭助手（4 人日，技术含量最高）</h3>
+    <table class="data">
+      <thead><tr><th style="width:18%">项</th><th>内容</th></tr></thead>
+      <tbody>
+      <tr><td>页面</td><td>会话列表侧栏（新建/重命名/删除）、聊天主界面（流式气泡）、Agent 选择器</td></tr>
+      <tr><td>接口</td><td class="mono">GET /ai/agent ｜ POST /ai/agent/{agentId}/chat（Flux 流式） ｜ POST /ai/agent/chat（默认 Agent） ｜ POST /ai/conversation ｜ GET /ai/conversation ｜ PUT /ai/conversation/{conversationId}/title ｜ DELETE /ai/conversation/{conversationId}</td></tr>
+      <tr><td>关键实现</td><td>1. 严格按规范 3.4 实现流式消费与打字机效果；2. 新建会话先 POST /ai/conversation 拿 conversationId，后续 chat 请求携带；3. 会话消息历史从 ConversationInfoResponse.messages 渲染；4. Agent 下拉展示 modelName 与描述</td></tr>
+      <tr><td>验收</td><td>输入"明天 20 度怎么穿"能收到流式回复；切换会话历史完整；新建会话、重命名、删除全通</td></tr>
+      </tbody>
+    </table>
+    <p class="callout-warn">&nbsp;&nbsp;<strong>开工前置条件：</strong>部署侧需先补 kaleido-ai 环境变量（AI_BASE_URL / CHAT_MODEL / EMBEDDING_MODEL 与真实 API Key），否则 M8 接口必然报错——开工前由后端负责人确认。</p>
+
+    <h3>M9 工作台聚合与收尾（2 人日）</h3>
+    <table class="data">
+      <thead><tr><th style="width:18%">项</th><th>内容</th></tr></thead>
+      <tbody>
+      <tr><td>页面</td><td>工作台统计卡片（衣物/搭配/位置/Agent 数量）、常穿衣物 Top 榜、快捷入口</td></tr>
+      <tr><td>接口</td><td>复用 GET /wardrobe/clothing/list、/outfits/list、/location、/ai/agent 前端聚合计算（后端暂无统计接口）</td></tr>
+      <tr><td>验收</td><td>四张统计卡数字与实际列表条数一致</td></tr>
+      </tbody>
+    </table>
+
+    <h2>五、里程碑与排期建议（总计约 23 人日）</h2>
+    <p>排期按 3 人并行、17 个自然日估算；若人力变化，按各模块人日数线性折算。里程碑是每周组会检查进度的依据，延期需提前一天在群内同步。</p>
+    <table class="data">
+      <thead><tr><th style="width:14%">阶段</th><th style="width:14%">时间</th><th style="width:44%">内容</th><th>里程碑</th></tr></thead>
+      <tbody>
+      <tr><td>第 1 周</td><td>Day 1-2</td><td>M1 公共层 + M2 用户管理</td><td>公共 hook 就绪，管理端第一个真实页面跑通</td></tr>
+      <tr><td>第 1-2 周</td><td>Day 3-7</td><td>M3 RBAC + M4 字典通知 + M5 Agent 管理（可 2-3 人并行）</td><td>管理端全部接真实接口，/mock 引用清零</td></tr>
+      <tr><td>第 2-3 周</td><td>Day 8-11</td><td>M6 衣柜（与 M7 收纳位置并行）</td><td>用户端核心 CRUD 跑通</td></tr>
+      <tr><td>第 3 周</td><td>Day 12-15</td><td>M7 搭配 + M8 AI 助手</td><td>AI 流式对话全链路可演示</td></tr>
+      <tr><td>第 3 周末</td><td>Day 16-17</td><td>M9 工作台 + 联调回归 + UI 走查</td><td>整体可演示版本 v1.0</td></tr>
+      </tbody>
+    </table>
+    <p class="callout-info">&nbsp;&nbsp;<strong>并行建议：</strong>管理端线（M2 → M3/M4/M5）与用户端线（M6 → M7 → M8）由不同同学负责，M1 由最有经验的成员完成并第一时间共享 hook 代码。</p>
+
+    <h2>六、验收标准（整体）</h2>
+    <p>以下六条为项目整体验收的硬性门槛，任何一条不通过即视为未完成交付。请各模块负责人在提测前自查。</p>
+    <ol>
+      <li>全局搜索 src/api 目录，<code class="inline">/mock/</code> 引用数量为 <span class="data-emphasis">0</span>（登录相关已完成的两个真实接口除外）；</li>
+      <li>所有列表页数据均来自后端真实接口，断开后端时页面有明确的错误提示而非空白；</li>
+      <li>管理端四页（用户/角色/权限/字典）增删改查全部可用且数据持久化（刷新后仍在）；</li>
+      <li>用户端完成"添加衣物 → 入柜 → 创建搭配 → 记录穿着 → AI 推荐穿搭"的完整业务闭环演示；</li>
+      <li>AI 对话有流式打字机效果，断流有重试；</li>
+      <li><code class="inline">pnpm build:pro</code> 构建零报错，产物可部署到 192.168.52.133。</li>
+    </ol>
+
+    <h2>七、风险与注意事项</h2>
+    <p>下表列出当前已识别的六项主要风险。其中第一项为阻塞级风险，直接影响 M8 是否能开工，请在项目启动会上明确责任人。</p>
+    <table class="data">
+      <thead><tr><th style="width:30%">风险</th><th style="width:30%">影响</th><th>对策</th></tr></thead>
+      <tbody>
+      <tr><td>kaleido-ai 缺模型环境变量与 API Key</td><td>M8 全部接口报错</td><td>开工前由后端负责人在 docker compose 注入并验证 curl 通</td></tr>
+      <tr><td>短信为空实现</td><td>验证码仅从接口响应获取</td><td>登录页保留"验证码回显提示"，演示时向观看者说明</td></tr>
+      <tr><td>列表接口无分页</td><td>数据量大时首屏慢</td><td>前端分页组件 + 客户端筛选；后续可提需求让后端补分页</td></tr>
+      <tr><td>Dashboard 统计无后端接口</td><td>M9 只能前端聚合</td><td>按本方案前端聚合实现；统计接口列为二期后端需求</td></tr>
+      <tr><td>mock 文件残留</td><td>误导后续开发</td><td>验收前删除 src/api 中所有 /mock 引用与 mock 目录内已废弃文件</td></tr>
+      <tr><td>多人并行冲突</td><td>合并困难</td><td>M1 定好的 hook 与 api 目录结构即契约，模块按目录隔离（每人只改自己的模块目录）</td></tr>
+      </tbody>
+    </table>
+
+    <div class="appendix">
+      <h2>附录：全套真实接口速查</h2>
+      <table class="data">
+        <thead><tr><th style="width:14%">模块</th><th style="width:60%">方法与路径</th><th>用途</th></tr></thead>
+        <tbody>
+        <tr><td>认证</td><td class="mono">POST /kaleido-auth/public/admin/login ｜ POST /kaleido-auth/public/sms/verify-code</td><td>登录 ｜ 发验证码</td></tr>
+        <tr><td>衣柜</td><td class="mono">GET /wardrobe/clothing/list ｜ GET /wardrobe/clothing/{id} ｜ POST /wardrobe/clothing ｜ PUT、DELETE /wardrobe/clothing/{id} ｜ POST、DELETE /wardrobe/clothing/{id}/tags/{tagId}</td><td>衣物 CRUD 与标签</td></tr>
+        <tr><td>搭配</td><td class="mono">GET /wardrobe/outfits/list ｜ GET /wardrobe/outfits/{id} ｜ GET /wardrobe/outfits/{id}/records ｜ POST /wardrobe/outfits ｜ PUT、DELETE /wardrobe/outfits/{id} ｜ POST /wardrobe/outfits/{id}/wear</td><td>搭配与穿着记录</td></tr>
+        <tr><td>位置</td><td class="mono">GET /wardrobe/location ｜ POST /wardrobe/location ｜ PUT、DELETE /wardrobe/location/{id} ｜ POST、DELETE /wardrobe/location/{id}/tags/{tagId}</td><td>收纳位置</td></tr>
+        <tr><td>品牌</td><td class="mono">GET /wardrobe/brand ｜ GET /wardrobe/brand/{brandId}</td><td>品牌下拉数据源</td></tr>
+        <tr><td>AI</td><td class="mono">GET /ai/agent ｜ POST /ai/agent/{agentId}/chat（流式） ｜ POST /ai/agent/chat ｜ POST /ai/conversation ｜ GET /ai/conversation ｜ PUT /ai/conversation/{id}/title ｜ DELETE /ai/conversation/{id} ｜ GET /ai/workflow/{id} ｜ POST /ai/workflow/execute ｜ GET /ai/workflow/executions/my</td><td>AI 对话与工作流</td></tr>
+        <tr><td>管理-用户</td><td class="mono">GET /admin/user/page ｜ GET /admin/user/{id} ｜ GET /admin/user/by-telephone/{tel} ｜ PUT /admin/user/{id}/freeze、/unfreeze ｜ DELETE /admin/user/{id}</td><td>用户管理</td></tr>
+        <tr><td>管理-RBAC</td><td class="mono">GET /role/list ｜ POST /role ｜ PUT、DELETE /role/{id} ｜ POST /role/{id}/permissions ｜ GET /permission/tree ｜ POST /permission ｜ PUT、DELETE /permission/{id}</td><td>角色权限</td></tr>
+        <tr><td>管理-Agent</td><td class="mono">POST /admin/ai/agent ｜ PUT /admin/ai/agent/{id} ｜ PUT /admin/ai/agent/{id}/enable、/disable ｜ POST /admin/ai/agent/{id}/tools ｜ DELETE /admin/ai/agent/{id}/tools/{toolCode}</td><td>Agent 配置</td></tr>
+        <tr><td>管理-其他</td><td class="mono">POST /admin/public/file/upload ｜ POST /dict ｜ PUT、DELETE /dict/{typeCode}/{dictCode} ｜ GET /dict/page ｜ POST /admin/notice/page ｜ POST /admin/notice/template</td><td>文件 ｜ 字典 ｜ 通知</td></tr>
+        </tbody>
+      </table>
+      <p class="appendix-foot">接口出入参的完整字段以 kaleido-common/kaleido-api 模块下的 Command/Response 类为准；页面布局参考《衣柜系统前端原型.html》。</p>
+    </div>
+  </section>
+</body>
+</html>

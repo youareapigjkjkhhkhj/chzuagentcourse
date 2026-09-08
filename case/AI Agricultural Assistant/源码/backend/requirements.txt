@@ -1,0 +1,25 @@
+fastapi
+uvicorn
+groq
+pydantic
+requests
+langchain
+langchain-community
+langchain-core
+langchain-groq
+langsmith
+# sentence-transformers needs sentencepiece; pin order avoids backtracking
+# Python 3.11 or 3.12 required (3.14 has no sentencepiece wheels)
+sentencepiece>=0.2.0
+sentence-transformers>=2.2.0
+faiss-cpu
+numpy
+python-multipart
+pydantic-settings
+pyyaml
+pinecone-client
+langchain-pinecone
+redis>=5.0.0
+# Tests
+pytest>=7.0.0
+httpx>=0.24.0

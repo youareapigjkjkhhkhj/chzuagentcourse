@@ -1,0 +1,13 @@
+# 研究报告生成器 - 后端依赖（按实际代码精简，清华源安装）
+# 安装：pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+fastapi>=0.115
+uvicorn>=0.30
+pydantic>=2.7
+requests>=2.31
+arxiv>=2.1
+pdfplumber>=0.11
+numpy>=1.26
+faiss-cpu>=1.8
+markdown>=3.5
+openai>=1.30
+playwright>=1.44

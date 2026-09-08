@@ -1,0 +1,41 @@
+package com.xiaoo.kaleido.admin.domain.dict.service;
+
+import com.xiaoo.kaleido.admin.domain.dict.aggregate.DictAggregate;
+
+/**
+ * 字典领域服务
+ * 处理跨聚合的字典业务逻辑
+ *
+ * @author tomhui
+ * @date 2025/12/25
+ */
+public interface IDictDomainService {
+
+    /**
+     * 创建字典
+     *
+     * @param typeCode  字典类型编码
+     * @param typeName  字典类型名称
+     * @param dictCode  字典编码
+     * @param dictName  字典名称
+     * @param dictValue 字典值
+     * @param sort      排序
+     * @return 创建的字典
+     */
+    DictAggregate createDict(String typeCode, String typeName, String dictCode,
+                             String dictName, String dictValue, Integer sort);
+
+    /**
+     * 更新字典信息
+     *
+     * @param typeCode  字典类型编码
+     * @param dictCode  字典编码
+     * @param typeName  字段类型名称
+     * @param dictName  字典名称
+     * @param dictValue 字典值
+     * @param sort      排序
+     * @return 更新后的字典
+     */
+    DictAggregate updateDict(String typeCode, String dictCode, String typeName, String dictName, String dictValue, Integer sort);
+
+}
