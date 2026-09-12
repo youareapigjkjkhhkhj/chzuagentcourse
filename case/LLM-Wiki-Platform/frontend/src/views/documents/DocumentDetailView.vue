@@ -38,6 +38,13 @@
       </div>
       
       <div class="document-actions" v-if="authStore.isEditor">
+        <el-button 
+          :type="document?.status === 'published' ? 'warning' : 'success'" 
+          @click="handleToggleStatus"
+        >
+          <el-icon><Upload v-if="document?.status !== 'published'" /><Download v-else /></el-icon>
+          {{ document?.status === 'published' ? '取消发布' : '发布' }}
+        </el-button>
         <el-button type="primary" @click="router.push(`/documents/${document?.id}/edit`)">
           <el-icon><Edit /></el-icon>
           编辑
@@ -65,7 +72,7 @@ import { useAuthStore } from '@/stores/auth'
 import { formatDate } from '@/utils/helpers'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import MarkdownIt from 'markdown-it'
-import { User, Calendar, View, Document, Edit, Delete, ArrowLeft } from '@element-plus/icons-vue'
+import { User, Calendar, View, Document, Edit, Delete, ArrowLeft, Upload, Download } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -114,6 +121,17 @@ const handleDelete = async () => {
       console.error('Failed to delete document:', error)
       ElMessage.error('删除失败')
     }
+  }
+}
+
+const handleToggleStatus = async () => {
+  try {
+    const newDoc = await documentsStore.toggleDocumentStatus(Number(route.params.id))
+    document.value = newDoc
+    ElMessage.success(newDoc.status === 'published' ? '发布成功' : '已取消发布')
+  } catch (error) {
+    console.error('Failed to toggle status:', error)
+    ElMessage.error('操作失败')
   }
 }
 

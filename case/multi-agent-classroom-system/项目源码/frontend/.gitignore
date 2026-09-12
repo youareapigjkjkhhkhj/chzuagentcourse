@@ -1,0 +1,6 @@
+node_modules/
+dist/
+coverage/
+*.local
+.vite/
+src/components.d.ts

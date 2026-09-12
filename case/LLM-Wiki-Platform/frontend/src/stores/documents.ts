@@ -102,6 +102,27 @@ export const useDocumentsStore = defineStore('documents', () => {
     }
   }
 
+  // 切换文档发布状态
+  async function toggleDocumentStatus(id: number) {
+    loading.value = true
+    try {
+      const response = await documentsApi.toggleDocumentStatus(id)
+      const index = documents.value.findIndex(doc => doc.id === id)
+      if (index !== -1) {
+        documents.value[index] = response.document
+      }
+      if (currentDocument.value?.id === id) {
+        currentDocument.value = response.document
+      }
+      return response.document
+    } catch (error) {
+      console.error('Failed to toggle document status:', error)
+      throw error
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     documents,
     currentDocument,
@@ -114,6 +135,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     fetchDocument,
     createDocument,
     updateDocument,
-    deleteDocument
+    deleteDocument,
+    toggleDocumentStatus
   }
 })

@@ -1,0 +1,35 @@
+# Credentials -- never commit (AGENTS.md sec.4.1)
+.env
+.env.local
+.env.*.local
+
+# Runtime data
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Build
+dist/
+build/
+*.egg-info/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

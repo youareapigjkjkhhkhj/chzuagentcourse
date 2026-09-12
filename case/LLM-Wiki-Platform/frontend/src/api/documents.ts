@@ -33,6 +33,11 @@ export const documentsApi = {
     return api.delete(`/documents/${id}`)
   },
 
+  // 切换文档发布状态
+  async toggleDocumentStatus(id: number): Promise<{ document: Document }> {
+    return api.post(`/documents/${id}/toggle-status`)
+  },
+
   // 搜索文档
   async searchDocuments(keyword: string, category_id?: number, tags?: string[]): Promise<{ results: Document[] }> {
     return api.get('/documents/search', { params: { keyword, category_id, tags } })

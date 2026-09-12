@@ -27,7 +27,7 @@ import {
   type UsageStore,
   type Workspace,
 } from '@agent-core/agent-core';
-import type { AppSettings, ChangeSetView, ChatMessage, DiffView, ModelConfig, NormalizedUsage, RollbackResult, StreamEvent } from '@agentbuddy/shared';
+import type { AppSettings, ChangeSetView, ChatImage, ChatMessage, DiffView, ModelConfig, NormalizedUsage, RollbackResult, StreamEvent } from '@agentbuddy/shared';
 import type { SkillHub } from '@agent-core/agent-core';
 
 export type Emit = (event: StreamEvent) => void;
@@ -94,12 +94,12 @@ export class ChatService {
     return true;
   }
 
-  async ask(sessionId: string, text: string, emit: Emit, skillName?: string): Promise<void> {
+  async ask(sessionId: string, text: string, emit: Emit, skillName?: string, images?: ChatImage[]): Promise<void> {
     const exists = await this.sessions.get(sessionId);
     if (!exists) throw new Error('会话不存在');
     if (this.running.has(sessionId)) throw new Error('该会话正在生成中，请先停止');
 
-    const userMessage: ChatMessage = { id: randomUUID(), role: 'user', content: text, createdAt: Date.now() };
+    const userMessage: ChatMessage = { id: randomUUID(), role: 'user', content: text, createdAt: Date.now(), ...(images?.length ? { images } : {}) };
     await this.sessions.appendMessage(sessionId, userMessage);
 
     const stored = await this.configs.get();

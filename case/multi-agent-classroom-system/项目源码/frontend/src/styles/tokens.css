@@ -1,0 +1,177 @@
+/**
+ * 设计令牌 —— **取自产品原型** `产品原型/styles.css`。
+ *
+ * 唯一的真源是原型：原型用的就是 TDesign 官方令牌（品牌蓝 #0052d9），
+ * 这里把它原样搬过来，再让 TDesign 组件跟着走。所以下面每个 --td-*
+ * 都能在原型 styles.css 的 `:root` 里找到一模一样的一行 ——
+ * 改配色时两边一起改，不要在这里发明新颜色。
+ *
+ * 注意 项目文档/P0-工程基座与能力抽象.md §188 里记的是一套「米棕」令牌
+ *（--brand:#B98A5A …），与原型冲突，以原型为准，那份文档待更新。
+ */
+
+:root {
+  /* --- 品牌色 --- */
+  --td-brand-color: #0052d9;
+  --td-brand-color-hover: #266eff;
+  --td-brand-color-active: #003cab;
+  --td-brand-color-disabled: #bfd6fb;
+  --td-brand-color-focus: #d9e4ff;
+  --td-brand-color-light: #f2f3ff;
+
+  /* --- 功能色 --- */
+  --td-success-color: #00a870;
+  --td-success-color-light: #e8f8f2;
+  --td-warning-color: #ed7b2f;
+  --td-warning-color-light: #fef3e6;
+  --td-error-color: #d54941;
+  --td-error-color-light: #fdecee;
+
+  /* --- 文本色 --- */
+  --td-text-primary: rgba(0, 0, 0, 0.9);
+  --td-text-secondary: rgba(0, 0, 0, 0.6);
+  --td-text-placeholder: rgba(0, 0, 0, 0.4);
+  --td-text-disabled: rgba(0, 0, 0, 0.26);
+  --td-text-anti: #ffffff;
+
+  /* --- 背景 / 边框 --- */
+  --td-bg-page: #f3f3f3;
+  --td-bg-container: #ffffff;
+  --td-bg-container-hover: #f3f3f3;
+  --td-bg-container-active: #e7e7e7;
+  --td-bg-secondarycontainer: #f3f3f3;
+  --td-component-border: #e7e7e7;
+  --td-component-stroke: #eeeeee;
+
+  /* --- 圆角（工业感的来源：默认 3px，卡片 6px，大容器 9px）--- */
+  --td-radius-small: 3px;
+  --td-radius-default: 3px;
+  --td-radius-medium: 6px;
+  --td-radius-large: 9px;
+  --td-radius-round: 999px;
+
+  /* --- 阴影 --- */
+  --td-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.04), 0 3px 6px rgba(0, 0, 0, 0.06);
+  --td-shadow-2:
+    0 3px 14px 2px rgba(0, 0, 0, 0.05), 0 8px 10px 1px rgba(0, 0, 0, 0.06),
+    0 5px 5px -3px rgba(0, 0, 0, 0.1);
+  --td-shadow-3:
+    0 6px 30px 5px rgba(0, 0, 0, 0.05), 0 16px 24px 2px rgba(0, 0, 0, 0.04),
+    0 8px 10px -5px rgba(0, 0, 0, 0.08);
+
+  /* --- 字体 --- */
+  --td-font-family:
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  --td-font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+
+  /* --- TDesign 自己的变量名对接到上面这套上面 ---
+     不直接改 TDesign 的默认值，是为了升级库时能一眼看出哪些是我们定的。 */
+  --td-text-color-primary: var(--td-text-primary);
+  --td-text-color-secondary: var(--td-text-secondary);
+  --td-text-color-placeholder: var(--td-text-placeholder);
+  --td-text-color-disabled: var(--td-text-disabled);
+  --td-bg-color-page: var(--td-bg-page);
+  --td-bg-color-container: var(--td-bg-container);
+  --td-bg-color-secondarycontainer: var(--td-bg-secondarycontainer);
+  --td-border-level-1-color: var(--td-component-border);
+  --td-border-level-2-color: var(--td-component-stroke);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  font-family: var(--td-font-family);
+  font-size: 14px;
+  color: var(--td-text-primary);
+  background: var(--td-bg-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: var(--td-brand-color);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--td-brand-color-hover);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- 页面骨架 ---------- */
+
+/* 原型里各页的容器写法略有出入（.section / .set-wrap），这里收成一个 */
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px;
+}
+
+/* 卡片：等价于原型里的 .t-card（白底 + 6px + shadow-1） */
+.panel {
+  background: var(--td-bg-container);
+  border-radius: var(--td-radius-medium);
+  box-shadow: var(--td-shadow-1);
+  padding: 24px 28px;
+}
+
+.panel__title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.panel__desc {
+  font-size: 13px;
+  color: var(--td-text-secondary);
+  margin-bottom: 20px;
+  line-height: 1.7;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ---------- 工具类 ---------- */
+
+.text-secondary,
+.muted {
+  color: var(--td-text-secondary);
+}
+
+.text-placeholder {
+  color: var(--td-text-placeholder);
+}
+
+.mono {
+  font-family: var(--td-font-mono);
+}

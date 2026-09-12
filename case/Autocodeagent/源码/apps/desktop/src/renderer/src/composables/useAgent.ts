@@ -5,7 +5,7 @@
  * P2：diff_ready 驱动右栏审阅面板；plan 静态渲染计划块。
  */
 import { onMounted, onUnmounted, ref } from 'vue';
-import type { ChatMessage, NormalizedUsage, StreamEvent, TodoItem } from '@agentbuddy/shared';
+import type { ChatImage, ChatMessage, NormalizedUsage, StreamEvent, TodoItem } from '@agentbuddy/shared';
 import { agent } from '../api/bridge';
 
 export interface PendingPermission {
@@ -142,20 +142,22 @@ export function useAgent() {
     }
   }
 
-  async function send(text: string, skillName?: string): Promise<void> {
+  async function send(text: string, skillName?: string, images?: ChatImage[]): Promise<void> {
     if (!sessionId.value || busy.value || !text.trim()) return;
     error.value = '';
     notice.value = '';
+    const hasImages = !!images?.length;
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
       content: text.trim(),
       createdAt: Date.now(),
+      ...(hasImages ? { images } : {}),
     };
     messages.value.push(userMessage);
     busy.value = true;
     thinking.value = true; // 发送即进入思考等待态，首字到达后自动消失
-    const res = await agent().agent.ask({ sessionId: sessionId.value, message: userMessage.content, skillName });
+    const res = await agent().agent.ask({ sessionId: sessionId.value, message: userMessage.content, skillName, ...(hasImages ? { images } : {}) });
     if (!res.ok) {
       busy.value = false;
       error.value = res.error ?? '发送失败';

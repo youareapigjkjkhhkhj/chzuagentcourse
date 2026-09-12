@@ -92,6 +92,11 @@ export const AskPayload = z.object({
   message: z.string().min(1).max(20000),
   /** P4：/name 触发的技能名（正文作为高优先级指令注入） */
   skillName: z.string().min(1).max(64).optional(),
+  /** 多模态：随消息附带的图片（≤4 张，单张 base64 ≤6MB≈原图 4.5MB）；发给不支持 vision 的模型由后端报错兜底 */
+  images: z
+    .array(z.object({ mime: z.string().min(1).max(64), dataBase64: z.string().min(1).max(6_000_000) }))
+    .max(4)
+    .optional(),
 });
 
 export const PermissionResolvePayload = z.object({

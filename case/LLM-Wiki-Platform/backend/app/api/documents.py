@@ -15,7 +15,7 @@ def register_routes(bp):
         per_page = request.args.get('per_page', 20, type=int)
         category_id = request.args.get('category_id', type=int)
         keyword = request.args.get('keyword')
-        status = request.args.get('status', 'published')
+        status = request.args.get('status')
         
         result = DocumentService.get_documents(
             page=page,
@@ -80,6 +80,18 @@ def register_routes(bp):
             return jsonify({'error': error}), 400
         
         return jsonify({'message': 'Document deleted successfully'})
+    
+    @bp.route('/documents/<int:doc_id>/toggle-status', methods=['POST'])
+    @jwt_required()
+    @require_permission('editor')
+    def toggle_document_status(doc_id):
+        """切换文档发布状态"""
+        user_id = get_jwt_identity()
+        document, error = DocumentService.toggle_document_status(doc_id, user_id)
+        if error:
+            return jsonify({'error': error}), 400
+        
+        return jsonify({'document': document.to_dict()})
     
     @bp.route('/documents/search', methods=['GET'])
     @jwt_required()

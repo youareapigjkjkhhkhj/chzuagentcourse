@@ -1,4 +1,4 @@
-# AI服务 - LangChain 1.0+ 版本
+# AI服务 - 直接使用 pymilvus MilvusClient
 import os
 from typing import List, Dict, Any, Optional
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -6,18 +6,16 @@ from langchain_core.prompts import PromptTemplate
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document as LCDocument
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
 
 class AIService:
-    """AI服务 - 基于LangChain 1.0+"""
+    """AI服务"""
     
     _llm: Optional[ChatOpenAI] = None
     _embeddings: Optional[OpenAIEmbeddings] = None
-    _vector_store = None
+    _milvus_client = None
     
     @classmethod
     def get_llm(cls) -> ChatOpenAI:
-        """获取LLM实例"""
         if cls._llm is None:
             cls._llm = ChatOpenAI(
                 model=os.getenv('OPENAI_MODEL', 'gpt-5-mini'),
@@ -30,7 +28,6 @@ class AIService:
     
     @classmethod
     def get_embeddings(cls) -> OpenAIEmbeddings:
-        """获取Embedding实例"""
         if cls._embeddings is None:
             cls._embeddings = OpenAIEmbeddings(
                 model=os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small'),
@@ -40,67 +37,73 @@ class AIService:
         return cls._embeddings
     
     @classmethod
-    def get_vector_store(cls):
-        """获取向量存储实例（需要 Milvus 服务 + langchain-milvus 包，不可用时返回 None）"""
-        if cls._vector_store is None:
+    def get_milvus_client(cls):
+        if cls._milvus_client is None:
             try:
-                from langchain_milvus import Milvus
-                from pymilvus import connections
-
+                from pymilvus import MilvusClient
                 host = os.getenv('MILVUS_HOST', 'localhost')
                 port = os.getenv('MILVUS_PORT', '19530')
                 uri = f"http://{host}:{port}"
-
-                # langchain-milvus 内部部分路径（集合已存在时）依赖 pymilvus ORM 全局连接
-                try:
-                    connections.connect("default", uri=uri)
-                except Exception:
-                    pass
-
-                cls._vector_store = Milvus(
-                    embedding_function=cls.get_embeddings(),
-                    collection_name=os.getenv('MILVUS_COLLECTION', 'wiki_embeddings'),
-                    # langchain-milvus >=0.3 使用 MilvusClient，连接参数须为 uri 格式
-                    connection_args={"uri": uri}
-                )
+                cls._milvus_client = MilvusClient(uri=uri)
+                print(f"[AIService] Milvus connected: {uri}")
             except Exception as e:
-                print(f"[AIService] Milvus 不可用，向量检索已降级: {e}")
+                print(f"[AIService] Milvus 连接失败: {e}")
                 return None
-        return cls._vector_store
+        return cls._milvus_client
+    
+    @classmethod
+    def get_collection_name(cls):
+        return os.getenv('MILVUS_COLLECTION', 'wiki_embeddings')
     
     @staticmethod
     def search_similar_documents(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """搜索相似文档"""
         try:
-            vector_store = AIService.get_vector_store()
-            results = vector_store.similarity_search_with_score(query, k=top_k)
+            client = AIService.get_milvus_client()
+            if client is None:
+                print("[AIService] Milvus client unavailable")
+                return []
+            
+            embeddings = AIService.get_embeddings()
+            query_vector = embeddings.embed_query(query)
+            
+            collection = AIService.get_collection_name()
+            
+            results = client.search(
+                collection_name=collection,
+                data=[query_vector],
+                limit=top_k,
+                output_fields=["text", "document_id", "chunk_index"]
+            )
             
             search_results = []
-            for doc, score in results:
-                search_results.append({
-                    'document_id': doc.metadata.get('document_id', 0),
-                    'content': doc.page_content,
-                    'score': float(score),
-                    'metadata': doc.metadata
-                })
+            if results and len(results) > 0:
+                for hit in results[0]:
+                    text = hit.get("entity", {}).get("text", "")
+                    search_results.append({
+                        'document_id': hit.get("entity", {}).get("document_id", 0),
+                        'content': text,
+                        'snippet': text[:200] + '...' if len(text) > 200 else text,
+                        'score': float(hit.get("distance", 0)),
+                        'metadata': {}
+                    })
             
+            print(f"[AIService] Search found {len(search_results)} results")
             return search_results
         except Exception as e:
             print(f"Search error: {e}")
+            import traceback
+            traceback.print_exc()
             return []
     
     @staticmethod
     def build_context(search_results: List[Dict[str, Any]]) -> str:
-        """构建上下文"""
         context_parts = []
         for i, result in enumerate(search_results, 1):
             context_parts.append(f"[文档{i}] {result['content']}")
-        
         return "\n\n".join(context_parts)
     
     @staticmethod
     def generate_answer(question: str, context: str) -> Dict[str, Any]:
-        """生成回答 - 使用LangChain 1.0+ LCEL"""
         try:
             llm = AIService.get_llm()
             
@@ -120,7 +123,6 @@ class AIService:
                 input_variables=["context", "question"]
             )
             
-            # 使用LCEL (LangChain Expression Language)
             chain = prompt | llm | StrOutputParser()
             
             response = chain.invoke({
@@ -132,7 +134,7 @@ class AIService:
                 'answer': response,
                 'confidence': 0.85,
                 'model_used': os.getenv('OPENAI_MODEL', 'gpt-5-mini'),
-                'tokens_used': 0  # 新版API需要额外处理token计数
+                'tokens_used': 0
             }
         except Exception as e:
             return {
@@ -143,10 +145,37 @@ class AIService:
             }
     
     @staticmethod
-    def process_document_for_embedding(document_id: int, content: str) -> tuple[bool, Any]:
-        """处理文档生成嵌入"""
+    def generate_answer_stream(question: str, context: str):
         try:
-            # 文本分割
+            llm = AIService.get_llm()
+            
+            prompt_template = """基于以下上下文回答用户问题。
+如果上下文中没有相关信息，请说明您不知道答案，不要编造答案。
+请提供准确、详细的回答，并在可能的情况下引用来源。
+
+上下文:
+{context}
+
+问题: {question}
+
+请提供详细、准确的回答："""
+            
+            prompt = PromptTemplate(
+                template=prompt_template,
+                input_variables=["context", "question"]
+            )
+            
+            chain = prompt | llm
+            
+            for chunk in chain.stream({"context": context, "question": question}):
+                if chunk.content:
+                    yield chunk.content
+        except Exception as e:
+            yield f'生成回答时出错: {str(e)}'
+    
+    @staticmethod
+    def process_document_for_embedding(document_id: int, content: str) -> tuple[bool, Any]:
+        try:
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=1000,
                 chunk_overlap=200,
@@ -154,40 +183,50 @@ class AIService:
             )
             chunks = text_splitter.split_text(content)
             
-            # 生成嵌入并存储
-            vector_store = AIService.get_vector_store()
+            embeddings = AIService.get_embeddings()
+            vectors = embeddings.embed_documents(chunks)
             
-            # 创建LangChain文档对象
-            documents = []
-            for i, chunk in enumerate(chunks):
-                doc = LCDocument(
-                    page_content=chunk,
-                    metadata={"document_id": document_id, "chunk_index": i}
-                )
-                documents.append(doc)
+            client = AIService.get_milvus_client()
+            if client is None:
+                return False, "Milvus client unavailable"
             
-            # 添加到向量存储
-            vector_store.add_documents(documents)
+            data = []
+            for i, (chunk, vector) in enumerate(zip(chunks, vectors)):
+                data.append({
+                    "text": chunk,
+                    "vector": vector,
+                    "document_id": document_id,
+                    "chunk_index": i
+                })
+            
+            collection = AIService.get_collection_name()
+            client.insert(collection_name=collection, data=data)
             
             return True, len(chunks)
         except Exception as e:
+            print(f"Embedding error: {e}")
+            import traceback
+            traceback.print_exc()
             return False, str(e)
     
     @staticmethod
     def remove_document_embeddings(document_id: int) -> bool:
-        """删除文档的所有向量（用于更新/删除文档时）"""
         try:
-            vector_store = AIService.get_vector_store()
-            if vector_store is None:
+            client = AIService.get_milvus_client()
+            if client is None:
                 return False
-            return bool(vector_store.delete(expr=f"document_id == {int(document_id)}"))
+            collection = AIService.get_collection_name()
+            client.delete(
+                collection_name=collection,
+                filter=f"document_id == {int(document_id)}"
+            )
+            return True
         except Exception as e:
             print(f"Remove embeddings error: {e}")
             return False
     
     @staticmethod
     def reset():
-        """重置服务（用于测试或重新连接）"""
         AIService._llm = None
         AIService._embeddings = None
-        AIService._vector_store = None
+        AIService._milvus_client = None

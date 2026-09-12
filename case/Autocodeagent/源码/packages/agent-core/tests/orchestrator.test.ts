@@ -117,7 +117,7 @@ describe('runTurn 集成（mock LLM）', () => {
     expect(denied?.content).toContain('用户拒绝');
     // 拒绝回灌进下一轮上下文
     const wire = await assembleContext({ workspace: ws, config, history: dep.messages });
-    expect(wire.some((m) => (m.content ?? '').includes('用户拒绝'))).toBe(true);
+    expect(wire.some((m) => ((m.content as string) ?? '').includes('用户拒绝'))).toBe(true);
   });
 
   it('P4：执行计划跨轮注入——初始 todos 进首轮系统提示，todo_write 更新后下一轮反映最新计划', async () => {
@@ -360,9 +360,9 @@ describe('runTurn 上下文窗口自愈（400 探测真实窗口 + schema 物理
     await runTurn(dep);
 
     expect(requests).toHaveLength(2); // 首次 400 → 探测后重试
-    expect(requests[0]!.tools).toHaveLength(68); // 配置 128k：全量下发
+    expect(requests[0]!.tools).toHaveLength(69); // 配置 128k：全量下发
     const second = requests[1]!.tools!;
-    expect(second).toHaveLength(35); // 32768 物理容量：内置 8 + MCP 27
+    expect(second).toHaveLength(36); // 32768 物理容量：内置 9 + MCP 27
     expect(events.some((e) => e.type === 'notice')).toBe(true); // 少挂载需用户可见
   });
 
@@ -373,7 +373,7 @@ describe('runTurn 上下文窗口自愈（400 探测真实窗口 + schema 物理
     await runTurn(dep);
 
     expect(requests).toHaveLength(1);
-    expect(requests[0]!.tools!.length).toBeLessThan(68);
+    expect(requests[0]!.tools!.length).toBeLessThan(69);
   });
 
   it('输出上限超窗（max_tokens>max_model_len）→ 探测窗口 4096，收敛输出上限后重试 + 小窗口提示', async () => {

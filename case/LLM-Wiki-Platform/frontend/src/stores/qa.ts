@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { QARecord, QAChatMessage } from '@/types/qa'
 import { qaApi } from '@/api/qa'
+import { useAuthStore } from './auth'
 
 export const useQAStore = defineStore('qa', () => {
   const chatMessages = ref<QAChatMessage[]>([])
@@ -13,7 +14,7 @@ export const useQAStore = defineStore('qa', () => {
     return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
   }
 
-  // 发送问题
+  // 发送问题（SSE 流式）
   async function askQuestion(question: string) {
     // 添加用户消息
     const userMessage: QAChatMessage = {
@@ -25,35 +26,73 @@ export const useQAStore = defineStore('qa', () => {
     chatMessages.value.push(userMessage)
 
     loading.value = true
+
+    // 创建 AI 消息占位
+    const aiMessage: QAChatMessage = {
+      id: Date.now() + 1,
+      role: 'assistant',
+      content: '',
+      sources: [],
+      timestamp: new Date().toISOString()
+    }
+    chatMessages.value.push(aiMessage)
+
     try {
-      const response = await qaApi.askQuestion({
-        question,
-        session_id: sessionId.value
+      const authStore = useAuthStore()
+      const token = authStore.token
+
+      const response = await fetch('/api/v1/qa/ask_stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          question,
+          session_id: sessionId.value
+        })
       })
 
-      // 添加AI回答
-      const aiMessage: QAChatMessage = {
-        id: Date.now() + 1,
-        role: 'assistant',
-        content: response.answer,
-        sources: response.sources,
-        confidence: response.confidence,
-        response_time: response.response_time,
-        record_id: response.record_id,
-        timestamp: new Date().toISOString()
-      }
-      chatMessages.value.push(aiMessage)
+      const reader = response.body!.getReader()
+      const decoder = new TextDecoder()
 
-      return response
-    } catch (error) {
-      // 添加错误消息
-      const errorMessage: QAChatMessage = {
-        id: Date.now() + 1,
-        role: 'assistant',
-        content: '抱歉，发生了错误，请稍后重试。',
-        timestamp: new Date().toISOString()
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const text = decoder.decode(value, { stream: true })
+        const lines = text.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+
+              if (data.type === 'sources') {
+                aiMessage.sources = data.sources
+              } else if (data.type === 'chunk') {
+                aiMessage.content += data.content
+                // 实时滚动到底部
+                const container = document.querySelector('.chat-messages')
+                if (container) {
+                  container.scrollTop = container.scrollHeight
+                }
+              } else if (data.type === 'done') {
+                aiMessage.record_id = data.record_id
+                aiMessage.response_time = 0
+              } else if (data.type === 'error') {
+                aiMessage.content = '抱歉，发生了错误: ' + data.message
+              }
+            } catch (e) {
+              // 忽略解析错误
+            }
+          }
+        }
       }
-      chatMessages.value.push(errorMessage)
+
+      return aiMessage
+    } catch (error) {
+      aiMessage.content = '抱歉，发生了错误，请稍后重试。'
       throw error
     } finally {
       loading.value = false

@@ -5,12 +5,15 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { num, str, type Tool } from './types';
+import { detectRipgrep, rgFiles, rgGrep } from './ripgrep';
 
 export const READ_MAX_LINES = 2000;
 const GREP_MAX_MATCHES = 200;
 const GLOB_MAX_RESULTS = 500;
+/** rg 命中时用于 glob 的文件枚举上限（枚举后再按 globToRegex 过滤，与 walk 语义一致）；远超则回退 walk */
+const RG_ENUM_MAX = 50_000;
 const GREP_MAX_FILE_BYTES = 1024 * 1024;
-const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', '.agent']);
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', '.agent', '.AgentBuddy']);
 
 export const readTool: Tool = {
   name: 'read',
@@ -55,9 +58,22 @@ export const globTool: Tool = {
     if (!ctx.workspace) throw new Error('未选择工作区目录');
     const regex = globToRegex(str(input, 'pattern'));
     const hits: string[] = [];
-    await walk(ctx.workspace, ctx.workspace, (rel) => {
+    const collect = (rel: string): void => {
       if (hits.length < GLOB_MAX_RESULTS && regex.test(rel.replace(/\\/g, '/'))) hits.push(rel);
-    });
+    };
+    // 优先 rg：.gitignore 感知的快速枚举，再用同一 globToRegex 过滤（匹配语义与 walk 一致）；失败回退 walk
+    let usedRg = false;
+    if (await detectRipgrep()) {
+      try {
+        const files = await rgFiles({ dir: ctx.workspace, root: ctx.workspace, max: RG_ENUM_MAX, signal: ctx.signal });
+        for (const f of files) collect(f);
+        usedRg = true;
+      } catch {
+        hits.length = 0;
+        usedRg = false;
+      }
+    }
+    if (!usedRg) await walk(ctx.workspace, ctx.workspace, (rel) => collect(rel));
     if (hits.length === 0) return { text: '（无匹配文件）' };
     return { text: hits.join('\n') + (hits.length >= GLOB_MAX_RESULTS ? '\n…（达到 500 上限）' : '') };
   },
@@ -78,13 +94,25 @@ export const grepTool: Tool = {
   risk: 'READ',
   async execute(ctx, input) {
     if (!ctx.workspace) throw new Error('未选择工作区目录');
+    const pattern = str(input, 'pattern');
+    const ignoreCase = input['ignoreCase'] === true;
     let regex: RegExp;
     try {
-      regex = new RegExp(str(input, 'pattern'), input['ignoreCase'] === true ? 'i' : '');
+      regex = new RegExp(pattern, ignoreCase ? 'i' : '');
     } catch (e) {
       throw new Error(`正则非法: ${e instanceof Error ? e.message : String(e)}`);
     }
     const root = input['path'] ? await ctx.resolvePath(str(input, 'path')) : ctx.workspace;
+    // 优先 rg：极速 + .gitignore/二进制感知；rg 缺失或与 Rust 正则不兼容时回退内置 walk（行为不劣化）
+    if (await detectRipgrep()) {
+      try {
+        const rows = await rgGrep({ pattern, dir: root, root: ctx.workspace, ignoreCase, max: GREP_MAX_MATCHES, signal: ctx.signal });
+        if (rows.length === 0) return { text: '（无匹配）' };
+        return { text: rows.join('\n') + (rows.length >= GREP_MAX_MATCHES ? '\n…（达到 200 上限）' : '') };
+      } catch {
+        // 落入内置 walk 回退
+      }
+    }
     const matches: string[] = [];
     await walk(ctx.workspace, root, async (rel, abs) => {
       if (matches.length >= GREP_MAX_MATCHES) return;

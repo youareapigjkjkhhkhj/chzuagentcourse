@@ -118,14 +118,14 @@ describe('ExpertUpsertPayload zod 校验（§23 同一 schema）', () => {
 describe('buildSessionBus 专家绑定过滤', () => {
   const mcpTools = [fakeMcpTool('github', 'create_issue'), fakeMcpTool('echo', 'ping')];
 
-  it('allow 缺省 / 空数组 = 不限定（内置 8 + MCP 全量）', () => {
-    expect(buildSessionBus(mcpTools).names()).toHaveLength(10);
-    expect(buildSessionBus(mcpTools, []).names()).toHaveLength(10);
+  it('allow 缺省 / 空数组 = 不限定（内置 9 + MCP 全量）', () => {
+    expect(buildSessionBus(mcpTools).names()).toHaveLength(11);
+    expect(buildSessionBus(mcpTools, []).names()).toHaveLength(11);
   });
 
-  it('绑定内置子集：只注册命中项 + todo_write 始终保留', () => {
+  it('绑定内置子集：只注册命中项 + todo_write / remember 始终保留', () => {
     const bus = buildSessionBus([], ['read', 'grep']);
-    expect(bus.names().sort()).toEqual(['grep', 'read', 'todo_write']);
+    expect(bus.names().sort()).toEqual(['grep', 'read', 'remember', 'todo_write']);
     expect(bus.get('bash')).toBeUndefined();
   });
 
@@ -136,10 +136,10 @@ describe('buildSessionBus 专家绑定过滤', () => {
     expect(bus.get('read')).toBeTruthy();
   });
 
-  it('绑定 mcp:echo 时未命中的 srv 工具全部过滤（内置仅留 todo_write）', () => {
+  it('绑定 mcp:echo 时未命中的 srv 工具全部过滤（内置仅留 todo_write / remember）', () => {
     const many = Array.from({ length: 50 }, (_, i) => fakeMcpTool('srv', `t${i}`));
     const bus = buildSessionBus(many, ['mcp:echo']);
-    expect(bus.names()).toEqual(['todo_write']); // 内置全部未命中被过滤，todo_write 始终保留；srv 工具未命中 mcp:echo 也全过滤
+    expect(bus.names()).toEqual(['todo_write', 'remember']); // 内置全部未命中被过滤，todo_write / remember 始终保留；srv 工具未命中 mcp:echo 也全过滤
   });
 });
 

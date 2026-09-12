@@ -1,0 +1,74 @@
+[project]
+name = "eduagentx-backend"
+version = "0.1.0"
+description = "EduAgentX multi-agent interactive classroom - backend"
+requires-python = ">=3.10"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+exclude = [".venv", "migrations/versions"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "B",        # bugbear
+    "C4",       # comprehensions
+    "SIM",      # simplify
+    "RET",      # flake8-return
+    "PL",       # pylint subset
+    "S",        # bandit (security)
+    "RUF",
+]
+ignore = [
+    "E501",     # line length handled by formatter
+    "PLR0913",  # many arguments (create_app-style signatures are fine)
+    "PLR2004",  # magic value comparisons in tests
+    "S101",     # assert (this is a test-heavy codebase)
+    # This codebase writes comments/docstrings in Chinese. RUF001-003 flag every
+    # fullwidth colon/comma/paren as "ambiguous" -- for a zh-CN project that is
+    # 100% false positives, so they are off globally.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+    # Lazy imports are load-bearing here: app.common.* cross-reference each other
+    # (errors -> response, dbw -> logging) and app/__init__ imports blueprints
+    # that import the app factory. Hoisting them creates circular imports.
+    "PLC0415",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# PLR0911/PLR0915: 测试里的样例工厂天然是一长串「按类型给不同样例」的分支，
+# 拆成字典反而更难对照文档里的表格看。
+"tests/**" = ["S105", "S106", "PLR0911", "PLR0915"]
+"app/config.py" = ["S104"]   # 0.0.0.0/8 is an SSRF *blocklist* entry, not a bind address
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+exclude = ["migrations/", ".venv/"]
+
+[[tool.mypy.overrides]]
+# Flask-SQLAlchemy 3.x 的 db.Model 是运行时动态造出来的类（按 metadata 生成），
+# 官方类型标注里没有它，于是每个 `class X(db.Model)` 都会被报
+# "Name db.Model is not defined"。这是 stub 的缺口，不是代码缺陷 ——
+# 只对模型模块关掉这一条，别的检查照旧。
+module = ["app.models.*"]
+disable_error_code = ["name-defined"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers --tb=short"
+markers = [
+    "contract: interface contract tests",
+    "unit: unit tests",
+    "slow: slower tests (perf / concurrency)",
+]

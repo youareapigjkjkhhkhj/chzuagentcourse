@@ -4,7 +4,7 @@
  * 事件驱动（AGENTS §18）：diff_ready → 右栏自动打开；权限内联确认卡（原型同款）。
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
-import type { ChatMessage, Expert, McpServerView, ModelConfig, PermissionMode, SkillMeta, TreeNode, WorkspaceEntry } from '@agentbuddy/shared';
+import type { ChatImage, ChatMessage, Expert, McpServerView, ModelConfig, PermissionMode, SkillMeta, TreeNode, WorkspaceEntry } from '@agentbuddy/shared';
 import { agent } from '../api/bridge';
 import { useAgent } from '../composables/useAgent';
 import { useSettings } from '../composables/useSettings';
@@ -367,8 +367,8 @@ function groupLabels(msgs: ChatMessage[]): string {
   return joined.length > 60 ? `${joined.slice(0, 60)}…` : joined;
 }
 
-/** P4：/name 触发——命中启用技能则随 ask 传 skillName（正文作为高优先级指令注入） */
-async function onSend(): Promise<void> {
+/** P4：/name 触发——命中启用技能则随 ask 传 skillName（正文作为高优先级指令注入）；多模态图片随 send 透传 */
+async function onSend(images?: ChatImage[]): Promise<void> {
   const text = draft.value.trim();
   if (!text) return;
   const m = /^\/([\w-]+)(?:\s|$)/.exec(text);
@@ -379,11 +379,17 @@ async function onSend(): Promise<void> {
       return;
     }
     draft.value = '';
-    await send(text, matched.name);
+    await send(text, matched.name, images);
     return;
   }
   draft.value = '';
-  await send(text);
+  await send(text, undefined, images);
+}
+
+/** 多模态：点击消息缩略图放大预览（全屏遮罩，点击关闭） */
+const previewSrc = ref<string | null>(null);
+function previewImage(img: ChatImage): void {
+  previewSrc.value = `data:${img.mime};base64,${img.dataBase64}`;
 }
 </script>
 
@@ -565,7 +571,19 @@ async function onSend(): Promise<void> {
                   <span v-html="ico('trash')" />
                 </button>
               </div>
-              <div class="bg-stone-800 text-stone-50 rounded-xl px-3.5 py-2.5 text-[12.5px] leading-relaxed max-w-2xl shadow-card whitespace-pre-wrap select-text">{{ item.msg.content }}</div>
+              <div class="bg-stone-800 text-stone-50 rounded-xl px-3.5 py-2.5 text-[12.5px] leading-relaxed max-w-2xl shadow-card select-text space-y-2">
+                <div v-if="item.msg.images?.length" class="flex flex-wrap gap-1.5 justify-end">
+                  <img
+                    v-for="(img, i) in item.msg.images"
+                    :key="i"
+                    :src="`data:${img.mime};base64,${img.dataBase64}`"
+                    class="max-w-[180px] max-h-[180px] rounded-lg object-cover cursor-zoom-in border border-white/10"
+                    alt="图片附件"
+                    @click="previewImage(img)"
+                  />
+                </div>
+                <div class="whitespace-pre-wrap">{{ item.msg.content }}</div>
+              </div>
             </div>
 
             <!-- assistant 消息：仅渲染文字内容；工具调用统一由 ToolCard 呈现（避免名称重复占空间）；
@@ -681,6 +699,15 @@ async function onSend(): Promise<void> {
 
     <!-- 右栏：Diff / 代码 / 文件 工作台（P2 任务 1/2/3/7） -->
     <WorkbenchPanel v-if="bench.visible.value" :store="bench" />
+    </div>
+
+    <!-- 多模态：图片放大预览（点击消息缩略图弹出，点遮罩关闭） -->
+    <div
+      v-if="previewSrc"
+      class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-8 cursor-zoom-out"
+      @click="previewSrc = null"
+    >
+      <img :src="previewSrc" class="max-w-full max-h-full rounded-lg shadow-2xl object-contain" alt="图片预览" />
     </div>
   </div>
 </template>

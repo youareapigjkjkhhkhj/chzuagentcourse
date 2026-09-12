@@ -6,6 +6,7 @@ import type { LlmToolSchema } from '@agentbuddy/shared';
 import { BASH_TOOLS } from './bashTool';
 import { READ_TOOLS } from './fsRead';
 import { WRITE_TOOLS } from './fsWrite';
+import { REMEMBER_TOOL } from './memoryTool';
 import { TODO_TOOL } from './todoTool';
 import { createSearchTool, mcpSchemaTokens, ON_DEMAND_MIN_MCP_SCHEMA_TOKENS, registryFromTools } from './toolSearch';
 import type { Tool } from './types';
@@ -64,10 +65,10 @@ export class ToolBus {
   }
 }
 
-/** 内置工具：P1 六件套 + P4 todo_write + 联网 webfetch（websearch 需配置 key，由外层按需注入 extra） */
+/** 内置工具：P1 六件套 + P4 todo_write + remember（工作区记忆）+ 联网 webfetch（websearch 需配置 key，由外层按需注入 extra） */
 export function createBuiltinBus(): ToolBus {
   const bus = new ToolBus();
-  for (const tool of [...READ_TOOLS, ...WRITE_TOOLS, ...BASH_TOOLS, TODO_TOOL, webfetchTool]) bus.register(tool);
+  for (const tool of [...READ_TOOLS, ...WRITE_TOOLS, ...BASH_TOOLS, TODO_TOOL, REMEMBER_TOOL, webfetchTool]) bus.register(tool);
   return bus;
 }
 
@@ -105,7 +106,8 @@ export function buildSessionBus(
 ): ToolBus {
   const bus = createBuiltinBus();
   for (const tool of extra) bus.register(tool);
-  const keep = new Set(['todo_write', ...extra.map((t) => t.name)]);
+  // todo_write / remember 始终保留：计划面板 / 工作区记忆是跨切面助理能力，不随专家工具绑定消失
+  const keep = new Set(['todo_write', 'remember', ...extra.map((t) => t.name)]);
   if (allow && allow.length > 0) {
     // names() 是 Map keys 的活视图，先快照再删，避免边迭代边删漏项
     for (const name of [...bus.names()]) {

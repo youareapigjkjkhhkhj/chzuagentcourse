@@ -1,7 +1,7 @@
 /** 上下文组装与截断单测（P1 验收：旧工具结果占位摘要，技术方案 §4.3） */
 import { describe, expect, it } from 'vitest';
-import type { ChatMessage, LlmToolSchema, LlmWireMessage, ModelConfig, TodoItem } from '@agentbuddy/shared';
-import { assembleContext, clampOutputTokens, compactPlaceholder, computePromptBudget, dropOldMessages, estimateTokens, pruneToolsToWindow, toWire, trimToBudget } from '../src/context';
+import type { ChatMessage, LlmToolSchema, LlmWireMessage, ModelConfig, TodoItem, WireContentPart } from '@agentbuddy/shared';
+import { assembleContext, clampOutputTokens, compactPlaceholder, computePromptBudget, dropOldMessages, estimateTokens, planCompaction, pruneToolsToWindow, renderHistoryForSummary, systemPrompt, toWire, trimToBudget } from '../src/context';
 
 const config: ModelConfig = {
   id: 'test', name: 't', provider: 'openai', baseUrl: 'http://x', model: 'gpt-4o-mini',
@@ -24,6 +24,15 @@ describe('estimateTokens（P0：CJK 加权，中文不再被 length/4 低估）'
   it('中英混排加权求和', () => {
     expect(estimateTokens('中'.repeat(10) + 'a'.repeat(40))).toBe(17);
   });
+
+  it('多模态数组：文本分片按字符估、图片分片按固定保守值（1200/张），null 视为空', () => {
+    const parts: WireContentPart[] = [
+      { type: 'text', text: 'a'.repeat(100) },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } },
+    ];
+    expect(estimateTokens(parts)).toBe(25 + 1200);
+    expect(estimateTokens(null)).toBe(0);
+  });
 });
 
 describe('toWire', () => {
@@ -36,6 +45,18 @@ describe('toWire', () => {
     const t = toWire(msg({ role: 'tool', toolCallId: 'c1', toolName: 'read', content: 'out' }));
     expect(t.role).toBe('tool');
     expect(t.tool_call_id).toBe('c1');
+  });
+
+  it('多模态：user 带图片组装 content 数组（text 分片 + image_url data: base64）', () => {
+    const w = toWire(msg({ role: 'user', content: '这是什么', images: [{ mime: 'image/png', dataBase64: 'AAA' }] }));
+    expect(Array.isArray(w.content)).toBe(true);
+    const parts = w.content as WireContentPart[];
+    expect(parts[0]).toEqual({ type: 'text', text: '这是什么' });
+    expect(parts[1]).toEqual({ type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } });
+  });
+
+  it('多模态：user 无图片时 content 保持纯文本 string（不回归数组）', () => {
+    expect(toWire(msg({ role: 'user', content: '纯文本' })).content).toBe('纯文本');
   });
 });
 
@@ -56,7 +77,7 @@ describe('trimToBudget', () => {
       { role: 'tool', content: 'r4', tool_call_id: 'c4' },
     ];
     trimToBudget(wire, 20);
-    const c = wire[1]?.content ?? '';
+    const c = (wire[1]?.content ?? '') as string;
     expect(c.startsWith('[已压缩')).toBe(true);
     expect(c).toContain('line-0');
     expect(c).toContain('line-9');
@@ -73,7 +94,7 @@ describe('trimToBudget', () => {
       { role: 'tool', content: big, tool_call_id: 'c4' },
     ];
     trimToBudget(wire, estimateTokens(big) * 3 + 50);
-    expect(wire[1]?.content?.startsWith('[已压缩')).toBe(true); // 最旧先压
+    expect((wire[1]?.content as string).startsWith('[已压缩')).toBe(true); // 最旧先压
     expect(wire[4]?.content).toBe(big); // 最近一条不动
   });
 
@@ -139,7 +160,7 @@ describe('dropOldMessages（降级 2：成组丢弃，支撑 200 轮长任务）
     const before = wire.length;
     dropOldMessages(wire, 1_000_000);
     expect(wire.length).toBe(before);
-    expect(wire.some((m) => (m.content ?? '').includes('上下文管理'))).toBe(false);
+    expect(wire.some((m) => ((m.content as string) ?? '').includes('上下文管理'))).toBe(false);
   });
 });
 
@@ -179,7 +200,7 @@ describe('assembleContext', () => {
       skillCatalog: [{ name: 'review', description: '代码审查清单' }],
       skillInstruction: '【审查清单正文】逐项检查正确性',
     });
-    const sys = wire[0]?.content ?? '';
+    const sys = (wire[0]?.content ?? '') as string;
     const catalogIdx = sys.indexOf('/review：代码审查清单');
     const instructIdx = sys.indexOf('高优先级指令');
     expect(catalogIdx).toBeGreaterThan(-1);
@@ -291,3 +312,84 @@ describe('clampOutputTokens（下发 max_tokens 窗口感知：max_tokens > max_
     expect(clampOutputTokens(8192, 400)).toBe(256);
   });
 });
+
+/** 构造 [user, (assistant+tool)×n] 历史：奇数索引=assistant、偶数索引(≥2)=tool */
+function longHistory(pairs: number, extraTail = false): ChatMessage[] {
+  const h: ChatMessage[] = [msg({ id: 'u0', role: 'user', content: 'task' })];
+  for (let i = 0; i < pairs; i++) {
+    h.push(msg({ id: `a${i}`, role: 'assistant', content: `s${i}`, toolCalls: [{ id: `c${i}`, name: 'read', arguments: '{}' }] }));
+    h.push(msg({ id: `t${i}`, role: 'tool', content: `r${i}`, toolCallId: `c${i}`, toolName: 'read' }));
+  }
+  if (extraTail) h.push(msg({ id: 'aX', role: 'assistant', content: 'tail' }));
+  return h;
+}
+
+describe('planCompaction（③ 摘要压缩选范围：护首条用户消息 + 尾部，成组对齐，增量）', () => {
+  it('首条用户消息受保护（headEnd=1），end=length-KEEP_TAIL(12)，范围足够则返回', () => {
+    const plan = planCompaction(longHistory(20), 0); // length 41 → end 29（assistant）
+    expect(plan).not.toBeNull();
+    expect(plan!.headEnd).toBe(1);
+    expect(plan!.end).toBe(29);
+  });
+
+  it('尾部边界落在 tool 上时回退到其 assistant（发送视图 tail 不以孤儿 tool 开头）', () => {
+    const h = longHistory(20, true); // length 42 → 边界 30 落在 tool
+    const plan = planCompaction(h, 0);
+    expect(plan).not.toBeNull();
+    expect(h[plan!.end]?.role).not.toBe('tool'); // 已回退
+    expect(plan!.end).toBe(29);
+  });
+
+  it('消息太少（新增不足 MIN_COMPACT_MESSAGES=6）返回 null，交给 dropOldMessages 兜底', () => {
+    expect(planCompaction([msg({ role: 'user', content: 'task' }), msg({ role: 'assistant', content: 'ok' })], 0)).toBeNull();
+  });
+
+  it('增量：from 抬高起点，无新增消息时不重复摘要（返回 null）', () => {
+    const h = longHistory(20);
+    const first = planCompaction(h, 0)!;
+    expect(planCompaction(h, first.end)).toBeNull();
+  });
+});
+
+describe('renderHistoryForSummary（③ 摘要 transcript 渲染）', () => {
+  it('assistant 附带工具调用、tool 标注工具名、带 role 前缀，且只渲染 [start,end)', () => {
+    const h = [
+      msg({ role: 'user', content: 'task' }),
+      msg({ role: 'assistant', content: 'thinking', toolCalls: [{ id: 'c1', name: 'read', arguments: '{"path":"a.ts"}' }] }),
+      msg({ role: 'tool', content: 'file body', toolCallId: 'c1', toolName: 'read' }),
+    ];
+    const out = renderHistoryForSummary(h, 1, 3);
+    expect(out).toContain('[assistant] thinking');
+    expect(out).toContain('read({"path":"a.ts"})');
+    expect(out).toContain('[tool] read 结果：file body');
+    expect(out).not.toContain('[user] task'); // start=1 跳过首条
+  });
+
+  it('单条正文超上限（2000）截断，避免摘要请求自身超窗', () => {
+    const out = renderHistoryForSummary([msg({ role: 'user', content: 'x'.repeat(5000) })], 0, 1);
+    expect(out).toContain('…（已截断）');
+    expect(out.length).toBeLessThan(2100);
+  });
+
+  it('空范围返回空串', () => {
+    expect(renderHistoryForSummary(longHistory(3), 2, 2)).toBe('');
+  });
+});
+
+describe('systemPrompt 工作区记忆注入', () => {
+  it('提供 memory：注入「工作区记忆」段（末位参数，不影响既有调用）', () => {
+    const prompt = systemPrompt(
+      null, 'm', null, 'Ask',
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      '- [2026-09-12] 用户偏好简洁回复',
+    );
+    expect(prompt).toContain('工作区记忆');
+    expect(prompt).toContain('用户偏好简洁回复');
+  });
+
+  it('memory 缺省 / null：不注入该段', () => {
+    expect(systemPrompt(null, 'm', null)).not.toContain('工作区记忆');
+    expect(systemPrompt(null, 'm', null, 'Ask', undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, null)).not.toContain('工作区记忆');
+  });
+});
+

@@ -8,9 +8,12 @@ class DocumentService:
     """文档服务"""
     
     @staticmethod
-    def get_documents(page=1, per_page=20, category_id=None, keyword=None, status='published'):
+    def get_documents(page=1, per_page=20, category_id=None, keyword=None, status=None):
         """获取文档列表"""
-        query = Document.query.filter(Document.status == status, Document.deleted_at.is_(None))
+        query = Document.query.filter(Document.deleted_at.is_(None))
+        
+        if status:
+            query = query.filter(Document.status == status)
         
         if category_id:
             query = query.filter(Document.category_id == category_id)
@@ -196,6 +199,34 @@ class DocumentService:
         except Exception as e:
             db.session.rollback()
             return False, str(e)
+    
+    @staticmethod
+    def toggle_document_status(doc_id, user_id):
+        """切换文档发布状态"""
+        try:
+            document = Document.query.get(doc_id)
+            if not document:
+                return None, 'Document not found'
+            
+            if document.status == 'published':
+                document.status = 'draft'
+                document.published_at = None
+            else:
+                document.status = 'published'
+                document.published_at = datetime.utcnow()
+            
+            db.session.commit()
+            
+            # 处理向量化
+            if document.status == 'published' and document.content:
+                AIService.process_document_for_embedding(document.id, document.content)
+            else:
+                AIService.remove_document_embeddings(document.id)
+            
+            return document, None
+        except Exception as e:
+            db.session.rollback()
+            return None, str(e)
     
     @staticmethod
     def increment_view_count(doc_id):

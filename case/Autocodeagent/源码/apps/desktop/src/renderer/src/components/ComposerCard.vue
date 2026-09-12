@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** 大输入卡片 —— 与原型场景 A/B 底部输入区 1:1 同款 */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import type { PermissionMode, SkillMeta, WorkspaceEntry } from '@agentbuddy/shared';
+import type { ChatImage, PermissionMode, SkillMeta, WorkspaceEntry } from '@agentbuddy/shared';
 import { ico } from '../ui/icons';
 import { modeMeta, PERM_OPTIONS } from '../ui/permModes';
 import { formatTokens, levelToContextWindow, levelToMaxTokens, POWER_MAX } from '../ui/modelPower';
@@ -32,7 +32,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:modelValue', v: string): void;
-  (e: 'send'): void;
+  (e: 'send', images: ChatImage[]): void;
   (e: 'stop'): void;
   (e: 'pick-workspace'): void;
   /** 多工作区：切换到某个历史目录 / 移除某个关联目录 */
@@ -179,6 +179,60 @@ function syncScroll(e: Event): void {
   if (backdropRef.value) backdropRef.value.scrollTop = ta.scrollTop;
 }
 
+/** 多模态图片附件：本地暂存，随 send 一并上交后清空（≤4 张，单张原图 ≤4.5MB，与后端 AskPayload 校验对齐） */
+const MAX_IMAGES = 4;
+const MAX_IMAGE_BYTES = 4.5 * 1024 * 1024;
+const attachments = ref<ChatImage[]>([]);
+const imageError = ref('');
+const fileInput = ref<HTMLInputElement | null>(null);
+
+function previewUrl(img: ChatImage): string {
+  return `data:${img.mime};base64,${img.dataBase64}`;
+}
+function addImageFiles(files: File[] | FileList): void {
+  imageError.value = '';
+  const list = Array.from(files).filter((f) => f.type.startsWith('image/'));
+  for (const f of list) {
+    if (attachments.value.length >= MAX_IMAGES) { imageError.value = `最多 ${MAX_IMAGES} 张图片`; return; }
+    if (f.size > MAX_IMAGE_BYTES) { imageError.value = `「${f.name || '图片'}」超过 4.5MB，已跳过`; continue; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const url = String(reader.result ?? '');
+      const dataBase64 = url.slice(url.indexOf(',') + 1); // 去掉 data:<mime>;base64, 前缀
+      if (dataBase64) attachments.value.push({ mime: f.type || 'image/png', dataBase64 });
+    };
+    reader.readAsDataURL(f);
+  }
+}
+/** 粘贴：剪贴板含图片（截图 Ctrl+V）时拦下默认文本粘贴，转为附件 */
+function onPaste(e: ClipboardEvent): void {
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  const files: File[] = [];
+  for (const it of items) {
+    if (it.type.startsWith('image/')) { const f = it.getAsFile(); if (f) files.push(f); }
+  }
+  if (files.length > 0) { e.preventDefault(); addImageFiles(files); }
+}
+function onDrop(e: DragEvent): void {
+  const files = e.dataTransfer?.files;
+  if (files && files.length > 0) addImageFiles(files);
+}
+function pickImages(): void { fileInput.value?.click(); }
+function onFilePick(e: Event): void {
+  const input = e.target as HTMLInputElement;
+  if (input.files && input.files.length > 0) addImageFiles(input.files);
+  input.value = ''; // 清空以允许再次选择同一文件
+}
+function removeImage(i: number): void { attachments.value.splice(i, 1); }
+/** 发送：与父级 onSend 同条件——无文字不发（也不清空图片，避免误清用户已贴的图）；有文字则上交图片并清空 */
+function doSend(): void {
+  if (!props.modelValue.trim()) return;
+  emit('send', [...attachments.value]);
+  attachments.value = [];
+  imageError.value = '';
+}
+
 /** 输入框键盘路由：菜单打开时 ↑↓/回车/Esc 接管，否则回车发送（Shift+回车换行） */
 function onKey(e: KeyboardEvent): void {
   const menuLen =
@@ -216,13 +270,17 @@ function onKey(e: KeyboardEvent): void {
   }
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
-    emit('send');
+    doSend();
   }
 }
 </script>
 
 <template>
-  <div class="w-full bg-card border border-border focus-within:border-accent/50 focus-within:shadow-glow rounded-2xl p-4 shadow-popover transition-std space-y-3 relative">
+  <div
+    class="w-full bg-card border border-border focus-within:border-accent/50 focus-within:shadow-glow rounded-2xl p-4 shadow-popover transition-std space-y-3 relative"
+    @drop.prevent="onDrop"
+    @dragover.prevent
+  >
     <!-- P4：/ 技能菜单（键入 / 时弹出，↑↓ 选择、回车确认、Esc 关闭） -->
     <div v-if="skillMenu.length > 0" class="absolute bottom-full mb-2 left-4 w-80 bg-card border border-border rounded-xl shadow-popover p-1 text-xs z-30">
       <div class="px-2.5 py-1.5 text-[10px] text-stone-500 font-semibold">技能 · ↑↓ 选择 · 回车确认 · Esc 关闭</div>
@@ -273,6 +331,23 @@ function onKey(e: KeyboardEvent): void {
         <span v-if="f.dir" class="ml-auto text-[9px] text-stone-400 shrink-0">文件夹</span>
       </div>
     </div>
+    <!-- 多模态图片预览行：缩略图 + 悬停删除；有附件才显示 -->
+    <div v-if="attachments.length > 0" class="flex flex-wrap items-center gap-2">
+      <div
+        v-for="(img, i) in attachments"
+        :key="i"
+        class="relative group w-16 h-16 rounded-lg overflow-hidden border border-border bg-surface shrink-0"
+      >
+        <img :src="previewUrl(img)" class="w-full h-full object-cover" alt="图片附件" />
+        <button
+          class="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-std"
+          title="移除图片"
+          @click="removeImage(i)"
+        ><span class="scale-[0.7]" v-html="ico('x')" /></button>
+      </div>
+    </div>
+    <div v-if="imageError" class="text-[10px] text-rose-600">{{ imageError }}</div>
+
     <!-- 提及高亮：垫层渲染彩色 token，textarea 文字透明仅保留光标（字体度量须与垫层完全一致） -->
     <div class="relative">
       <div
@@ -285,16 +360,25 @@ function onKey(e: KeyboardEvent): void {
         :value="modelValue"
         rows="3"
         :disabled="disabled"
-        placeholder="今天帮你做什么？@ 选文件/文件夹 · # 调 MCP · / 调技能"
+        placeholder="今天帮你做什么？@ 选文件/文件夹 · # 调 MCP · / 调技能 · 可粘贴/拖入图片"
         class="relative w-full bg-transparent text-transparent caret-stone-900 placeholder-stone-400 outline-none resize-none leading-relaxed text-[13px] break-words"
         @input="emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)"
         @keydown="onKey"
+        @paste="onPaste"
         @scroll="syncScroll"
       />
     </div>
 
     <div class="flex items-center justify-between pt-2.5 border-t border-border">
       <div class="flex items-center gap-2">
+        <!-- 多模态：添加图片（点击选择；也可直接 Ctrl+V 粘贴或拖拽图片到输入卡） -->
+        <button
+          class="flex items-center justify-center w-8 h-8 rounded-lg text-stone-500 hover:bg-cardHover hover:text-stone-800 transition-std disabled:opacity-40 disabled:cursor-not-allowed"
+          title="添加图片（也可直接粘贴 Ctrl+V 或拖拽到此处，最多 4 张）"
+          :disabled="disabled"
+          @click="pickImages"
+        ><span v-html="ico('image')" /></button>
+        <input ref="fileInput" type="file" accept="image/*" multiple class="hidden" @change="onFilePick" />
         <!-- 工作区下拉切换器：选历史工作区 / 新建（选择文件夹） -->
         <div class="relative" ref="wsMenuRef">
           <button
@@ -426,7 +510,7 @@ function onKey(e: KeyboardEvent): void {
           class="w-8 h-8 rounded-full bg-accent hover:bg-accentDim text-white flex items-center justify-center shadow-lg transition-std disabled:opacity-40 disabled:cursor-not-allowed"
           :disabled="disabled || !modelValue.trim()"
           v-html="ico('send')"
-          @click="emit('send')"
+          @click="doSend"
         />
       </div>
     </div>

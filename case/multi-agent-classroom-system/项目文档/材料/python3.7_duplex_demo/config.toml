@@ -1,0 +1,17 @@
+# Realtime dialogue demo config.
+# Leave asr_format / tts_format empty to use the defaults in code.
+
+# https://www.volcengine.com/docs/6561/1816214?lang=zh
+[auth]
+api_key = ""
+
+[search]
+# Volcano Engine Search API key for the volc_search function-call example.
+api_key = ""
+
+[session]
+model = "1.2.6.1"
+instructions = "You are a creative assistant that helps with design tasks."
+speaker = "zh_female_xiaohe_jupiter_bigtts"
+asr_format = ""
+tts_format = ""

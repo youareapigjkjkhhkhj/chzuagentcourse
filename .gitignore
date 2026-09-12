@@ -16,6 +16,9 @@ out/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
 .ipynb_checkpoints/
 
 # ========== IDE / 本地工具状态 ==========
@@ -50,3 +53,6 @@ deploy-output/
 
 # ========== Office 临时锁文件 ==========
 ~$*
+
+# ========== 大体积模型/训练数据包（超 Gitee 限制）==========
+case/医疗智能问答系统/源码/backend/train_model.rar

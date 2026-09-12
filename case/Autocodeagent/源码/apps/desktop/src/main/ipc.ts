@@ -151,7 +151,7 @@ export function registerIpc(ctx: IpcContext): void {
   handle(IpcChannels.agentAsk, (raw) => {
     const v = validatePayload(AskPayload, raw, IpcChannels.agentAsk);
     if (!v.ok) throw new Error(v.error);
-    return chat.ask(v.value.sessionId, v.value.message, emit, v.value.skillName);
+    return chat.ask(v.value.sessionId, v.value.message, emit, v.value.skillName, v.value.images);
   });
 
   handle(IpcChannels.agentAbort, (raw) => {

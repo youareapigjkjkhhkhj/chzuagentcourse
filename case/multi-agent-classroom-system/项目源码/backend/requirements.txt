@@ -1,0 +1,42 @@
+# EduAgentX backend dependencies
+# Principle (AGENTS.md sec.20): fewer deps, fewer maintenance points.
+# NOTE: keep this file ASCII-only -- pip decodes it with the OS locale (GBK on
+# Chinese Windows) and non-ASCII comments break the install.
+
+# -- Web framework --
+Flask>=3.0,<4.0
+Flask-SQLAlchemy>=3.1,<4.0
+Flask-Migrate>=4.0,<5.0
+Flask-Cors>=4.0,<6.0
+python-dotenv>=1.0,<2.0
+Werkzeug>=3.0,<4.0
+
+# -- Data --
+SQLAlchemy>=2.0,<3.0
+alembic>=1.13,<2.0
+
+# -- Crypto (API key encryption at rest, AGENTS.md sec.4.1) --
+cryptography>=42.0
+
+# -- LLM (OpenAI-compatible adapter covers DeepSeek/OpenAI/Qwen/Kimi/Ark/custom) --
+openai>=1.40,<2.0
+
+# -- Structured output (P1 sec.3.2): page DSL schema + validation + typing --
+# The tech doc sanctions "jsonschema (or pydantic)"; pydantic is already present
+# via the openai SDK, so declaring it costs no new download -- and one definition
+# then serves as prompt text, validator and typed object at once.
+pydantic>=2.0,<3.0
+
+# -- Realtime channel (installed but NOT enabled in P0; enabled in P3) --
+Flask-SocketIO>=5.3,<6.0
+simple-websocket>=1.0
+
+# -- Engineering --
+gunicorn>=21.2 ; sys_platform != "win32"
+gevent>=24.2 ; sys_platform != "win32"
+
+# -- Test & quality --
+pytest>=8.0,<9.0
+pytest-cov>=5.0
+ruff>=0.6
+mypy>=1.11

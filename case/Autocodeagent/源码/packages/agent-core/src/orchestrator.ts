@@ -7,9 +7,9 @@
  * 只依赖 ToolBus / PermissionGate / Checkpoint，不硬编码工具分支。
  */
 import { randomUUID } from 'node:crypto';
-import type { ChatMessage, ModelConfig, NormalizedUsage, Risk, StreamEvent, StoredToolCall, TodoItem } from '@agentbuddy/shared';
+import type { ChatMessage, LlmToolSchema, ModelConfig, NormalizedUsage, Risk, StreamEvent, StoredToolCall, TodoItem } from '@agentbuddy/shared';
 import { resolveWithinRoots } from './workspace/workspace';
-import { assembleContext, clampOutputTokens, pruneToolsToWindow, type McpSummary, type SkillSummary } from './context';
+import { assembleContext, clampOutputTokens, computePromptBudget, estimateTokens, planCompaction, pruneToolsToWindow, renderHistoryForSummary, type McpSummary, type SkillSummary } from './context';
 import { primaryTarget, type PermissionGate } from './permission';
 import type { Checkpoint } from './checkpoint';
 import type { LlmClient } from './llm/client';
@@ -30,6 +30,13 @@ const CONTEXT_LENGTH_RE = /maximum context length is (\d+)/i;
 const MAX_MODEL_LEN_RE = /max_model_len\D{0,30}(\d+)/i;
 /** 低于此窗口视为「装不下系统提示 + 内置工具 + 最小输出」，给明确换模型提示而非静默降级 */
 const MIN_VIABLE_WINDOW = 8192;
+/** ③ 摘要压缩：单次最多纳入摘要的消息条数（超出部分下轮滚动处理，防单次摘要请求自身超窗） */
+const MAX_COMPACT_MESSAGES_PER_CALL = 30;
+/** ③ 摘要压缩的摘要器系统提示：用当前模型产出要点式中文摘要，供后续对话续接（非破坏性，仅进发送视图） */
+const SUMMARY_SYSTEM_PROMPT =
+  '你是对话历史摘要器。把用户提供的对话片段压缩成简洁的中文要点式摘要，供后续对话继续时快速了解此前进展。' +
+  '必须保留：已完成的动作与结论、涉及的文件路径与关键改动、遇到的问题与解决方式、尚未完成的待办、用户的原始意图与约束。' +
+  '省略：寒暄、重复内容、大段工具原始输出（只留结论）。直接输出摘要正文，不要加「以下是摘要」之类前缀或解释。';
 
 export type Emit = (event: StreamEvent) => void;
 
@@ -93,6 +100,63 @@ export async function runTurn(dep: TurnDeps): Promise<void> {
   // 用可变 holder：execCall 的 onTodos 回填后，下一轮 assembleContext 即读到最新状态。
   const todoState: { items: TodoItem[] } = { items: dep.todos ? [...dep.todos] : [] };
 
+  // ③ LLM 摘要压缩（非破坏性）：历史超预算时用当前模型把最旧消息组摘要成一条，替换进「发送视图」，
+  //    把 context.ts 降级 2 的「直接丢」升级为「先总结再丢」；摘要随轮滚动增量复用，调用失败则静默退回原截断兜底。
+  //    仅影响发给 LLM 的 wire，dep.messages / 持久化 transcript / UI 均不动（状态为本次 runTurn 局部）。
+  let compactFrom = 0; // 已摘要到的 dep.messages 索引（exclusive）；0 = 尚未压缩
+  let compactHeadEnd = 0; // 受保护头部条数（首条用户消息）
+  let compactSummary = ''; // 滚动累积的摘要正文
+
+  /** 发送给 LLM 的历史视图：压缩后用摘要替换 [headEnd, compactFrom)，其余原样 */
+  const historyView = (): ChatMessage[] => {
+    if (!compactSummary || compactFrom <= compactHeadEnd) return dep.messages;
+    const summaryMsg: ChatMessage = {
+      id: 'compaction-summary',
+      role: 'user',
+      content: `[上下文摘要 · 较早的 ${compactFrom - compactHeadEnd} 条消息已压缩为要点]\n${compactSummary}`,
+      createdAt: Date.now(),
+    };
+    return [...dep.messages.slice(0, compactHeadEnd), summaryMsg, ...dep.messages.slice(compactFrom)];
+  };
+
+  /** 发送视图超预算时触发一次增量摘要压缩；失败/不足以摘要则不改动状态，交由 trimToBudget/dropOldMessages 兜底 */
+  const compactIfNeeded = async (cfg: ModelConfig, tools: LlmToolSchema[]): Promise<void> => {
+    const budget = computePromptBudget(cfg, tools);
+    const tokens = historyView().reduce((s, m) => s + estimateTokens(m.content || ''), 0);
+    if (tokens <= budget) return;
+    const plan = planCompaction(dep.messages, compactFrom);
+    if (!plan) return;
+    const newStart = Math.max(plan.headEnd, compactFrom);
+    const end = Math.min(plan.end, newStart + MAX_COMPACT_MESSAGES_PER_CALL); // 单次上限，超出下轮滚动处理
+    const transcript = renderHistoryForSummary(dep.messages, newStart, end);
+    if (!transcript.trim()) return;
+    const prev = compactSummary ? `已有摘要（请合并进新摘要，勿丢其中关键信息）：\n${compactSummary}\n\n` : '';
+    try {
+      const res = await dep.client.chat({
+        messages: [
+          { role: 'system', content: SUMMARY_SYSTEM_PROMPT },
+          { role: 'user', content: `${prev}需要摘要的新对话片段：\n${transcript}` },
+        ],
+        temperature: 0.2,
+        maxTokens: 1024,
+        signal: dep.signal,
+        onDelta: () => {},
+      });
+      const text = (res.message.content || '').trim();
+      if (!text) return; // 空摘要 → 放弃本次压缩
+      compactSummary = text;
+      compactHeadEnd = plan.headEnd;
+      compactFrom = end;
+      dep.emit({
+        type: 'notice',
+        sessionId: dep.sessionId,
+        message: `已把较早的 ${compactFrom - compactHeadEnd} 条历史压缩为摘要以节省上下文（会话原始记录仍完整保留）。`,
+      });
+    } catch {
+      // 摘要调用失败（网络/超窗/空响应/中断）：静默退回原截断式兜底，不打断主任务
+    }
+  };
+
   while (turns++ < MAX_TURNS) {
     if (dep.signal.aborted) return;
 
@@ -122,11 +186,14 @@ export async function runTurn(dep: TurnDeps): Promise<void> {
       );
       mcpCatalog = mcpCatalog.filter((c) => keptServers.has(c.name));
     }
+    // ③ 摘要压缩：发送视图超预算则先把最旧消息组摘要替换（升级为「先总结再丢」），再组装本轮上下文
+    await compactIfNeeded(cfg, tools);
+    if (dep.signal.aborted) return;
     const wire = await assembleContext({
       workspace: dep.workspace,
       extraRoots: dep.workspaceRoots.filter((r) => r !== dep.workspace),
       config: cfg,
-      history: dep.messages,
+      history: historyView(),
       mode: dep.gate.mode,
       skillCatalog: dep.skillCatalog,
       skillInstruction: dep.skillInstruction,

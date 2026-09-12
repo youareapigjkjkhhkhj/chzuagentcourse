@@ -44,10 +44,18 @@ export interface StoredToolCall {
   arguments: string;
 }
 
+/** 多模态图片（user 消息附带）：mime + 不含 data: 前缀的 base64 正文 */
+export interface ChatImage {
+  mime: string;
+  dataBase64: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: Role;
   content: string;
+  /** 多模态：user 消息附带的图片（随会话落盘 + 回放；toWire 时组装为 image_url content 分片） */
+  images?: ChatImage[];
   /** 推理模型思维链（reasoning_content）：仅前端 live 展示，不落盘、不进下一轮 wire 历史 */
   reasoning?: string;
   /** unix ms */
@@ -135,10 +143,16 @@ export interface NormalizedUsage {
   cacheReadTokens: number;
 }
 
+/** wire content 分片（多模态）：文本 or 图片（OpenAI 兼容 image_url，url 为 data:<mime>;base64,<正文>） */
+export type WireContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
 /** 发给 LLM 的 wire 消息（OpenAI 兼容格式） */
 export interface LlmWireMessage {
   role: Role;
-  content: string | null;
+  /** 纯文本 or 多模态分片数组（user 带图时）；assistant/tool 恒为 string | null */
+  content: string | WireContentPart[] | null;
   tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>;
   tool_call_id?: string;
 }

@@ -79,16 +79,18 @@
                 <span>参考来源 ({{ message.sources.length }})</span>
               </div>
               <div class="sources-list">
-                <a
+                <div
                   v-for="(source, index) in message.sources"
                   :key="index"
-                  :href="`/documents/${source.document_id}`"
-                  target="_blank"
                   class="source-item"
+                  @click="viewDocument(source.document_id)"
                 >
-                  <span class="source-id">#{{ source.document_id }}</span>
-                  <span class="source-score">{{ (source.score * 100).toFixed(0) }}% 匹配</span>
-                </a>
+                  <div class="source-header">
+                    <span class="source-id">#{{ source.document_id }}</span>
+                    <span class="source-score">{{ (source.score * 100).toFixed(0) }}% 匹配</span>
+                  </div>
+                  <div class="source-snippet" v-if="source.snippet">{{ source.snippet }}</div>
+                </div>
               </div>
             </div>
             
@@ -166,6 +168,7 @@
 
 <script setup lang="ts">
 import { ref, nextTick, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useQAStore } from '@/stores/qa'
 import { useAuthStore } from '@/stores/auth'
 import MarkdownIt from 'markdown-it'
@@ -178,6 +181,7 @@ import {
   Loading 
 } from '@element-plus/icons-vue'
 
+const router = useRouter()
 const qaStore = useQAStore()
 const authStore = useAuthStore()
 
@@ -253,6 +257,10 @@ const submitFeedback = async (recordId: number, feedback: string) => {
   } catch (error) {
     console.error('Failed to submit feedback:', error)
   }
+}
+
+const viewDocument = (docId: number) => {
+  router.push(`/documents/${docId}`)
 }
 
 onMounted(() => {
@@ -610,20 +618,19 @@ onMounted(() => {
 
 .sources-list {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: $space-2;
 }
 
 .source-item {
   display: flex;
-  align-items: center;
-  gap: $space-2;
-  padding: $space-1 $space-3;
+  flex-direction: column;
+  gap: $space-1;
+  padding: $space-3;
   background: rgba(14, 165, 233, 0.1);
   border: 1px solid rgba(14, 165, 233, 0.2);
-  border-radius: $radius-full;
-  font-size: $font-size-xs;
-  text-decoration: none;
+  border-radius: $radius-md;
+  cursor: pointer;
   transition: all $transition-fast;
   
   &:hover {
@@ -632,18 +639,37 @@ onMounted(() => {
   }
 }
 
+.source-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .source-id {
   color: $primary-light;
   font-weight: 500;
+  font-size: $font-size-sm;
 }
 
 .source-score {
   color: $text-muted;
+  font-size: $font-size-xs;
+}
+
+.source-snippet {
+  color: $text-secondary;
+  font-size: $font-size-xs;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 // 消息操作
 .message-actions {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: $space-2;
   margin-top: $space-3;
@@ -651,7 +677,7 @@ onMounted(() => {
   border-top: 1px solid $border-color;
   
   .action-btn {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: $space-1;
     padding: $space-1 $space-3;
@@ -662,6 +688,8 @@ onMounted(() => {
     font-size: $font-size-xs;
     cursor: pointer;
     transition: all $transition-fast;
+    white-space: nowrap;
+    flex-shrink: 0;
     
     &:hover {
       background: rgba(255, 255, 255, 0.05);

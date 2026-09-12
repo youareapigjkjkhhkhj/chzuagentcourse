@@ -5,11 +5,13 @@
  * ① 旧工具结果替换为占位摘要（保留首 10 行）；
  * ② 仍超限则按「assistant(tool_calls)+对应 tool 结果」成组从最旧丢弃
  *    （保 system / 首条用户消息 / 最近尾部），支撑 200 轮长任务；
- * 系统区永不裁剪；Compaction（调小模型摘要）留后续阶段。
+ * 系统区永不裁剪；③ LLM 摘要压缩在 orchestrator 以「发送视图」层完成（本模块出纯函数
+ * planCompaction / renderHistoryForSummary），把降级 2 的「直接丢」升级为「先总结再丢」，dropOldMessages 仍作最终兜底。
  */
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ChatMessage, LlmToolSchema, LlmWireMessage, ModelConfig, PermissionMode, TodoItem } from '@agentbuddy/shared';
+import type { ChatMessage, LlmToolSchema, LlmWireMessage, ModelConfig, PermissionMode, TodoItem, WireContentPart } from '@agentbuddy/shared';
+import { readMemory } from './memory';
 
 export const OUTPUT_RESERVE = 8000;
 const PROJECT_INSTRUCTION_LIMIT = 8000;
@@ -27,9 +29,18 @@ const MODE_PROMPT: Record<PermissionMode, string> = {
 
 /** P0：CJK/全角/假名/谚文等宽字符 ≈0.7 token/字（length/4 对中文低估约 2.5 倍，降级触发过晚），其余 ≈0.25（= 原基线） */
 const WIDE_CHAR_RE = /[\u2E80-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF\uFF00-\uFFEF]/g;
-export function estimateTokens(text: string): number {
-  const wide = (text.match(WIDE_CHAR_RE) ?? []).length;
-  return Math.ceil(wide * 0.7 + (text.length - wide) * 0.25);
+/** 多模态图片的保守 token 估算：真实值随模型/像素而异（数百~上千），取偏大值防多图撑爆预算却未被计入 */
+const IMAGE_TOKEN_ESTIMATE = 1200;
+export function estimateTokens(text: string | WireContentPart[] | null): number {
+  // 多模态 content：文本分片按字符估，图片分片按固定保守值估
+  if (Array.isArray(text)) {
+    let n = 0;
+    for (const p of text) n += p.type === 'text' ? estimateTokens(p.text) : IMAGE_TOKEN_ESTIMATE;
+    return n;
+  }
+  const s = text ?? '';
+  const wide = (s.match(WIDE_CHAR_RE) ?? []).length;
+  return Math.ceil(wide * 0.7 + (s.length - wide) * 0.25);
 }
 
 export function toWire(m: ChatMessage): LlmWireMessage {
@@ -45,6 +56,14 @@ export function toWire(m: ChatMessage): LlmWireMessage {
     return wire;
   }
   if (m.role === 'tool') return { role: 'tool', content: m.content, tool_call_id: m.toolCallId ?? m.id };
+  // user 带图：组装多模态 content 数组（OpenAI 兼容 image_url，url 为 data:<mime>;base64,<正文>）；
+  // 正文为空时只留图片分片。发给不支持 vision 的模型由后端 400 兜底（延续项目自愈风格，不预探测能力）。
+  if (m.role === 'user' && m.images?.length) {
+    const parts: WireContentPart[] = [];
+    if (m.content) parts.push({ type: 'text', text: m.content });
+    for (const img of m.images) parts.push({ type: 'image_url', image_url: { url: `data:${img.mime};base64,${img.dataBase64}` } });
+    return { role: 'user', content: parts };
+  }
   return { role: m.role, content: m.content };
 }
 
@@ -73,6 +92,7 @@ export function systemPrompt(
   webTools?: { fetch: boolean; search: boolean },
   onDemandTools?: boolean,
   todos?: TodoItem[],
+  memory?: string | null,
 ): string {
   const parts = [
     '你是 AgentBuddy，本地轻量的通用 AI 助理。通过工具操作用户工作区的文件与命令，覆盖办公文档、资料整理、日常问答与编程开发等多种任务。',
@@ -87,6 +107,9 @@ export function systemPrompt(
     '提及语法：用户消息中 @路径 提及工作区文件或文件夹（处理前优先 read 被提及的文件、用 glob 浏览被提及的文件夹）；#连接器名 提及 MCP 连接器；/技能名 触发技能。',
   ];
   if (instructions) parts.push(`项目指令（AGENTS.md）：\n${instructions}`);
+  // 工作区记忆（.AgentBuddy/memory.md）：此前会话由 remember 工具记录的偏好/事实/教训，跨会话/重启持续注入。
+  // 位于系统区（永不裁剪）；与当前指令冲突时以当前指令为准，避免陈旧记忆压过用户即时意图。
+  if (memory) parts.push(`工作区记忆（.AgentBuddy/memory.md · 此前会话记录的偏好/项目事实/经验教训，供参考；与当前指令冲突时以当前指令为准）：\n${memory}`);
   // ④ Skills 目录：仅 name+description 摘要，正文不进上下文；模型任务匹配时主动 use_skill 自取（渐进披露）
   if (skillCatalog?.length) {
     parts.push(`可用技能（任务与某技能描述匹配时，主动调用 use_skill 工具加载其正文并严格遵循，无需等待用户触发；用户也可用 /技能名 手动触发）：\n${skillCatalog.map((s) => `- /${s.name}：${s.description}`).join('\n')}`);
@@ -157,6 +180,8 @@ export async function assembleContext(opts: {
   todos?: TodoItem[];
 }): Promise<LlmWireMessage[]> {
   const instructions = opts.workspace ? await readProjectInstructions(opts.workspace) : null;
+  // 工作区记忆：每轮读取 <ws>/.AgentBuddy/memory.md 注入系统提示（remember 本轮写入的条目下一轮即生效）
+  const memory = opts.workspace ? await readMemory(opts.workspace) : null;
   // 联网提示按实际下发的 schema 推导（webfetch 内置常驻、websearch 配置后注入），避免提及不可用工具
   const toolNames = new Set((opts.tools ?? []).map((t) => t.function.name));
   const webTools = { fetch: toolNames.has('webfetch'), search: toolNames.has('websearch') };
@@ -166,7 +191,7 @@ export async function assembleContext(opts: {
   const wire: LlmWireMessage[] = [
     {
       role: 'system',
-      content: systemPrompt(opts.workspace, opts.config.model, instructions, opts.mode ?? 'Ask', opts.skillCatalog, opts.skillInstruction, opts.mcpCatalog, opts.extraRoots, opts.persona, webTools, onDemandTools, opts.todos),
+      content: systemPrompt(opts.workspace, opts.config.model, instructions, opts.mode ?? 'Ask', opts.skillCatalog, opts.skillInstruction, opts.mcpCatalog, opts.extraRoots, opts.persona, webTools, onDemandTools, opts.todos, memory),
     },
     ...opts.history.map(toWire),
   ];
@@ -265,10 +290,11 @@ export function trimToBudget(wire: LlmWireMessage[], budget: number): void {
 
   for (const i of compactable) {
     if (total <= budget) return;
-    const content = wire[i]!.content ?? '';
-    if (content.startsWith('[已压缩')) continue;
-    const placeholder = compactPlaceholder(content);
-    total += estimateTokens(placeholder) - estimateTokens(content);
+    const raw = wire[i]!.content;
+    if (typeof raw !== 'string') continue; // 仅压缩文本工具结果（tool 消息 content 恒为 string；多模态数组不参与文本压缩）
+    if (raw.startsWith('[已压缩')) continue;
+    const placeholder = compactPlaceholder(raw);
+    total += estimateTokens(placeholder) - estimateTokens(raw);
     const prev = wire[i]!;
     wire[i] = { ...prev, content: placeholder };
   }
@@ -323,6 +349,49 @@ export function dropOldMessages(wire: LlmWireMessage[], budget: number): void {
 export function compactPlaceholder(content: string): string {
   const head = content.split('\n').slice(0, 10).join('\n');
   return `[已压缩 · 原文 ${content.length} 字符，保留首 10 行]\n${head}`;
+}
+
+/** ③ 摘要压缩：至少累计这么多条新消息才值得调用一次 LLM 摘要（避免为三两条频繁请求） */
+const MIN_COMPACT_MESSAGES = 6;
+/** 渲染进摘要 prompt 时单条消息正文上限（工具原始输出可能极长，截断防摘要请求自身超窗） */
+const SUMMARY_MSG_CHAR_LIMIT = 2000;
+
+/**
+ * 规划一次（增量）摘要压缩的范围——非破坏性：调用方据此把 [headEnd, end) 渲染成摘要、构造「发送视图」，
+ * 持久化历史与 UI transcript 不受影响（与 trimToBudget / dropOldMessages 同处 wire 层）。
+ * - headEnd：受保护头部条数（首条为用户消息则 1，否则 0）——任务定义永不摘要；
+ * - from：已摘要到的位置（首次传 0，内部抬到 headEnd；增量传上次返回的 end）；
+ * - end：尾部保护边界（沿用 KEEP_TAIL_MESSAGES），回退避免发送视图的 tail 以孤儿 tool 开头（OpenAI 系配对约束）；
+ * - 新增可摘要消息不足 MIN_COMPACT_MESSAGES 条时返回 null（交给 dropOldMessages 兜底，不为几条消息调 LLM）。
+ */
+export function planCompaction(history: ChatMessage[], from: number): { headEnd: number; end: number } | null {
+  const headEnd = history.length > 0 && history[0]?.role === 'user' ? 1 : 0;
+  let end = Math.max(headEnd, history.length - KEEP_TAIL_MESSAGES);
+  while (end > headEnd && history[end]?.role === 'tool') end--;
+  const start = Math.max(headEnd, from);
+  if (end - start < MIN_COMPACT_MESSAGES) return null;
+  return { headEnd, end };
+}
+
+/**
+ * 把 [start, end) 的消息渲染成供 LLM 摘要的纯文本 transcript：
+ * assistant 附带其工具调用、tool 结果标注工具名；单条正文超 SUMMARY_MSG_CHAR_LIMIT 截断。
+ */
+export function renderHistoryForSummary(history: ChatMessage[], start: number, end: number): string {
+  const lines: string[] = [];
+  for (let i = Math.max(0, start); i < end && i < history.length; i++) {
+    const m = history[i]!;
+    let body = m.content || '';
+    if (m.role === 'assistant' && m.toolCalls?.length) {
+      const calls = m.toolCalls.map((tc) => `${tc.name}(${tc.arguments})`).join('；');
+      body = body ? `${body}\n调用工具：${calls}` : `调用工具：${calls}`;
+    } else if (m.role === 'tool') {
+      body = `${m.toolName ?? 'tool'} 结果：${body}`;
+    }
+    if (body.length > SUMMARY_MSG_CHAR_LIMIT) body = `${body.slice(0, SUMMARY_MSG_CHAR_LIMIT)}…（已截断）`;
+    lines.push(`[${m.role}] ${body}`);
+  }
+  return lines.join('\n');
 }
 
 /** ③ 项目指令：AGENTS.md / CLAUDE.md / .cursor/rules 只取其一 */
