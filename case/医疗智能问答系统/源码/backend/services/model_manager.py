@@ -31,7 +31,7 @@ class ModelManager:
         # 获取当前文件所在目录，然后构建绝对路径
         current_dir = os.path.dirname(os.path.abspath(__file__))  # services目录
         project_root = os.path.dirname(current_dir)  # backend目录
-        models_dir = os.path.join(project_root, '..', 'train_model')  # 项目根目录的train_model
+        models_dir = os.path.join(project_root, 'train_model')  # backend/train_model 目录
         
         self.model_paths = {
             'efficientnet_b3': os.path.join(models_dir, 'efficientnet_b3', 'best_efficientnet_b3.pth'),

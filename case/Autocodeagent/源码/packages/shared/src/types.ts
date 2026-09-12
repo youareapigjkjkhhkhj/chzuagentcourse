@@ -48,6 +48,8 @@ export interface ChatMessage {
   id: string;
   role: Role;
   content: string;
+  /** 推理模型思维链（reasoning_content）：仅前端 live 展示，不落盘、不进下一轮 wire 历史 */
+  reasoning?: string;
   /** unix ms */
   createdAt: number;
   /** assistant：本轮发起的工具调用 */
@@ -149,6 +151,8 @@ export interface LlmToolSchema {
 
 export type StreamEvent =
   | { type: 'token'; sessionId: string; messageId: string; delta: string }
+  /** 推理模型思维链增量（reasoning_content）：前端灰色「思考过程」区展示，与正式回答分离 */
+  | { type: 'reasoning'; sessionId: string; messageId: string; delta: string }
   | { type: 'done'; sessionId: string; messageId: string; usage: NormalizedUsage }
   | { type: 'interrupted'; sessionId: string }
   | { type: 'error'; sessionId: string; message: string }

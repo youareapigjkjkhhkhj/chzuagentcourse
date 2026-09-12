@@ -120,6 +120,62 @@ describe('runTurn 集成（mock LLM）', () => {
     expect(wire.some((m) => (m.content ?? '').includes('用户拒绝'))).toBe(true);
   });
 
+  it('P4：执行计划跨轮注入——初始 todos 进首轮系统提示，todo_write 更新后下一轮反映最新计划', async () => {
+    const sysPrompts: string[] = [];
+    let i = 0;
+    const steps: Step[] = [
+      { toolCalls: [tc('c1', 'todo_write', { todos: [
+        { id: '1', content: '读取配置', status: 'done' },
+        { id: '2', content: '修改路由', status: 'in_progress' },
+      ] })] },
+      { content: '继续推进修改路由' },
+    ];
+    const client = {
+      async chat(req: LlmRequest): Promise<NormalizedLLMResponse> {
+        sysPrompts.push(String(req.messages[0]?.content ?? ''));
+        const step = steps[Math.min(i++, steps.length - 1)]!;
+        req.onDelta(step.content ?? '');
+        return {
+          message: { id: '', role: 'assistant', content: step.content ?? '', createdAt: Date.now() },
+          toolCalls: step.toolCalls,
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2, cacheReadTokens: 0 },
+          finishReason: step.finish ?? (step.toolCalls ? 'tool_calls' : 'stop'),
+        };
+      },
+    } as unknown as LlmClient;
+
+    const events: StreamEvent[] = [];
+    const dep: TurnDeps = {
+      sessionId: 's1',
+      messages: [{ id: 'u1', role: 'user', content: 'go', createdAt: Date.now() }],
+      client,
+      config,
+      bus: createBuiltinBus(),
+      gate: new PermissionGate('Ask', async () => ({ allow: true, remember: false })),
+      checkpoint: new Checkpoint(dataDir),
+      readState: new ReadState(),
+      workspace: ws,
+      workspaceRoots: [ws],
+      signal: new AbortController().signal,
+      emit: (e) => events.push(e),
+      persist: async () => {},
+      // 会话初始计划：仅「读取配置」待办（模拟从持久化 todos 恢复，如中断后重新提问）
+      todos: [{ id: '1', content: '读取配置', status: 'pending' }],
+    };
+
+    await runTurn(dep);
+
+    // 首轮系统提示 = 初始计划（待办：读取配置）
+    expect(sysPrompts[0]).toContain('当前执行计划');
+    expect(sysPrompts[0]).toContain('[ ] 待办：读取配置');
+    // todo_write 触发 plan 事件（UI 侧栏据此刷新）
+    expect(events.some((e) => e.type === 'plan')).toBe(true);
+    // 次轮系统提示 = 更新后计划（holder 跨轮线程生效）：已完成/进行中取代旧待办
+    expect(sysPrompts[1]).toContain('[x] 已完成：读取配置');
+    expect(sysPrompts[1]).toContain('[>] 进行中：修改路由');
+    expect(sysPrompts[1]).not.toContain('[ ] 待办：读取配置');
+  });
+
   it('同工具同入参连败 2 次熔断', async () => {
     const { dep, events } = deps([
       { toolCalls: [tc('c1', 'edit', { path: 'src/none.txt', old_string: 'a', new_string: 'b' })] },

@@ -101,6 +101,26 @@ input::placeholder, textarea::placeholder { color: #a39c8e; }
 .md-body .copy-btn:hover { color: #fff; background: rgba(255,255,255,.1); }
 .md-body .code-block pre { margin: 0; padding: 11px 14px; overflow-x: auto; }
 .md-body .code-block pre code {
-  font-size: 11.5px; line-height: 1.65; font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; background: transparent;
+  font-size: 11.5px; line-height: 1.65; font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  background: transparent; color: #c9d1d9;
 }
+/* 语法高亮调色板（github-dark）在 .code-block 内以更高特异度重申：
+   CodeViewer.vue 全局 import 了 highlight.js 的 github（浅色）主题，与聊天区 github-dark 选择器同特异度、
+   且在产物 CSS 中排在后面 → 浅色覆盖深色，代码文字变成 #24292e 深色压在 #22252b 深底上「看不清」。
+   这里用 .md-body .code-block 前缀（特异度 0,0,3,0）压过全局浅色，锁定聊天代码块为深色主题；
+   覆盖基础文字 + 全部 token 组，取值与 github-dark 一致；流式纯文本 / plaintext 无 token 时由上面 pre code 的 color 兜底。 */
+.md-body .code-block .hljs-doctag, .md-body .code-block .hljs-keyword, .md-body .code-block .hljs-meta .hljs-keyword, .md-body .code-block .hljs-template-tag, .md-body .code-block .hljs-template-variable, .md-body .code-block .hljs-type, .md-body .code-block .hljs-variable.language_ { color: #ff7b72; }
+.md-body .code-block .hljs-title, .md-body .code-block .hljs-title.class_, .md-body .code-block .hljs-title.class_.inherited__, .md-body .code-block .hljs-title.function_ { color: #d2a8ff; }
+.md-body .code-block .hljs-attr, .md-body .code-block .hljs-attribute, .md-body .code-block .hljs-literal, .md-body .code-block .hljs-meta, .md-body .code-block .hljs-number, .md-body .code-block .hljs-operator, .md-body .code-block .hljs-variable, .md-body .code-block .hljs-selector-attr, .md-body .code-block .hljs-selector-class, .md-body .code-block .hljs-selector-id { color: #79c0ff; }
+.md-body .code-block .hljs-regexp, .md-body .code-block .hljs-string, .md-body .code-block .hljs-meta .hljs-string { color: #a5d6ff; }
+.md-body .code-block .hljs-built_in, .md-body .code-block .hljs-symbol { color: #ffa657; }
+.md-body .code-block .hljs-comment, .md-body .code-block .hljs-code, .md-body .code-block .hljs-formula { color: #8b949e; }
+.md-body .code-block .hljs-name, .md-body .code-block .hljs-quote, .md-body .code-block .hljs-selector-tag, .md-body .code-block .hljs-selector-pseudo { color: #7ee787; }
+.md-body .code-block .hljs-subst { color: #c9d1d9; }
+.md-body .code-block .hljs-section { color: #1f6feb; font-weight: 700; }
+.md-body .code-block .hljs-bullet { color: #f2cc60; }
+.md-body .code-block .hljs-emphasis { color: #c9d1d9; font-style: italic; }
+.md-body .code-block .hljs-strong { color: #c9d1d9; font-weight: 700; }
+.md-body .code-block .hljs-addition { color: #aff5b4; background-color: #033a16; }
+.md-body .code-block .hljs-deletion { color: #ffdcd7; background-color: #67060c; }
 .md-body .code-block pre::-webkit-scrollbar-thumb { background: #4a4f5a; }

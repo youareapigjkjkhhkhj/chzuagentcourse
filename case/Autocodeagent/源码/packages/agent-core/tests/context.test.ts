@@ -1,6 +1,6 @@
 /** 上下文组装与截断单测（P1 验收：旧工具结果占位摘要，技术方案 §4.3） */
 import { describe, expect, it } from 'vitest';
-import type { ChatMessage, LlmToolSchema, LlmWireMessage, ModelConfig } from '@agentbuddy/shared';
+import type { ChatMessage, LlmToolSchema, LlmWireMessage, ModelConfig, TodoItem } from '@agentbuddy/shared';
 import { assembleContext, clampOutputTokens, compactPlaceholder, computePromptBudget, dropOldMessages, estimateTokens, pruneToolsToWindow, toWire, trimToBudget } from '../src/context';
 
 const config: ModelConfig = {
@@ -199,6 +199,26 @@ describe('assembleContext', () => {
     const sys = wire[0]?.content ?? '';
     expect(sys).toContain('按需加载');
     expect(sys).toContain('search_tools');
+  });
+
+  it('P4：当前执行计划注入系统提示（跨中断/裁剪后模型仍知道进度）；空清单/缺省不注入', async () => {
+    const todos: TodoItem[] = [
+      { id: '1', content: '读取配置', status: 'done' },
+      { id: '2', content: '修改路由', status: 'in_progress' },
+      { id: '3', content: '补测试', status: 'pending' },
+    ];
+    const wire = await assembleContext({ workspace: null, config, history: [msg({})], todos });
+    const sys = wire[0]?.content ?? '';
+    expect(sys).toContain('当前执行计划');
+    expect(sys).toContain('[x] 已完成：读取配置');
+    expect(sys).toContain('[>] 进行中：修改路由');
+    expect(sys).toContain('[ ] 待办：补测试');
+    expect(sys).toContain('todo_write'); // 指示用全量清单整体覆盖更新
+    // 空清单 / 缺省：不注入该段，避免无谓噪声
+    const empty = await assembleContext({ workspace: null, config, history: [msg({})], todos: [] });
+    expect(empty[0]?.content ?? '').not.toContain('当前执行计划');
+    const none = await assembleContext({ workspace: null, config, history: [msg({})] });
+    expect(none[0]?.content ?? '').not.toContain('当前执行计划');
   });
 });
 

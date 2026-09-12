@@ -12,6 +12,8 @@ export interface AccumulatedToolCall {
 
 export interface StreamAccumulator {
   content: string;
+  /** 推理模型思维链（delta.reasoning_content）：与 content 分离累积，判空与展示都用 */
+  reasoning: string;
   toolCalls: Map<number, AccumulatedToolCall>;
   finishReason: string | null;
   /** 厂商原始 usage，由 client 收尾时经 normalizeUsage 归一 */
@@ -19,7 +21,7 @@ export interface StreamAccumulator {
 }
 
 export function createAccumulator(): StreamAccumulator {
-  return { content: '', toolCalls: new Map(), finishReason: null, usage: null };
+  return { content: '', reasoning: '', toolCalls: new Map(), finishReason: null, usage: null };
 }
 
 export type SseLine =
@@ -54,6 +56,14 @@ export function deltaOf(chunk: unknown): Record<string, unknown> | undefined {
   return undefined;
 }
 
+/** 提取 chunk 的思维链增量（reasoning_content，兼容 reasoning 别名）；无则空串 */
+export function reasoningDeltaOf(chunk: unknown): string {
+  const delta = deltaOf(chunk);
+  if (!delta) return '';
+  const rc = delta['reasoning_content'] ?? delta['reasoning'];
+  return typeof rc === 'string' ? rc : '';
+}
+
 /** 提取 chunk 的 finish_reason：优先 choices[0]，兼容顶层 */
 export function finishReasonOf(chunk: unknown): string | null {
   if (typeof chunk !== 'object' || chunk === null) return null;
@@ -73,6 +83,8 @@ export function applyChunk(acc: StreamAccumulator, chunk: unknown): void {
 
   const delta = deltaOf(chunk);
   if (delta && typeof delta['content'] === 'string') acc.content += delta['content'];
+  // 推理模型思维链：DeepSeek-R1 / QwQ / Qwen3-thinking / vLLM 走 delta.reasoning_content（兼容 reasoning 别名）
+  acc.reasoning += reasoningDeltaOf(chunk);
 
   const finish = finishReasonOf(chunk);
   if (finish !== null) acc.finishReason = finish;

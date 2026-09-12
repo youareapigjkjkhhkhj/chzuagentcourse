@@ -4,6 +4,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { PermissionMode, SkillMeta, WorkspaceEntry } from '@agentbuddy/shared';
 import { ico } from '../ui/icons';
 import { modeMeta, PERM_OPTIONS } from '../ui/permModes';
+import { formatTokens, levelToContextWindow, levelToMaxTokens, POWER_MAX } from '../ui/modelPower';
 
 const props = defineProps<{
   modelValue: string;
@@ -17,6 +18,8 @@ const props = defineProps<{
   models: Array<{ id: string; name: string }>;
   /** 当前使用的模型 id */
   modelId: string;
+  /** 火力档位（0..POWER_MAX）：联动 contextWindow/maxTokens，拖到最大 = 尽量用满模型能力 */
+  power: number;
   /** P3：工作区默认权限（盾牌三档，持久化 config.json） */
   permMode: PermissionMode;
   /** P4：启用技能清单（/ 弹出菜单） */
@@ -36,12 +39,21 @@ const emit = defineEmits<{
   (e: 'select-root', path: string): void;
   (e: 'remove-root', path: string): void;
   (e: 'select-model', id: string): void;
+  (e: 'set-power', level: number): void;
   (e: 'select-mode', mode: PermissionMode): void;
 }>();
 
 // P0 仅 UI 状态：Agent 工具执行自 P1 接入；Ask = 副作用均确认（安全默认）
 const chatMode = ref<'chat' | 'agent'>('agent');
 const showPermMenu = ref(false);
+
+/** 火力档位滑块：本地态实时跟手（v-model 随 @input 更新标签），松手（@change）才 emit 持久化，
+ * 避免拖动过程频繁写盘；父级 power 变化（切模型 / 写回成功）时同步本地态。 */
+const localPower = ref(props.power);
+watch(() => props.power, (v) => { localPower.value = v; });
+const powerWindowLabel = computed(() => formatTokens(levelToContextWindow(localPower.value)));
+const powerOutputLabel = computed(() => formatTokens(levelToMaxTokens(localPower.value)));
+const powerMaxed = computed(() => localPower.value >= POWER_MAX);
 
 /** 工作区下拉切换器：选历史工作区（roots）/ 新建（原生文件夹对话框）/ 移除关联目录 */
 const showWsMenu = ref(false);
@@ -380,6 +392,27 @@ function onKey(e: KeyboardEvent): void {
             <option v-for="m in models" :key="m.id" :value="m.id">{{ m.name }}</option>
           </select>
           <span class="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[8px] text-stone-400">▼</span>
+        </div>
+        <!-- 火力档位：一个滑块联动 contextWindow(8K→1M) 与 maxTokens(2K→32K)，拖到最大 = 火力全开 -->
+        <div
+          class="flex items-center gap-1 select-none"
+          :title="`模型火力：拖动调整上下文窗口与单次输出上限\n当前 上下文 ${powerWindowLabel} · 输出 ${powerOutputLabel}\n拖到最大 = 尽量用满模型能力（超出真实上限由系统自动回退）`"
+        >
+          <span :class="powerMaxed ? 'text-accent' : 'text-stone-400'" v-html="ico('bolt')" />
+          <input
+            type="range"
+            min="0"
+            :max="POWER_MAX"
+            step="1"
+            v-model.number="localPower"
+            :disabled="models.length === 0"
+            class="w-16 accent-accent cursor-pointer align-middle disabled:opacity-40 disabled:cursor-not-allowed"
+            @change="emit('set-power', localPower)"
+          />
+          <span
+            class="text-[10px] font-mono tabular-nums w-8 text-right"
+            :class="powerMaxed ? 'text-accent font-semibold' : 'text-stone-500'"
+          >{{ powerWindowLabel }}</span>
         </div>
         <button
           v-if="busy"

@@ -47,6 +47,13 @@ export function useAgent() {
       if (msg) msg.content += event.delta;
       return;
     }
+    if (event.type === 'reasoning') {
+      // 推理模型思维链：累积到 msg.reasoning（灰色「思考过程」区展示），同样收掉「思考中」等待态
+      thinking.value = false;
+      const msg = messages.value.find((m) => m.id === event.messageId);
+      if (msg) msg.reasoning = (msg.reasoning ?? '') + event.delta;
+      return;
+    }
     if (event.type === 'tool_start') {
       thinking.value = false;
       streamingId.value = null; // 模型本轮输出已结束 → 收掉流式光标，工具卡自带「执行中」指示
@@ -178,7 +185,7 @@ export function useAgent() {
   }
 
   function onEventWrapped(event: StreamEvent): void {
-    if (event.type === 'token') ensureStreamingBubble(event.messageId);
+    if (event.type === 'token' || event.type === 'reasoning') ensureStreamingBubble(event.messageId);
     onEvent(event);
   }
 

@@ -184,6 +184,8 @@ export class ChatService {
         persona: expert?.persona || undefined,
         // Phase 2：per-session 发现集（跨多次 ask 累积 search_tools 命中，clear/delete 时重置）
         discovered: this.discoveredFor(sessionId),
+        // 当前执行计划：注入 LLM 上下文，使模型在多次中断 / 历史裁剪后仍知道 todo 进度（不必靠翻旧 todo_write 调用去猜）
+        todos: latest.todos ?? [],
         onTodos: (todos) => {
           void this.sessions.updateTodos(sessionId, todos); // 随会话落盘（防抖）；plan 事件由 Loop 发（§18）
         },

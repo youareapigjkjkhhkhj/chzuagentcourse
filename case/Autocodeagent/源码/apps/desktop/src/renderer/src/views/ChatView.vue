@@ -4,7 +4,7 @@
  * 事件驱动（AGENTS §18）：diff_ready → 右栏自动打开；权限内联确认卡（原型同款）。
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
-import type { ChatMessage, Expert, McpServerView, PermissionMode, SkillMeta, TreeNode, WorkspaceEntry } from '@agentbuddy/shared';
+import type { ChatMessage, Expert, McpServerView, ModelConfig, PermissionMode, SkillMeta, TreeNode, WorkspaceEntry } from '@agentbuddy/shared';
 import { agent } from '../api/bridge';
 import { useAgent } from '../composables/useAgent';
 import { useSettings } from '../composables/useSettings';
@@ -12,6 +12,7 @@ import { useWorkbench } from '../composables/useWorkbench';
 import { ico } from '../ui/icons';
 import { bindCounts, bindTitle } from '../ui/expertLabel';
 import { extractPreviewPaths } from '../ui/previewKind';
+import { contextWindowToLevel, DEFAULT_LEVEL, levelToContextWindow, levelToMaxTokens } from '../ui/modelPower';
 import ComposerCard from '../components/ComposerCard.vue';
 import PermissionCard from '../components/PermissionCard.vue';
 import ToolCard from '../components/ToolCard.vue';
@@ -28,8 +29,15 @@ const sessionRef = computed(() => props.sessionId);
 const bench = useWorkbench(sessionRef, () => emit('workspace-changed'));
 
 const draft = ref('');
-const models = ref<Array<{ id: string; name: string }>>([]);
+/** 模型配置清单（含 contextWindow/maxTokens）：对话框下拉切换 + 火力档位滑块的读写源 */
+const modelConfigs = ref<ModelConfig[]>([]);
+/** 下拉只需 id/name */
+const models = computed(() => modelConfigs.value.map((m) => ({ id: m.id, name: m.name })));
 const modelId = ref('');
+/** 当前激活模型完整配置（火力档位滑块据此定位与写回） */
+const activeModel = computed(() => modelConfigs.value.find((m) => m.id === modelId.value) ?? null);
+/** 火力档位（0..POWER_MAX）：由当前模型 contextWindow 反推初始位置 */
+const powerLevel = computed(() => (activeModel.value ? contextWindowToLevel(activeModel.value.contextWindow) : DEFAULT_LEVEL));
 const messageList = ref<HTMLElement | null>(null);
 
 /** P4：启用技能清单（/ 菜单 + /name 触发校验）；键入 / 时刷新 */
@@ -163,7 +171,7 @@ onUnmounted(() => {
 /** 模型列表 + 当前激活项（模型配置中心维护，对话框下拉切换） */
 async function loadModels(): Promise<void> {
   const list = await agent().config.listModels();
-  if (list.ok && list.data) models.value = list.data.map((m) => ({ id: m.id, name: m.name }));
+  if (list.ok && list.data) modelConfigs.value = list.data;
   const active = await agent().config.getModel();
   if (active.ok && active.data) modelId.value = active.data.id;
 }
@@ -172,6 +180,36 @@ async function onSelectModel(id: string): Promise<void> {
   const res = await agent().config.setActive(id);
   if (res.ok) modelId.value = id;
   else error.value = res.error ?? '切换模型失败';
+}
+
+/** 火力档位滑块：松手后把档位翻译成 contextWindow/maxTokens 写入当前模型。
+ * 复用 setModel（apiKey 传空串 = 保留已存密钥，见 ipc.ts modelConfigSet）；
+ * 档位高于模型真实上限由 orchestrator 的 400 自愈兜底，无需在此感知真实窗口。 */
+async function onSetPower(level: number): Promise<void> {
+  const cur = activeModel.value;
+  if (!cur) return;
+  const contextWindow = levelToContextWindow(level);
+  const maxTokens = levelToMaxTokens(level);
+  if (contextWindow === cur.contextWindow && maxTokens === cur.maxTokens) return;
+  const res = await agent().config.setModel({
+    id: cur.id,
+    name: cur.name,
+    provider: cur.provider,
+    baseUrl: cur.baseUrl,
+    model: cur.model,
+    apiKey: '',
+    encrypted: cur.encrypted,
+    temperature: cur.temperature,
+    contextWindow,
+    maxTokens,
+  });
+  if (res.ok && res.data) {
+    // 就地替换该条，activeModel/powerLevel 随之刷新（无需整表重载）
+    const saved = res.data;
+    modelConfigs.value = modelConfigs.value.map((m) => (m.id === saved.id ? saved : m));
+  } else {
+    error.value = res.error ?? '调整模型档位失败';
+  }
 }
 
 /** P3：工作区默认权限（盾牌三档）—— 顶栏 chip 同源同步，持久化后下一轮 ask 立即生效 */
@@ -426,6 +464,7 @@ async function onSend(): Promise<void> {
           :active-root="workspaceActive"
           :models="models"
           :model-id="modelId"
+          :power="powerLevel"
           :perm-mode="permMode"
           :skills="enabledSkills"
           :servers="mcpServers"
@@ -436,6 +475,7 @@ async function onSend(): Promise<void> {
           @select-root="(p) => emit('select-workspace-root', p)"
           @remove-root="(p) => emit('remove-workspace-root', p)"
           @select-model="(id) => void onSelectModel(id)"
+          @set-power="(lv) => void onSetPower(lv)"
           @select-mode="(m) => void onSelectMode(m)"
         />
 
@@ -530,13 +570,18 @@ async function onSend(): Promise<void> {
 
             <!-- assistant 消息：仅渲染文字内容；工具调用统一由 ToolCard 呈现（避免名称重复占空间）；
                  纯 toolCalls 无文字的消息不占行，流式等待时末条显示 caret -->
-            <div v-else-if="item.msg.content || item.msg.id === streamingId" class="flex items-start gap-3">
+            <div v-else-if="item.msg.content || item.msg.reasoning || item.msg.id === streamingId" class="flex items-start gap-3">
               <div class="w-7 h-7 rounded-full overflow-hidden shrink-0 shadow-sm" :class="expert ? 'bg-card border border-border flex items-center justify-center text-[14px]' : ''">
                 <img v-if="expert?.logo" :src="expert.logo" class="w-full h-full object-cover" :alt="expert.name" />
                 <span v-else-if="expert">{{ expert.emoji }}</span>
                 <img v-else src="img/logo.png" class="w-full h-full object-cover" alt="AI" />
               </div>
               <div class="max-w-3xl space-y-1.5 min-w-0">
+                <!-- 推理模型思维链：灰色折叠「思考过程」，流式中自动展开、结束后可回看；与正式回答视觉分离 -->
+                <details v-if="item.msg.reasoning" class="mb-0.5" :open="item.msg.id === streamingId">
+                  <summary class="cursor-pointer select-none text-[11px] text-stone-400 hover:text-stone-600 transition-std">思考过程</summary>
+                  <div class="mt-1 pl-2.5 border-l-2 border-stone-200 text-[11.5px] leading-relaxed text-stone-400 whitespace-pre-wrap select-text">{{ item.msg.reasoning }}</div>
+                </details>
                 <div v-if="item.msg.content" class="bg-card border border-border rounded-xl px-3.5 py-2.5 text-stone-800 shadow-card select-text">
                   <MarkdownBody :content="item.msg.content" :streaming="item.msg.id === streamingId" />
                 </div>
@@ -616,6 +661,7 @@ async function onSend(): Promise<void> {
             :active-root="workspaceActive"
             :models="models"
             :model-id="modelId"
+            :power="powerLevel"
             :perm-mode="permMode"
             :skills="enabledSkills"
             :servers="mcpServers"
@@ -626,6 +672,7 @@ async function onSend(): Promise<void> {
             @select-root="(p) => emit('select-workspace-root', p)"
             @remove-root="(p) => emit('remove-workspace-root', p)"
             @select-model="(id) => void onSelectModel(id)"
+            @set-power="(lv) => void onSetPower(lv)"
             @select-mode="(m) => void onSelectMode(m)"
           />
         </div>

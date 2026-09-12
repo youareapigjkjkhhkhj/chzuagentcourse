@@ -4,7 +4,7 @@
  * 不依赖任何框架；AbortSignal 全链路透传。
  */
 import type { LlmToolSchema, LlmWireMessage, ModelConfig, NormalizedLLMResponse, NormalizedUsage, StoredToolCall } from '@agentbuddy/shared';
-import { applyChunk, createAccumulator, deltaOf, parseSseLine } from './sse';
+import { applyChunk, createAccumulator, deltaOf, parseSseLine, reasoningDeltaOf } from './sse';
 import { normalizeUsage } from './usage';
 
 export interface LlmRequest {
@@ -15,6 +15,8 @@ export interface LlmRequest {
   maxTokens: number;
   signal: AbortSignal;
   onDelta: (delta: string) => void;
+  /** 推理模型思维链增量（reasoning_content）；缺省则丢弃（普通模型不产生该字段） */
+  onReasoning?: (delta: string) => void;
 }
 
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
@@ -57,24 +59,38 @@ export class LlmClient {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let sawDone = false;
 
-    while (true) {
+    // 单行消费：返回 false 表示遇到 [DONE] 应终止整流
+    const consume = (line: string): boolean => {
+      const parsed = parseSseLine(line);
+      if (parsed.kind === 'done') return false;
+      if (parsed.kind !== 'data') return true;
+      emitDelta(parsed.json, req);
+      applyChunk(acc, parsed.json);
+      return true;
+    };
+
+    while (!sawDone) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        // 流结束：flush 解码器尾字节 + 补处理 buffer 里最后一个（可能无尾随换行的）残行，避免丢最后一片
+        buffer += decoder.decode();
+        if (buffer.trim()) for (const line of splitLines(buffer + '\n').lines) if (!consume(line)) break;
+        break;
+      }
       buffer += decoder.decode(value, { stream: true });
       const { lines, rest } = splitLines(buffer);
       buffer = rest;
       for (const line of lines) {
-        const parsed = parseSseLine(line);
-        if (parsed.kind === 'done') break;
-        if (parsed.kind !== 'data') continue;
-        emitDelta(parsed.json, req.onDelta);
-        applyChunk(acc, parsed.json);
+        if (!consume(line)) { sawDone = true; break; }
       }
     }
 
-    if (acc.content === '' && acc.toolCalls.size === 0) {
-      throw new Error('LLM 未返回任何内容');
+    // 判空纳入 reasoning：推理模型思维链走 reasoning_content，只思考未输出正式 content（length 截断 / 纯思考轮）
+    // 时不算「未返回」，交 orchestrator 按 finishReason 决定续写或收尾；三者全空才是真·空响应。
+    if (acc.content === '' && acc.reasoning === '' && acc.toolCalls.size === 0) {
+      throw new EmptyResponseError(acc.finishReason);
     }
 
     return buildResponse(acc.content, collectToolCalls(acc), acc.finishReason, acc.usage ? normalizeUsage(acc.usage) : null);
@@ -111,10 +127,12 @@ function collectToolCalls(acc: ReturnType<typeof createAccumulator>): StoredTool
     .map((tc) => ({ id: tc.id, name: tc.name, arguments: tc.arguments }));
 }
 
-/** 从 chunk 提取文本增量并回调（与 applyChunk 分离，保持 sse.ts 纯函数） */
-function emitDelta(json: unknown, onDelta: (d: string) => void): void {
+/** 从 chunk 提取文本 / 思维链增量并回调（与 applyChunk 分离，保持 sse.ts 纯函数） */
+function emitDelta(json: unknown, req: LlmRequest): void {
   const delta = deltaOf(json);
-  if (delta && typeof delta['content'] === 'string' && delta['content']) onDelta(delta['content']);
+  if (delta && typeof delta['content'] === 'string' && delta['content']) req.onDelta(delta['content']);
+  const rc = reasoningDeltaOf(json);
+  if (rc && req.onReasoning) req.onReasoning(rc);
 }
 
 function splitLines(buffer: string): { lines: string[]; rest: string } {
@@ -145,6 +163,21 @@ function mapFinish(reason: string | null): NormalizedLLMResponse['finishReason']
 class HttpError extends Error {
   constructor(public readonly status: number, message: string) {
     super(message);
+  }
+}
+
+/** 真·空响应：content / reasoning / tool_calls 全空。连接被过早关闭（finishReason=null）多为瞬时故障可重试；
+ *  content_filter 为明确拦截，重试无用。 */
+class EmptyResponseError extends Error {
+  constructor(public readonly finishReason: string | null) {
+    super(
+      finishReason === 'content_filter'
+        ? 'LLM 未返回任何内容（内容被安全策略过滤：content_filter）'
+        : finishReason
+          ? `LLM 未返回任何内容（finish_reason=${finishReason}）`
+          : 'LLM 未返回任何内容（连接被过早关闭，未收到有效响应）',
+    );
+    this.name = 'EmptyResponseError';
   }
 }
 
@@ -180,6 +213,8 @@ async function readErrorDetail(res: Response): Promise<string> {
 function isRetryable(e: Error): boolean {
   if (e.name === 'AbortError' || e.name === 'TimeoutError') return false;
   if (e instanceof HttpError) return RETRYABLE_STATUS.has(e.status);
+  // 真空响应：连接被过早关闭 / 模型 stop 却空——多为瞬时故障，重试；content_filter 明确拦截则不重试
+  if (e instanceof EmptyResponseError) return e.finishReason !== 'content_filter';
   return e.name === 'TypeError' || /fetch failed|network|ECONN/i.test(e.message);
 }
 

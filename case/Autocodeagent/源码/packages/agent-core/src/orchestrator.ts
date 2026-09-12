@@ -69,6 +69,8 @@ export interface TurnDeps {
    * 使整个会话记住 search_tools 命中结果，无需每次提问重复检索。缺省则退化为本次 runTurn 内的临时集。
    */
   discovered?: Set<string>;
+  /** P4：会话当前执行计划（todo_write 清单）——注入每轮系统提示，使模型跨中断 / 裁剪后仍知道进度 */
+  todos?: TodoItem[];
 }
 
 interface ParsedCall {
@@ -87,6 +89,9 @@ export async function runTurn(dep: TurnDeps): Promise<void> {
   // 按需加载：search_tools 发现的 MCP 工具名累积注入后续每轮 schema（发现与调用分两轮）。
   // dep.discovered 由 chatService 按 sessionId 持有 → per-session 记忆，跨多次提问不必重复检索；缺省退化为本次 runTurn 临时集。
   const discovered = dep.discovered ?? new Set<string>();
+  // 执行计划：会话初始清单 + 本轮 todo_write 更新，注入每轮系统提示（跨中断 / 裁剪后模型仍知道进度）。
+  // 用可变 holder：execCall 的 onTodos 回填后，下一轮 assembleContext 即读到最新状态。
+  const todoState: { items: TodoItem[] } = { items: dep.todos ? [...dep.todos] : [] };
 
   while (turns++ < MAX_TURNS) {
     if (dep.signal.aborted) return;
@@ -128,6 +133,7 @@ export async function runTurn(dep: TurnDeps): Promise<void> {
       mcpCatalog,
       persona: dep.persona,
       tools,
+      todos: todoState.items,
     });
     const messageId = randomUUID();
     let partial = '';
@@ -143,6 +149,10 @@ export async function runTurn(dep: TurnDeps): Promise<void> {
         onDelta: (delta) => {
           partial += delta;
           dep.emit({ type: 'token', sessionId: dep.sessionId, messageId, delta });
+        },
+        // 推理模型思维链：独立 reasoning 事件流出（前端灰色「思考过程」区），不计入 partial / 不落 wire 历史
+        onReasoning: (delta) => {
+          dep.emit({ type: 'reasoning', sessionId: dep.sessionId, messageId, delta });
         },
       });
     } catch (e) {
@@ -173,33 +183,38 @@ export async function runTurn(dep: TurnDeps): Promise<void> {
     }
     dep.onUsage?.(res.usage);
 
-    const assistant: ChatMessage = {
-      id: messageId,
-      role: 'assistant',
-      content: res.message.content,
-      createdAt: Date.now(),
-      toolCalls: res.toolCalls,
-    };
-    dep.messages.push(assistant);
-    await dep.persist(assistant);
+    const hasToolCalls = Boolean(res.toolCalls && res.toolCalls.length > 0);
+    // 仅当有正式内容或工具调用时才落盘 assistant：推理模型「只思考未回答」（content 空、reasoning 已 live 展示）
+    // 不落盘——避免回放出现空气泡，也避免下一轮 wire 塞入 content='' 的空 assistant 消息
+    if (res.message.content || hasToolCalls) {
+      const assistant: ChatMessage = {
+        id: messageId,
+        role: 'assistant',
+        content: res.message.content,
+        createdAt: Date.now(),
+        toolCalls: res.toolCalls,
+      };
+      dep.messages.push(assistant);
+      await dep.persist(assistant);
+    }
 
     // 截断续写：finish=length 且无工具调用 = 纯文本被 max_tokens 截断（用户可见的「输出不完整」根因）。
     // 自动插入续写指令进下一轮（仅 live 消息不落盘：避免回放与 UI 多出指令气泡）；超上限正常收尾。
-    if (res.finishReason === 'length' && (!res.toolCalls || res.toolCalls.length === 0) && continues < MAX_AUTO_CONTINUE) {
+    if (res.finishReason === 'length' && !hasToolCalls && continues < MAX_AUTO_CONTINUE) {
       continues += 1;
       dep.messages.push({ id: randomUUID(), role: 'user', content: CONTINUE_PROMPT, createdAt: Date.now() });
       continue;
     }
 
-    if (!res.toolCalls || res.toolCalls.length === 0) return; // 无工具调用 = 回合结束
+    if (!hasToolCalls) return; // 无工具调用 = 回合结束
 
-    const parsed = res.toolCalls.map(parseCall);
+    const parsed = res.toolCalls!.map(parseCall); // hasToolCalls===true 已确保 toolCalls 非空
     const allRead = parsed.every((p) => riskOf(dep.bus, p) === 'READ');
     if (allRead && parsed.length > 1) {
-      await Promise.all(parsed.map((p) => execCall(dep, p, failures, discovered)));
+      await Promise.all(parsed.map((p) => execCall(dep, p, failures, discovered, todoState)));
     } else {
       for (const p of parsed) {
-        const tripped = await execCall(dep, p, failures, discovered);
+        const tripped = await execCall(dep, p, failures, discovered, todoState);
         if (tripped || dep.signal.aborted) return;
       }
     }
@@ -223,8 +238,8 @@ function riskOf(bus: ToolBus, p: ParsedCall): Risk {
   return tool.assessRisk?.(p.input) ?? tool.risk;
 }
 
-/** 返回 true = 熔断触发，主循环应终止；discovered 为本次 runTurn 的按需加载发现集（search_tools 命中回填） */
-async function execCall(dep: TurnDeps, p: ParsedCall, failures: Map<string, number>, discovered: Set<string>): Promise<boolean> {
+/** 返回 true = 熔断触发，主循环应终止；discovered 为本次 runTurn 的按需加载发现集（search_tools 命中回填）；todoState 为执行计划 holder（todo_write 回填） */
+async function execCall(dep: TurnDeps, p: ParsedCall, failures: Map<string, number>, discovered: Set<string>, todoState: { items: TodoItem[] }): Promise<boolean> {
   const { call } = p;
   const tool = dep.bus.get(call.name);
   // P6：风险 / 目标提前计算，执行记录各终态分支共用
@@ -304,8 +319,9 @@ async function execCall(dep: TurnDeps, p: ParsedCall, failures: Map<string, numb
       dep.workspace
         ? resolveWithinRoots(dep.workspaceRoots.length > 0 ? dep.workspaceRoots : [dep.workspace], dep.workspace, userPath)
         : Promise.reject(new Error('未选择工作区目录')),
-    // todo_write 清单变更：统一由 Loop 发 plan 事件（§18），外层回调仅做落盘等副作用
+    // todo_write 清单变更：回填 todoState（下一轮 assembleContext 即注入最新计划）+ 由 Loop 发 plan 事件（§18），外层回调仅做落盘等副作用
     onTodos: (todos) => {
+      todoState.items = todos;
       dep.emit({ type: 'plan', sessionId: dep.sessionId, todos });
       dep.onTodos?.(todos);
     },

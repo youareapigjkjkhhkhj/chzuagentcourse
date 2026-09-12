@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyChunk, createAccumulator, parseSseLine } from '../src/llm/sse';
+import { applyChunk, createAccumulator, parseSseLine, reasoningDeltaOf } from '../src/llm/sse';
 
 describe('parseSseLine', () => {
   it('解析 data 行', () => {
@@ -24,6 +24,25 @@ describe('applyChunk', () => {
     applyChunk(acc, { delta: { content: '你' } });
     applyChunk(acc, { delta: { content: '好' } });
     expect(acc.content).toBe('你好');
+  });
+
+  it('累积 reasoning_content（推理模型思维链）与 content 分离；兼容 reasoning 别名', () => {
+    const acc = createAccumulator();
+    applyChunk(acc, { delta: { reasoning_content: '让我想' } });
+    applyChunk(acc, { choices: [{ delta: { reasoning_content: '想…' } }] });
+    applyChunk(acc, { delta: { content: '答案' } });
+    expect(acc.reasoning).toBe('让我想想…');
+    expect(acc.content).toBe('答案');
+    const acc2 = createAccumulator();
+    applyChunk(acc2, { delta: { reasoning: 'thinking' } });
+    expect(acc2.reasoning).toBe('thinking');
+  });
+
+  it('reasoningDeltaOf：抽取思维链增量，无则空串', () => {
+    expect(reasoningDeltaOf({ delta: { reasoning_content: 'abc' } })).toBe('abc');
+    expect(reasoningDeltaOf({ choices: [{ delta: { reasoning: 'x' } }] })).toBe('x');
+    expect(reasoningDeltaOf({ delta: { content: 'only' } })).toBe('');
+    expect(reasoningDeltaOf(null)).toBe('');
   });
 
   it('tool_calls 按 index 跨 chunk 累积 arguments（禁止逐 chunk JSON.parse）', () => {

@@ -9,7 +9,7 @@
  */
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ChatMessage, LlmToolSchema, LlmWireMessage, ModelConfig, PermissionMode } from '@agentbuddy/shared';
+import type { ChatMessage, LlmToolSchema, LlmWireMessage, ModelConfig, PermissionMode, TodoItem } from '@agentbuddy/shared';
 
 export const OUTPUT_RESERVE = 8000;
 const PROJECT_INSTRUCTION_LIMIT = 8000;
@@ -72,6 +72,7 @@ export function systemPrompt(
   persona?: string,
   webTools?: { fetch: boolean; search: boolean },
   onDemandTools?: boolean,
+  todos?: TodoItem[],
 ): string {
   const parts = [
     '你是 AgentBuddy，本地轻量的通用 AI 助理。通过工具操作用户工作区的文件与命令，覆盖办公文档、资料整理、日常问答与编程开发等多种任务。',
@@ -114,6 +115,22 @@ export function systemPrompt(
   }
   // P7 专家人设：会话绑定专家时追加（工具/技能限定已在总线与目录层生效，此处只注入人设正文）
   if (persona) parts.push(`专家人设（本会话绑定专家，请以该身份回复并优先使用已绑定的工具与技能）：\n${persona}`);
+  // 当前执行计划：todo_write 清单是计划的唯一真相、随会话持久化。注入系统区（永不裁剪）→ 多次中断 /
+  // 历史 dropOldMessages 裁掉早期 todo_write 调用后，模型仍看得到真实进度，不必靠翻历史猜测，
+  // 从而稳定「接着上次计划推进」而非重建清单或重复已完成步骤（修复「执行计划时准时不准」）。
+  if (todos?.length) {
+    const label: Record<TodoItem['status'], string> = {
+      done: '[x] 已完成',
+      in_progress: '[>] 进行中',
+      pending: '[ ] 待办',
+      cancelled: '[-] 已取消',
+    };
+    const lines = todos.map((t) => `- ${label[t.status]}：${t.content}`);
+    parts.push(
+      `当前执行计划（todo_write 维护，请据此推进，勿凭空重建）：\n${lines.join('\n')}\n` +
+        '推进要求：接着「进行中」的项继续，再按顺序处理「待办」；每完成或推进一项，立即用 todo_write 传入全量清单更新状态（整体覆盖）；「已完成」「已取消」的项不要重复执行。',
+    );
+  }
   return parts.join('\n');
 }
 
@@ -136,6 +153,8 @@ export async function assembleContext(opts: {
   /** function-calling schema：序列化后也占 prompt token（后端把它渲染进系统区），须计入预算，
    * 否则消息 trim 到预算内、加上 schema 后仍会超窗 → 400「maximum context length」（离线 vLLM 常见） */
   tools?: LlmToolSchema[];
+  /** P4：当前执行计划（todo_write 清单）——注入系统提示，使模型跨中断 / 历史裁剪后仍知道进度，无需翻旧调用猜测 */
+  todos?: TodoItem[];
 }): Promise<LlmWireMessage[]> {
   const instructions = opts.workspace ? await readProjectInstructions(opts.workspace) : null;
   // 联网提示按实际下发的 schema 推导（webfetch 内置常驻、websearch 配置后注入），避免提及不可用工具
@@ -147,7 +166,7 @@ export async function assembleContext(opts: {
   const wire: LlmWireMessage[] = [
     {
       role: 'system',
-      content: systemPrompt(opts.workspace, opts.config.model, instructions, opts.mode ?? 'Ask', opts.skillCatalog, opts.skillInstruction, opts.mcpCatalog, opts.extraRoots, opts.persona, webTools, onDemandTools),
+      content: systemPrompt(opts.workspace, opts.config.model, instructions, opts.mode ?? 'Ask', opts.skillCatalog, opts.skillInstruction, opts.mcpCatalog, opts.extraRoots, opts.persona, webTools, onDemandTools, opts.todos),
     },
     ...opts.history.map(toWire),
   ];
