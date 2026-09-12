@@ -109,6 +109,25 @@ describe('SessionStore', () => {
     expect((await store.get(s.id))?.messages).toHaveLength(1);
   });
 
+  it('clear：清空全部消息与 todos、标题复位「新会话」、保留会话壳（原地重开），立即落盘', async () => {
+    const s = await store.create('原始标题');
+    await store.appendMessage(s.id, { id: 'u1', role: 'user', content: '帮我重构登录', createdAt: 1 });
+    await store.appendMessage(s.id, { id: 'a1', role: 'assistant', content: '好的', createdAt: 2 });
+    await store.updateTodos(s.id, [{ id: 't1', content: '任务', status: 'pending' }]);
+    await store.clear(s.id);
+    // 新实例读盘验证立即落盘（不等防抖）
+    const fresh = new SessionStore(join(dir, 'sessions'), 60_000);
+    const got = await fresh.get(s.id);
+    expect(got).not.toBeNull(); // 会话壳保留（未删除）
+    expect(got?.id).toBe(s.id); // id 不变 = 原地重开而非新建
+    expect(got?.messages).toEqual([]);
+    expect(got?.messageCount).toBe(0);
+    expect(got?.todos).toEqual([]);
+    expect(got?.title).toBe('新会话'); // 标题复位
+    // 不存在的会话返回 null（与 truncateFrom/deleteMessage 一致）
+    expect(await store.clear('no-such')).toBeNull();
+  });
+
   it('rename：立即落盘、截断 60 字、不动 updatedAt；不存在返回 null', async () => {
     const s = await store.create('旧标题');
     const before = (await store.get(s.id))!.updatedAt;

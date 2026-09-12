@@ -1234,7 +1234,7 @@ OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
 ```Python
 # 初始化大模型（AI大脑，负责理解问题、生成回答）
 llm = ChatOpenAI(
-    model="gpt-4o-mini",  # 模型名称，可根据需求替换
+    model="gpt-5-mini",  # 模型名称，可根据需求替换
     api_key=OPENAI_API_KEY,  # 传入API密钥
     base_url=OPENAI_BASE_URL  # 传入API接口地址
 )

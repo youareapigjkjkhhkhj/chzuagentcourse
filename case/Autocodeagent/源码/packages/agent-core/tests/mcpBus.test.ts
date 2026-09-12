@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { systemPrompt } from '../src/context';
 import { buildSessionBus, createBuiltinBus } from '../src/tools/bus';
-import type { Tool } from '../src/tools/types';
+import { ReadState, type Tool, type ToolContext } from '../src/tools/types';
 
 function fakeMcpTool(i: number): Tool {
   return {
@@ -82,5 +82,121 @@ describe('systemPrompt ⑤层 MCP 目录', () => {
   it('空目录不注入该段', () => {
     const prompt = systemPrompt(null, 'm', null, 'Ask', undefined, undefined, []);
     expect(prompt).not.toContain('已连接 MCP 连接器');
+  });
+});
+
+describe('buildSessionBus 按需加载（MCP schema 合计超阈值 → deferred + search_tools）', () => {
+  // 大 schema MCP 工具：描述填充使其合计越过 ON_DEMAND_MIN_MCP_SCHEMA_TOKENS(6000)
+  function bigMcpTool(i: number): Tool {
+    return {
+      name: `mcp__gfx__render_${i}`,
+      description: `render scene ${i} ${'x'.repeat(1800)}`,
+      parameters: { type: 'object', properties: {} },
+      risk: 'NETWORK',
+      execute: async () => ({ text: '' }),
+    };
+  }
+
+  it('小规模 MCP（≤ 阈值）：全量常驻，无 search_tools，hasDeferred=false', () => {
+    const bus = buildSessionBus(Array.from({ length: 50 }, (_, i) => fakeMcpTool(i)));
+    expect(bus.hasDeferred()).toBe(false);
+    expect(bus.get('search_tools')).toBeUndefined();
+    expect(bus.selectSchemas(new Set())).toHaveLength(58); // 无 deferred：等同全量 schemas()
+  });
+
+  it('大规模 MCP（> 阈值）：注册 search_tools，MCP 全部 deferred（可执行、不常驻 schema）', () => {
+    const bus = buildSessionBus(Array.from({ length: 10 }, (_, i) => bigMcpTool(i)));
+    expect(bus.hasDeferred()).toBe(true);
+    expect(bus.get('search_tools')).toBeTruthy();
+    // 常驻仅内置 8 + search_tools = 9；MCP 未注入
+    const resident = bus.selectSchemas(new Set()).map((t) => t.function.name);
+    expect(resident).toHaveLength(9);
+    expect(resident).toContain('search_tools');
+    expect(resident.some((n) => n.startsWith('mcp__'))).toBe(false);
+    // get 仍可取到 deferred 工具（发现后即可执行）
+    expect(bus.get('mcp__gfx__render_0')).toBeTruthy();
+    // schemas() 全量（含 deferred）：内置 8 + search_tools + MCP 10 = 19
+    expect(bus.schemas()).toHaveLength(19);
+  });
+
+  it('selectSchemas：已发现的 deferred 注入，其余仍隐藏', () => {
+    const bus = buildSessionBus(Array.from({ length: 10 }, (_, i) => bigMcpTool(i)));
+    const names = bus.selectSchemas(new Set(['mcp__gfx__render_2', 'mcp__gfx__render_5'])).map((t) => t.function.name);
+    expect(names).toContain('mcp__gfx__render_2');
+    expect(names).toContain('mcp__gfx__render_5');
+    expect(names).not.toContain('mcp__gfx__render_0');
+    expect(names).toHaveLength(11); // 9 常驻 + 2 发现
+  });
+});
+
+describe('systemPrompt 按需加载指引（onDemandTools）', () => {
+  const catalog = [{ name: 'gfx', description: '渲染连接器', tools: ['render_scene'] }];
+
+  it('onDemandTools=true：措辞改为发现索引 + 先 search_tools 检索（目录仍列出）', () => {
+    const prompt = systemPrompt(null, 'm', null, 'Ask', undefined, undefined, catalog, undefined, undefined, undefined, true);
+    expect(prompt).toContain('按需加载');
+    expect(prompt).toContain('search_tools');
+    expect(prompt).toContain('#gfx');
+  });
+
+  it('onDemandTools 缺省：沿用「#名称 提及优先使用」措辞，不提按需加载', () => {
+    const prompt = systemPrompt(null, 'm', null, 'Ask', undefined, undefined, catalog);
+    expect(prompt).toContain('用 #名称 提及时优先使用');
+    expect(prompt).not.toContain('按需加载');
+  });
+});
+
+describe('buildSessionBus alwaysLoad 分区（强制常驻连接器跳过按需分流）', () => {
+  // 与「按需加载」describe 同源的大 schema 工具（每个 ≈668 token），按连接器名区分
+  function bigTool(server: string, i: number): Tool {
+    return {
+      name: `mcp__${server}__render_${i}`,
+      description: `render scene ${i} ${'x'.repeat(1800)}`,
+      parameters: { type: 'object', properties: {} },
+      risk: 'NETWORK',
+      execute: async () => ({ text: '' }),
+    };
+  }
+
+  it('alwaysLoad 连接器强制常驻；其余（rest）超阈值仍 deferred，阈值只按 rest 计', () => {
+    const always = Array.from({ length: 4 }, (_, i) => bigTool('gfx', i)); // 强制常驻
+    const rest = Array.from({ length: 10 }, (_, i) => bigTool('bulk', i)); // 10×大 schema > 阈值
+    const bus = buildSessionBus([...always, ...rest], undefined, [], { alwaysLoadServers: new Set(['gfx']) });
+    expect(bus.hasDeferred()).toBe(true);
+    expect(bus.get('search_tools')).toBeTruthy();
+    const resident = bus.selectSchemas(new Set()).map((t) => t.function.name);
+    // 内置 8 + search_tools + gfx 常驻 4 = 13；bulk 全部 deferred 不常驻
+    expect(resident.filter((n) => n.startsWith('mcp__gfx__'))).toHaveLength(4);
+    expect(resident.some((n) => n.startsWith('mcp__bulk__'))).toBe(false);
+    expect(resident).toHaveLength(13);
+    expect(bus.get('mcp__bulk__render_0')).toBeTruthy(); // deferred 仍可取（发现后可执行）
+  });
+
+  it('alwaysLoad 拉走后 rest 不足阈值 → 不启用按需，全部常驻', () => {
+    const always = Array.from({ length: 6 }, (_, i) => bigTool('gfx', i));
+    const rest = Array.from({ length: 4 }, (_, i) => bigTool('bulk', i)); // 4×大 schema < 阈值
+    // 合计 10 个 > 阈值，但 rest 仅 4 个 < 阈值 → 不该 defer（阈值只对 rest 计）
+    const bus = buildSessionBus([...always, ...rest], undefined, [], { alwaysLoadServers: new Set(['gfx']) });
+    expect(bus.hasDeferred()).toBe(false);
+    expect(bus.get('search_tools')).toBeUndefined();
+    expect(bus.selectSchemas(new Set())).toHaveLength(18); // 内置 8 + gfx 6 + bulk 4
+  });
+
+  it('search_tools 索引只覆盖 rest：命中 bulk，不命中已常驻的 alwaysLoad 连接器', async () => {
+    const always = Array.from({ length: 4 }, (_, i) => bigTool('gfx', i));
+    const rest = Array.from({ length: 10 }, (_, i) => bigTool('bulk', i));
+    const bus = buildSessionBus([...always, ...rest], undefined, [], { alwaysLoadServers: new Set(['gfx']) });
+    const discovered: string[] = [];
+    const ctx: ToolContext = {
+      workspace: null,
+      signal: new AbortController().signal,
+      readState: new ReadState(),
+      snapshot: async () => null,
+      resolvePath: async (p) => p,
+      onDiscoverTools: (names) => discovered.push(...names),
+    };
+    await bus.get('search_tools')!.execute(ctx, { query: 'render', k: 20 });
+    expect(discovered.length).toBeGreaterThan(0);
+    expect(discovered.every((n) => n.startsWith('mcp__bulk__'))).toBe(true); // gfx 未进索引
   });
 });

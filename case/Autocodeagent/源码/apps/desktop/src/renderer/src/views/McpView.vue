@@ -42,8 +42,9 @@ function emptyForm(): {
   description: string;
   icon: string;
   enabled: boolean;
+  alwaysLoad: boolean;
 } {
-  return { name: '', type: 'stdio', command: '', argsText: '', envText: '', url: '', headersText: '', description: '', icon: '', enabled: true };
+  return { name: '', type: 'stdio', command: '', argsText: '', envText: '', url: '', headersText: '', description: '', icon: '', enabled: true, alwaysLoad: false };
 }
 
 const filtered = computed(() => {
@@ -52,7 +53,7 @@ const filtered = computed(() => {
   return servers.value.filter((s) => s.config.name.toLowerCase().includes(q) || (s.config.description ?? '').toLowerCase().includes(q));
 });
 
-/** 已连接工具总数：全量随会话下发给模型（无上限），此处仅作展示 */
+/** 已连接工具总数（仅展示）：实际下发由 bus 按 schema 规模在常驻 / 按需间分流，并非全量随会话下发 */
 const mountedTools = computed(() => servers.value.filter((s) => s.status === 'connected').reduce((n, s) => n + s.tools.length, 0));
 
 let unsubscribe: (() => void) | null = null;
@@ -98,6 +99,7 @@ function openEdit(view: McpServerView): void {
     description: c.description ?? '',
     icon: c.icon ?? '',
     enabled: c.enabled,
+    alwaysLoad: c.alwaysLoad ?? false,
   };
   formErr.value = '';
   jsonText.value = '';
@@ -186,6 +188,7 @@ async function submitForm(): Promise<void> {
     headers,
     description: f.description.trim() || undefined,
     enabled: f.enabled,
+    alwaysLoad: f.alwaysLoad,
     icon: f.icon || undefined,
   });
   modalBusy.value = false;
@@ -222,6 +225,15 @@ async function submitJson(): Promise<void> {
 async function toggleEnabled(view: McpServerView): Promise<void> {
   busyName.value = view.config.name;
   const res = await agent().mcp.setEnabled(view.config.name, !view.config.enabled);
+  busyName.value = '';
+  if (res.ok && res.data) servers.value = res.data;
+  else err.value = res.error ?? '操作失败';
+}
+
+/** 强制常驻开关：仅切换 alwaysLoad 标志（不重连）；下一轮会话构建工具总线时生效 */
+async function toggleAlwaysLoad(view: McpServerView): Promise<void> {
+  busyName.value = view.config.name;
+  const res = await agent().mcp.setAlwaysLoad(view.config.name, !view.config.alwaysLoad);
   busyName.value = '';
   if (res.ok && res.data) servers.value = res.data;
   else err.value = res.error ?? '操作失败';
@@ -297,10 +309,10 @@ function commandLine(view: McpServerView): string {
       <button class="text-stone-400 hover:text-stone-600" v-html="ico('x')" @click="err = ''" />
     </div>
 
-    <!-- 已连接工具数：全量随会话下发给模型（无上限，模型按需自动识别调用）；如需精简可停用连接器 -->
+    <!-- 已连接工具数：小规模全量常驻，schema 合计超阈值转按需（search_tools 检索发现）；标「常驻」的连接器强制全量下发 -->
     <div class="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] border bg-surface border-border text-stone-500">
       <span v-html="ico('check')" />
-      <span>已挂载 MCP 工具 {{ mountedTools }} 个，全部随会话下发给模型（无数量上限；如需精简可停用部分连接器）。</span>
+      <span>已挂载 MCP 工具 {{ mountedTools }} 个。规模较小时全量随会话下发；合计过大时自动转「按需加载」（模型经 search_tools 检索命中后调用），标「常驻」的连接器强制全量下发。</span>
     </div>
 
     <!-- 卡片列表 -->
@@ -339,6 +351,27 @@ function commandLine(view: McpServerView): string {
               <span :class="['absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow transition-std', view.config.enabled ? 'left-[16px]' : 'left-[2px]']" />
             </button>
           </span>
+        </div>
+
+        <!-- 按需加载状态 + 强制常驻开关（仅已连接且有工具；独立整行，避免头部徽标拥挤溢出） -->
+        <div v-if="view.status === 'connected' && view.tools.length > 0" class="flex items-center gap-2">
+          <span
+            :class="['px-1.5 py-0.5 rounded-full text-[9px] font-medium border shrink-0',
+              view.config.alwaysLoad ? 'bg-purple-500/10 text-purple-700 border-purple-500/25'
+                : view.onDemand ? 'bg-amber-500/10 text-amber-700 border-amber-500/25'
+                : 'bg-surface text-stone-500 border-border']"
+          >{{ view.config.alwaysLoad ? '常驻' : view.onDemand ? '按需' : '全量' }}</span>
+          <span class="text-[10px] text-stone-500 truncate">
+            {{ view.config.alwaysLoad ? '强制常驻中：工具参数始终随会话下发' : view.onDemand ? '按需加载：模型经 search_tools 检索命中后调用' : '工具规模较小：参数全量随会话下发' }}
+          </span>
+          <button
+            :class="['ml-auto w-8 h-[18px] rounded-full relative transition-std shrink-0', view.config.alwaysLoad ? 'bg-purple-500' : 'bg-stone-300', busyName === view.config.name ? 'opacity-50' : '']"
+            :title="view.config.alwaysLoad ? '取消强制常驻（恢复按需分流）' : '强制常驻（工具参数始终下发，跳过 search_tools 检索）'"
+            :disabled="busyName === view.config.name"
+            @click="() => void toggleAlwaysLoad(view)"
+          >
+            <span :class="['absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow transition-std', view.config.alwaysLoad ? 'left-[16px]' : 'left-[2px]']" />
+          </button>
         </div>
 
         <!-- 描述 / 命令 / env keys -->
@@ -532,6 +565,11 @@ function commandLine(view: McpServerView): string {
           <label class="flex items-center gap-2 text-[11px] text-stone-700 cursor-pointer select-none">
             <input v-model="form.enabled" type="checkbox" class="accent-emerald-600" />
             保存后立即连接（关闭则仅保存配置，可随时用开关启用）
+          </label>
+
+          <label class="flex items-start gap-2 text-[11px] text-stone-700 cursor-pointer select-none">
+            <input v-model="form.alwaysLoad" type="checkbox" class="accent-purple-600 mt-0.5" />
+            <span>强制常驻工具（跳过按需检索，参数始终随会话下发）；工具很多时会增大每次请求体积，通常保持关闭、由系统按 schema 规模自动分流。</span>
           </label>
 
           <p v-if="formErr" class="text-[11px] text-rose-600 flex items-start gap-1.5">

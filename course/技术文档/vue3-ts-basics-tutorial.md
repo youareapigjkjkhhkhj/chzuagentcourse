@@ -7,6 +7,57 @@
 
 ---
 
+## 配套示例项目
+
+> 每个知识点对应一个独立的 `.vue` 文件，教学时在 `App.vue` 中取消注释对应组件即可运行。
+
+示例文件位于 `vue3-examples/src/components/examples/` 目录：
+
+| 文件 | 对应章节 |
+| --- | --- |
+| `04-SFC.vue` | 05 · 单文件组件 SFC |
+| `05-TemplateSyntax.vue` | 06 · 模板语法 |
+| `06-ReactiveSystem.vue` | 07 · 响应式系统 |
+| `07-ComputedWatch.vue` | 08 · 计算属性与侦听 |
+| `08-ComponentBasics.vue` + `08-CounterChild.vue` | 09 · 组件基础 |
+| `09-PropsEmits.vue` + `09-ChildCard.vue` | 10 · 父子组件通信 |
+| `10-Lifecycle.vue` | 11 · 生命周期钩子 |
+| `11-Composables.vue` + `11-useCounter.ts` | 12 · 组合式函数 |
+| `12-RouterDemo.vue` + `router/index.ts` + `views/*.vue` | 13 · 路由 |
+| `13-PiniaDemo.vue` + `stores/counter.ts` | 14 · 状态管理 Pinia |
+
+### 如何使用
+
+```bash
+# 1. 创建项目（如已有项目跳过）
+npm create vite@latest vue3-examples -- --template vue-ts
+cd vue3-examples
+npm install
+
+# 2. 安装路由和 Pinia（演示第 12、13 节时需要）
+npm install vue-router pinia
+
+# 3. 将示例文件复制到 src/components/examples/ 等目录
+
+# 4. 替换 src/App.vue 为示例项目的 App.vue
+
+# 5. 启动
+npm run dev
+```
+
+在 `App.vue` 中，取消注释要演示的组件即可：
+
+```vue
+<template>
+  <SFC />
+  <!-- <TemplateSyntax /> -->
+  <!-- <ReactiveSystem /> -->
+  ...
+</template>
+```
+
+---
+
 ## 目录
 
 1. [什么是 Vue 3](#02)
@@ -153,6 +204,8 @@ p {
 | `<style scoped>` | 样式层 | `scoped` 让样式只作用于当前组件 |
 
 > `<script setup>` 是组合式 API 的推荐写法：顶层绑定自动暴露给模板，无需 `return`。
+>
+> **运行示例**：[`04-SFC.vue`](vue3-examples/src/components/examples/04-SFC.vue)
 
 ---
 

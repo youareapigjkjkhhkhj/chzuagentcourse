@@ -10,6 +10,8 @@ export const IpcChannels = {
   sessionGet: 'session:get',
   sessionCreate: 'session:create',
   sessionDelete: 'session:delete',
+  /** 清空当前会话：移除全部消息与 todos、标题复位，保留会话壳（原地重开，非删会话） */
+  sessionClear: 'session:clear',
   /** 消息操作：撤回/重发 = 截断该条及之后；删除 = 单条 */
   sessionTruncate: 'session:truncate',
   sessionDeleteMessage: 'session:delete-message',
@@ -40,6 +42,7 @@ export const IpcChannels = {
   mcpUpsert: 'mcp:upsert',
   mcpRemove: 'mcp:remove',
   mcpSetEnabled: 'mcp:set-enabled',
+  mcpSetAlwaysLoad: 'mcp:set-always-load',
   mcpReconnect: 'mcp:reconnect',
   mcpImport: 'mcp:import',
   expertList: 'expert:list',
@@ -183,6 +186,8 @@ export const McpUpsertPayload = z
     headers: z.record(z.string().max(1024)).optional(),
     description: z.string().max(300).optional(),
     enabled: z.boolean(),
+    /** 强制常驻：跳过按需加载分流 */
+    alwaysLoad: z.boolean().optional(),
     /** 上传图标 data URL（≈100KB 原图），仅接受 image 类型 */
     icon: z.string().max(150_000).optional(),
   })
@@ -204,6 +209,7 @@ export type McpUpsertInput = z.infer<typeof McpUpsertPayload>;
 
 export const McpNamePayload = z.object({ name: mcpName });
 export const McpEnabledPayload = z.object({ name: mcpName, enabled: z.boolean() });
+export const McpAlwaysLoadPayload = z.object({ name: mcpName, alwaysLoad: z.boolean() });
 /** JSON 粘贴导入：兼容 {"mcpServers": {...}} 与内层对象（Claude Desktop / Cursor 格式） */
 export const McpImportPayload = z.object({ text: z.string().min(1).max(100_000) });
 

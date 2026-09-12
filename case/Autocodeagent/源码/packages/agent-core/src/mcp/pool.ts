@@ -13,6 +13,8 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { McpServerConfig, McpServerView, McpStatus, McpToolView } from '@agentbuddy/shared';
 import { resolveEnv } from './env';
 import { registerSecret } from '../redact';
+import { estimateSchemaTokens } from '../context';
+import { ON_DEMAND_MIN_MCP_SCHEMA_TOKENS } from '../tools/toolSearch';
 import type { McpConfigStore } from './configStore';
 import type { Tool, ToolResult } from '../tools/types';
 
@@ -69,11 +71,13 @@ export class McpPool {
   }
 
   views(): McpServerView[] {
+    const onDemand = this.onDemandServers();
     return [...this.conns.values()].map((c) => ({
       config: c.cfg,
       status: c.status,
       tools: c.tools.map((t) => ({ name: t.name, description: t.description })),
       error: c.error,
+      onDemand: onDemand.has(c.cfg.name),
     }));
   }
 
@@ -96,6 +100,40 @@ export class McpPool {
         description: c.cfg.description ?? '',
         tools: c.tools.map((t) => t.name),
       }));
+  }
+
+  /** 强制常驻的已连接连接器名集合：buildSessionBus 据此把这批连接器的工具全量常驻，跳过按需分流 */
+  alwaysLoadServers(): Set<string> {
+    const out = new Set<string>();
+    for (const conn of this.conns.values()) {
+      if (conn.status === 'connected' && conn.cfg.alwaysLoad) out.add(conn.cfg.name);
+    }
+    return out;
+  }
+
+  /**
+   * 处于按需（deferred）模式的已连接连接器名集合，供 views() 打「On-demand」徽标。
+   * 全局近似（不做 per-session 专家绑定过滤）：规则镜像 buildSessionBus——非 alwaysLoad 的
+   * 已连接工具 schema 合计超阈值时，这批连接器整体转按需；alwaysLoad / 未连接的一律不计入。
+   */
+  private onDemandServers(): Set<string> {
+    const rest: string[] = [];
+    let tokens = 0;
+    for (const conn of this.conns.values()) {
+      if (conn.status !== 'connected' || conn.cfg.alwaysLoad) continue;
+      rest.push(conn.cfg.name);
+      for (const t of conn.tools) {
+        // 与 wrapTool / mcpSchemaTokens 同源估算：name + description(含兜底) + inputSchema
+        tokens += estimateSchemaTokens({
+          name: mcpToolName(conn.cfg.name, t.name),
+          description: t.description || `MCP 连接器 ${conn.cfg.name} 提供的外部工具`,
+          parameters: t.inputSchema,
+        });
+      }
+    }
+    const out = new Set<string>();
+    if (tokens > ON_DEMAND_MIN_MCP_SCHEMA_TOKENS) for (const s of rest) out.add(s);
+    return out;
   }
 
   /* ── 配置变更入口（三通道统一经此，变更后即时连接 / 断开） ── */
@@ -131,6 +169,15 @@ export class McpPool {
       await this.closeConn(conn);
       conn.status = 'disabled';
     }
+    this.emit();
+  }
+
+  /** 强制常驻开关：仅更新标志 + 持久化 + 广播（不重连；连接状态与 alwaysLoad 正交，下一轮 buildSessionBus 生效） */
+  async setAlwaysLoad(name: string, alwaysLoad: boolean): Promise<void> {
+    const cfg = await this.deps.store.setAlwaysLoad(name, alwaysLoad);
+    const conn = this.conns.get(name);
+    if (!conn) throw new Error(`连接器不存在: ${name}`);
+    conn.cfg = cfg;
     this.emit();
   }
 

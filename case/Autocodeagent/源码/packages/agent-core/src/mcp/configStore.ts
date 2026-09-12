@@ -22,6 +22,7 @@ const ServerConfigSchema = z
     headers: z.record(z.string().max(1024)).optional(),
     description: z.string().max(300).optional(),
     enabled: z.boolean(),
+    alwaysLoad: z.boolean().optional(),
     icon: z.string().max(150_000).optional(),
   })
   .superRefine((v, c) => {
@@ -81,6 +82,16 @@ export class McpConfigStore {
     const cfg = map[name];
     if (!cfg) throw new Error(`连接器不存在: ${name}`);
     cfg.enabled = enabled;
+    await this.save(map);
+    return cfg;
+  }
+
+  /** 强制常驻开关：仅更新持久化标志，不触发重连（连接状态与 alwaysLoad 正交，下一轮 buildSessionBus 生效） */
+  async setAlwaysLoad(name: string, alwaysLoad: boolean): Promise<McpServerConfig> {
+    const map = await this.load();
+    const cfg = map[name];
+    if (!cfg) throw new Error(`连接器不存在: ${name}`);
+    cfg.alwaysLoad = alwaysLoad;
     await this.save(map);
     return cfg;
   }
@@ -205,6 +216,7 @@ function toConfig(name: string, value: unknown): McpServerConfig {
 
   const description = typeof v['description'] === 'string' ? v['description'] : undefined;
   const enabled = v['enabled'] === undefined ? true : v['enabled'] === true;
+  const alwaysLoad = v['alwaysLoad'] === true;
 
-  return { name, type, command, args, env, url, headers, description, enabled };
+  return { name, type, command, args, env, url, headers, description, enabled, alwaysLoad };
 }

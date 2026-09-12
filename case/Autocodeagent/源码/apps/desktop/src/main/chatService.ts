@@ -49,6 +49,8 @@ export class ChatService {
   /** P3：gate 按会话保留 → 「始终允许」跨轮复用；模式/白名单每轮热更新 */
   private gates = new Map<string, PermissionGate>();
   private askHandlers = new Map<string, (q: PermissionQuery) => Promise<PermissionAnswer>>();
+  /** Phase 2 按需加载：per-session 发现集（sessionId → 已发现的 MCP 工具名），跨多次 ask 累积；clear/delete 时重置 */
+  private discovered = new Map<string, Set<string>>();
 
   constructor(
     private readonly sessions: SessionStore,
@@ -143,7 +145,8 @@ export class ChatService {
       }
     }
 
-    // 内置 + 技能自取 + 已连接 MCP 工具全量合并（无上限，schema 全量下发，模型按需自动识别调用；对齐 opencode）
+    // 内置 + 技能自取 + 已连接 MCP 工具合并；MCP 按 schema 合计 token 分流：小规模全量常驻，
+    // 大规模转按需（deferred + search_tools 检索发现）；alwaysLoad 连接器强制常驻、跳过按需。详见 tools/bus.ts。
     // 技能自取工具：模型按④层目录自主 use_skill（普通/专家模式同源）；专家绑定清单作硬边界收口
     const skillTool = this.skills
       ? createSkillTool(this.skills, expert && expert.skills.length > 0 ? expert.skills : undefined)
@@ -152,7 +155,8 @@ export class ChatService {
     const webSearchTool = await this.buildWebSearchTool(settings);
     const mcpTools = this.mcp?.sessionTools() ?? [];
     const extra = [skillTool, webSearchTool].filter((t): t is Tool => t !== null);
-    const bus = buildSessionBus(mcpTools, expert?.tools, extra);
+    // alwaysLoadServers：强制常驻连接器名（pool 侧算，仅已连接且 cfg.alwaysLoad）
+    const bus = buildSessionBus(mcpTools, expert?.tools, extra, { alwaysLoadServers: this.mcp?.alwaysLoadServers() });
     // ⑤层目录同步限定：只列绑定的连接器（未绑定时全量）
     let mcpCatalog = this.mcp?.catalog();
     if (mcpCatalog && expert && expert.tools.length > 0) {
@@ -178,6 +182,8 @@ export class ChatService {
         skillInstruction,
         mcpCatalog,
         persona: expert?.persona || undefined,
+        // Phase 2：per-session 发现集（跨多次 ask 累积 search_tools 命中，clear/delete 时重置）
+        discovered: this.discoveredFor(sessionId),
         onTodos: (todos) => {
           void this.sessions.updateTodos(sessionId, todos); // 随会话落盘（防抖）；plan 事件由 Loop 发（§18）
         },
@@ -268,6 +274,21 @@ export class ChatService {
       this.gates.set(sessionId, gate);
     }
     return gate;
+  }
+
+  /** Phase 2：取（或惰性建）会话的按需发现集，注入 runTurn 使 search_tools 命中跨多次提问累积、不必重复检索 */
+  private discoveredFor(sessionId: string): Set<string> {
+    let set = this.discovered.get(sessionId);
+    if (!set) {
+      set = new Set<string>();
+      this.discovered.set(sessionId, set);
+    }
+    return set;
+  }
+
+  /** Phase 2：清空 / 删除会话时重置其发现集（ipc 层调用）——下次提问重新按需检索，避免记住已随清空失效的工具名 */
+  resetDiscovered(sessionId: string): void {
+    this.discovered.delete(sessionId);
   }
 
   /** Ask 挂起：发 permission_request 事件，等 Renderer 回灌或 abort 解除 */

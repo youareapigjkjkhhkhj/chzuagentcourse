@@ -55,3 +55,15 @@
 ## 环境要求（参考）
 
 Docker（含 docker-compose）、Python 3.11+、Node.js 22+、Java 17+ 等 —— 具体以各项目文档为准。
+
+5 门来自 Stanford、CMU 和 MIT 三所大学的 AI 课程，可以收藏慢慢学习
+1. 斯坦福大学 CS329A Self-Improving AI Agents
+人定义意图、Agent 执行的新软件工程
+2. 斯坦福大学 CS 329Z: Engineering AI Agents
+从模型到系统：流水线 → 复合 AI → 自主 Agent
+3. 斯坦福大学 CS146S: The Modern Software Developer
+人定义意图、Agent 执行的新软件工程
+4. MIT 多模态 AI 课程 2026 版
+YouTube 全集上线，融合对齐 → 推理智能体
+5. CMU 秋季新课 AI Agents
+OpenHands 作者亲授，从零搭 Harness、建评测、用 RL 训智能体，讲义视频已公开

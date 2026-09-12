@@ -39,6 +39,8 @@ export interface ToolContext {
   resolvePath(userPath: string): Promise<string>;
   /** P4：todo_write 清单变更回调（事件 + 落盘由外层实现，工具不感知存储） */
   onTodos?(todos: TodoItem[]): void;
+  /** 按需加载：search_tools 命中后回报工具名，orchestrator 记入 discovered 集，下一轮注入其 schema */
+  onDiscoverTools?(names: string[]): void;
 }
 
 export interface Tool {

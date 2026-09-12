@@ -24,6 +24,8 @@ const api = {
     /** P7：expertId 缺省 = 普通助理会话 */
     create: (title: string, expertId?: string) => invoke('session:create', { title, ...(expertId ? { expertId } : {}) }),
     delete: (id: string) => invoke('session:delete', { id }),
+    /** 清空当前会话：移除全部消息与 todos、标题复位，保留会话壳 */
+    clear: (id: string) => invoke('session:clear', { id }),
     /** 侧栏会话搜索：标题 + 消息内容全文 grep */
     search: (query: string) => invoke('session:search', { query }),
     /** P2 3.3 节点回溯：回到该消息节点重来（逆序回滚 + 分叉新会话） */
@@ -88,6 +90,7 @@ const api = {
     upsert: (input: McpUpsertInput) => invoke('mcp:upsert', input),
     remove: (name: string) => invoke('mcp:remove', { name }),
     setEnabled: (name: string, enabled: boolean) => invoke('mcp:set-enabled', { name, enabled }),
+    setAlwaysLoad: (name: string, alwaysLoad: boolean) => invoke('mcp:set-always-load', { name, alwaysLoad }),
     reconnect: (name: string) => invoke('mcp:reconnect', { name }),
     importJson: (text: string) => invoke('mcp:import', { text }),
   },

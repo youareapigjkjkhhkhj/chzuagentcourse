@@ -14,6 +14,7 @@ import {
   ExpertUpsertPayload,
   IpcChannels,
   maskKey,
+  McpAlwaysLoadPayload,
   McpEnabledPayload,
   McpImportPayload,
   McpNamePayload,
@@ -104,7 +105,17 @@ export function registerIpc(ctx: IpcContext): void {
   handle(IpcChannels.sessionDelete, (raw) => {
     const v = validatePayload(SessionIdPayload, raw, IpcChannels.sessionDelete);
     if (!v.ok) throw new Error(v.error);
+    chat.resetDiscovered(v.value.id); // Phase 2：删除会话即丢弃其按需发现集
     return sessions.delete(v.value.id);
+  });
+
+  // 清空当前会话：生成中拒绝（runTurn 持有 live 消息副本，清空会被复活）
+  handle(IpcChannels.sessionClear, (raw) => {
+    const v = validatePayload(SessionIdPayload, raw, IpcChannels.sessionClear);
+    if (!v.ok) throw new Error(v.error);
+    if (chat.isBusy(v.value.id)) throw new Error('该会话正在生成中，请先停止再清空');
+    chat.resetDiscovered(v.value.id); // Phase 2：清空后重新按需检索，发现集不跨清空保留
+    return sessions.clear(v.value.id).then(() => undefined);
   });
 
   // 侧栏会话搜索：标题 + 消息内容 grep（Main 侧 fs，Renderer 无文件系统访问）
@@ -295,6 +306,14 @@ export function registerIpc(ctx: IpcContext): void {
     const v = validatePayload(McpEnabledPayload, raw, IpcChannels.mcpSetEnabled);
     if (!v.ok) throw new Error(v.error);
     await mcp.setEnabled(v.value.name, v.value.enabled);
+    return mcp.views();
+  });
+
+  // Phase 2：强制常驻开关（不重连，仅更新标志 + 广播视图；下一轮 buildSessionBus 生效）
+  handle(IpcChannels.mcpSetAlwaysLoad, async (raw) => {
+    const v = validatePayload(McpAlwaysLoadPayload, raw, IpcChannels.mcpSetAlwaysLoad);
+    if (!v.ok) throw new Error(v.error);
+    await mcp.setAlwaysLoad(v.value.name, v.value.alwaysLoad);
     return mcp.views();
   });
 

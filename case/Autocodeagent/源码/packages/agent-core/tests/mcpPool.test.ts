@@ -226,3 +226,76 @@ describe('mcpToolName / mcpDisplayName（命名消毒与展示映射）', () => 
     expect(mcpDisplayName('read')).toBe('read'); // 非 MCP 工具原样
   });
 });
+
+describe('McpPool 按需徽标 / alwaysLoad（in-process HTTP，大 schema）', () => {
+  let dir: string;
+  let pool: McpPool;
+  let httpServer: import('node:http').Server;
+  let baseUrl = '';
+
+  beforeAll(async () => {
+    const { createServer } = await import('node:http');
+    const { Server: McpServer } = await import('@modelcontextprotocol/sdk/server/index.js');
+    const { StreamableHTTPServerTransport } = await import('@modelcontextprotocol/sdk/server/streamableHttp.js');
+    const { ListToolsRequestSchema, CallToolRequestSchema } = await import('@modelcontextprotocol/sdk/types.js');
+
+    const makeServer = () => {
+      const s = new McpServer({ name: 'big', version: '0.0.1' }, { capabilities: { tools: {} } });
+      // 10 个大描述工具：schema 合计越过 ON_DEMAND_MIN_MCP_SCHEMA_TOKENS(6000) → 该连接器整体转按需
+      s.setRequestHandler(ListToolsRequestSchema, async () => ({
+        tools: Array.from({ length: 10 }, (_, i) => ({
+          name: `render_${i}`,
+          description: `render scene ${i} ${'x'.repeat(1800)}`,
+          inputSchema: { type: 'object', properties: {} },
+        })),
+      }));
+      s.setRequestHandler(CallToolRequestSchema, async () => ({ content: [{ type: 'text', text: 'ok' }] }));
+      return s;
+    };
+
+    httpServer = createServer(async (req, res) => {
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      await makeServer().connect(transport);
+      await transport.handleRequest(req, res);
+    });
+    await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+    const addr = httpServer.address();
+    baseUrl = `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}/mcp`;
+
+    dir = await mkdtemp(join(tmpdir(), 'mcp-pool-ondemand-'));
+    pool = new McpPool({ store: new McpConfigStore(join(dir, 'mcp.json')) });
+    await pool.init();
+    await pool.upsert({ name: 'gfx', type: 'http', url: baseUrl, description: '大 schema 渲染', enabled: true });
+    await waitForStatus(pool, 'gfx', 'connected');
+  });
+
+  afterAll(async () => {
+    await pool.closeAll();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('大 schema 连接器：views().onDemand=true，alwaysLoadServers() 为空', () => {
+    const view = pool.views().find((v) => v.config.name === 'gfx');
+    expect(view?.status).toBe('connected');
+    expect(view?.onDemand).toBe(true); // schema 合计超阈值 → 按需
+    expect(pool.alwaysLoadServers().size).toBe(0);
+  });
+
+  it('setAlwaysLoad(true)：onDemand 转 false、alwaysLoadServers 含之，状态不变（不重连）', async () => {
+    await pool.setAlwaysLoad('gfx', true);
+    const view = pool.views().find((v) => v.config.name === 'gfx');
+    expect(view?.config.alwaysLoad).toBe(true);
+    expect(view?.onDemand).toBe(false); // 强制常驻 → 不再按需
+    expect(view?.status).toBe('connected'); // 未触发重连
+    expect(pool.alwaysLoadServers().has('gfx')).toBe(true);
+    expect(pool.sessionTools().some((t) => t.name === 'mcp__gfx__render_0')).toBe(true);
+  });
+
+  it('setAlwaysLoad(false)：恢复按需分流 → onDemand 转回 true', async () => {
+    await pool.setAlwaysLoad('gfx', false);
+    const view = pool.views().find((v) => v.config.name === 'gfx');
+    expect(view?.onDemand).toBe(true);
+    expect(pool.alwaysLoadServers().size).toBe(0);
+  });
+});

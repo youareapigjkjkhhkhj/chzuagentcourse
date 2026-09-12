@@ -9,7 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import type { ChatMessage, ModelConfig, NormalizedUsage, Risk, StreamEvent, StoredToolCall, TodoItem } from '@agentbuddy/shared';
 import { resolveWithinRoots } from './workspace/workspace';
-import { assembleContext, pruneToolsToWindow, type McpSummary, type SkillSummary } from './context';
+import { assembleContext, clampOutputTokens, pruneToolsToWindow, type McpSummary, type SkillSummary } from './context';
 import { primaryTarget, type PermissionGate } from './permission';
 import type { Checkpoint } from './checkpoint';
 import type { LlmClient } from './llm/client';
@@ -26,6 +26,10 @@ const CONTINUE_PROMPT =
 /** 400 探测到的真实上下文窗口（按 baseUrl::model 缓存）：配置 contextWindow 与离线服务实际窗口不一致时自愈 */
 const learnedWindows = new Map<string, number>();
 const CONTEXT_LENGTH_RE = /maximum context length is (\d+)/i;
+/** vLLM 输出上限预检查报错：max_tokens > max_model_len（在处理输入前就 400，与上面的 context length 是两类错误） */
+const MAX_MODEL_LEN_RE = /max_model_len\D{0,30}(\d+)/i;
+/** 低于此窗口视为「装不下系统提示 + 内置工具 + 最小输出」，给明确换模型提示而非静默降级 */
+const MIN_VIABLE_WINDOW = 8192;
 
 export type Emit = (event: StreamEvent) => void;
 
@@ -60,6 +64,11 @@ export interface TurnDeps {
   mcpCatalog?: McpSummary[];
   /** P7：专家人设（会话绑定专家时注入系统提示；工具限定由外层构建 bus 时完成） */
   persona?: string;
+  /**
+   * Phase 2 按需加载·per-session 发现集：跨多次 runTurn 累积已发现的 MCP 工具名，
+   * 使整个会话记住 search_tools 命中结果，无需每次提问重复检索。缺省则退化为本次 runTurn 内的临时集。
+   */
+  discovered?: Set<string>;
 }
 
 interface ParsedCall {
@@ -75,13 +84,22 @@ export async function runTurn(dep: TurnDeps): Promise<void> {
   const windowKey = `${dep.config.baseUrl}::${dep.config.model}`;
   let effectiveWindow = learnedWindows.get(windowKey) ?? dep.config.contextWindow;
   let pruneNoticed = false;
+  // 按需加载：search_tools 发现的 MCP 工具名累积注入后续每轮 schema（发现与调用分两轮）。
+  // dep.discovered 由 chatService 按 sessionId 持有 → per-session 记忆，跨多次提问不必重复检索；缺省退化为本次 runTurn 临时集。
+  const discovered = dep.discovered ?? new Set<string>();
 
   while (turns++ < MAX_TURNS) {
     if (dep.signal.aborted) return;
 
     // 窗口物理容量裁剪：schema 全量下发装不下时按序少挂 MCP 工具（内置恒保留）——溢出与历史无关，新会话同样生效
-    const cfg: ModelConfig = { ...dep.config, contextWindow: effectiveWindow };
-    const { kept: tools, dropped } = pruneToolsToWindow(dep.bus.schemas(), effectiveWindow, cfg.maxTokens);
+    // 输出上限也按真实窗口收敛：小窗口模型（vLLM max_model_len）下 max_tokens 不得超过窗口，否则处理输入前即 400
+    const cfg: ModelConfig = {
+      ...dep.config,
+      contextWindow: effectiveWindow,
+      maxTokens: clampOutputTokens(dep.config.maxTokens, effectiveWindow),
+    };
+    // 按需加载：deferred 模式下只下发常驻 + 已发现工具的 schema；无 deferred 时 selectSchemas 等同全量 schemas()
+    const { kept: tools, dropped } = pruneToolsToWindow(dep.bus.selectSchemas(discovered), effectiveWindow, cfg.maxTokens);
     if (dropped.length > 0 && !pruneNoticed) {
       pruneNoticed = true;
       dep.emit({
@@ -90,10 +108,15 @@ export async function runTurn(dep: TurnDeps): Promise<void> {
         message: `上下文窗口（${effectiveWindow}）装不下全部工具 schema：本轮少下发 ${dropped.length} 个 MCP 工具。可停用部分连接器，或换用更大上下文窗口的模型。`,
       });
     }
-    // ⑤层目录与实发 schema 对齐：被裁剪的连接器不再进 # 提及目录（避免提及不可用工具）
-    const keptServers = new Set(
-      tools.map((t) => /^mcp__([^_].*?)__/.exec(t.function.name)?.[1]).filter((s): s is string => Boolean(s)),
-    );
+    // ⑤层 MCP 目录：按需（deferred）模式下全量保留作「发现索引」（模型据此知道有哪些连接器，用 search_tools 检索）；
+    // 全量常驻模式下与实发 schema 对齐——被窗口裁剪掉的连接器不再进 # 提及目录（避免提及不可用工具）
+    let mcpCatalog = dep.mcpCatalog;
+    if (!dep.bus.hasDeferred() && mcpCatalog) {
+      const keptServers = new Set(
+        tools.map((t) => /^mcp__([^_].*?)__/.exec(t.function.name)?.[1]).filter((s): s is string => Boolean(s)),
+      );
+      mcpCatalog = mcpCatalog.filter((c) => keptServers.has(c.name));
+    }
     const wire = await assembleContext({
       workspace: dep.workspace,
       extraRoots: dep.workspaceRoots.filter((r) => r !== dep.workspace),
@@ -102,7 +125,7 @@ export async function runTurn(dep: TurnDeps): Promise<void> {
       mode: dep.gate.mode,
       skillCatalog: dep.skillCatalog,
       skillInstruction: dep.skillInstruction,
-      mcpCatalog: dep.mcpCatalog?.filter((c) => keptServers.has(c.name)),
+      mcpCatalog,
       persona: dep.persona,
       tools,
     });
@@ -123,12 +146,21 @@ export async function runTurn(dep: TurnDeps): Promise<void> {
         },
       });
     } catch (e) {
-      // 上下文超窗 400：从服务端报错探测真实窗口，裁剪后本轮重试一次（配置 contextWindow 偏大时自愈）
-      const hit = e instanceof Error ? CONTEXT_LENGTH_RE.exec(e.message) : null;
+      // 上下文/输出超窗 400：从服务端报错探测真实窗口，收敛窗口 + 输出上限后本轮重试一次（配置偏大时自愈）
+      const msg = e instanceof Error ? e.message : '';
+      const hit = CONTEXT_LENGTH_RE.exec(msg) ?? MAX_MODEL_LEN_RE.exec(msg);
       if (hit && !retriedWindow) {
         retriedWindow = true;
         effectiveWindow = Math.min(effectiveWindow, Number(hit[1]));
         learnedWindows.set(windowKey, effectiveWindow);
+        // 窗口过小：裁剪与压缩都救不回，明确提示换模型或调大服务端 --max-model-len（下一轮 clamp 会消掉 max_tokens 报错）
+        if (effectiveWindow < MIN_VIABLE_WINDOW) {
+          dep.emit({
+            type: 'notice',
+            sessionId: dep.sessionId,
+            message: `检测到模型上下文窗口仅 ${effectiveWindow} tokens，不足以容纳系统提示、内置工具与最小输出（约需 ${MIN_VIABLE_WINDOW}+）。请换用更大窗口的模型，或在推理服务端调大 --max-model-len。`,
+          });
+        }
         continue;
       }
       // abort：当前半截 assistant 消息标记落盘，不带入下轮请求（§4.1 约束 4）
@@ -164,10 +196,10 @@ export async function runTurn(dep: TurnDeps): Promise<void> {
     const parsed = res.toolCalls.map(parseCall);
     const allRead = parsed.every((p) => riskOf(dep.bus, p) === 'READ');
     if (allRead && parsed.length > 1) {
-      await Promise.all(parsed.map((p) => execCall(dep, p, failures)));
+      await Promise.all(parsed.map((p) => execCall(dep, p, failures, discovered)));
     } else {
       for (const p of parsed) {
-        const tripped = await execCall(dep, p, failures);
+        const tripped = await execCall(dep, p, failures, discovered);
         if (tripped || dep.signal.aborted) return;
       }
     }
@@ -191,8 +223,8 @@ function riskOf(bus: ToolBus, p: ParsedCall): Risk {
   return tool.assessRisk?.(p.input) ?? tool.risk;
 }
 
-/** 返回 true = 熔断触发，主循环应终止 */
-async function execCall(dep: TurnDeps, p: ParsedCall, failures: Map<string, number>): Promise<boolean> {
+/** 返回 true = 熔断触发，主循环应终止；discovered 为本次 runTurn 的按需加载发现集（search_tools 命中回填） */
+async function execCall(dep: TurnDeps, p: ParsedCall, failures: Map<string, number>, discovered: Set<string>): Promise<boolean> {
   const { call } = p;
   const tool = dep.bus.get(call.name);
   // P6：风险 / 目标提前计算，执行记录各终态分支共用
@@ -276,6 +308,10 @@ async function execCall(dep: TurnDeps, p: ParsedCall, failures: Map<string, numb
     onTodos: (todos) => {
       dep.emit({ type: 'plan', sessionId: dep.sessionId, todos });
       dep.onTodos?.(todos);
+    },
+    // 按需加载：search_tools 命中后把工具名记入 discovered，下一轮 selectSchemas 即注入其 schema 供模型调用
+    onDiscoverTools: (names) => {
+      for (const n of names) discovered.add(n);
     },
   };
 

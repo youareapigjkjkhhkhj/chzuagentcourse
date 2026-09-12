@@ -45,6 +45,13 @@ input::placeholder, textarea::placeholder { color: #a39c8e; }
 }
 .stream-caret.is-streaming { animation: none; }
 @keyframes caret-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+/* 流式末尾光标（纯 CSS）：替代旧的每帧 DOMParser 注入 .stream-caret/.stream-tail，
+   内联在最后一个块级元素文末，跟随模型吐字原速、零每帧 DOM 开销；流结束 is-streaming 移除即消失 */
+.md-body.is-streaming > *:last-child::after {
+  content: ''; display: inline-block; width: 2px; height: 1.05em;
+  margin-left: 1.5px; translate: 0 -0.5px; border-radius: 1px;
+  background: #26231e; vertical-align: text-bottom;
+}
 @media (prefers-reduced-motion: reduce) {
   .stream-caret { animation: none; }
   .stream-tail { filter: none; -webkit-mask-image: none; mask-image: none; }

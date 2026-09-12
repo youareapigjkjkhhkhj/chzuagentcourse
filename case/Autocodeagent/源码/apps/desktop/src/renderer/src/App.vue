@@ -542,6 +542,7 @@ onUnmounted(() => offTitleStream?.());
           @remove-workspace-root="(p) => void removeRoot(p)"
           @workspace-changed="refreshGit"
           @rollback-done="(id) => void onRollbackDone(id)"
+          @session-cleared="refreshSessions"
           @back-to-experts="() => { activeSessionId = null; }"
         />
         <ExpertsView

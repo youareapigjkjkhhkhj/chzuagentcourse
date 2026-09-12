@@ -222,6 +222,21 @@ export class SessionStore {
     return session;
   }
 
+  /** 清空当前会话：移除全部消息与 todos、标题复位「新会话」，但保留会话壳（id/工作区/专家绑定不动），立即落盘。
+   *  语义对齐主流聊天的「Clear conversation」：原地重开而非删会话，侧栏位置与绑定关系不丢。 */
+  async clear(id: string): Promise<SessionData | null> {
+    const session = await this.get(id);
+    if (!session) return null;
+    session.messages = [];
+    session.messageCount = 0;
+    session.todos = [];
+    session.title = '新会话';
+    session.updatedAt = Date.now();
+    this.cancelPending(id);
+    await this.writeAtomic(session);
+    return session;
+  }
+
   /** 应用退出前强制落盘所有挂起会话 */
   async flushAll(): Promise<void> {
     const entries = [...this.pending.entries()];

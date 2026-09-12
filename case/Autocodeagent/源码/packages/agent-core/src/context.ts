@@ -71,6 +71,7 @@ export function systemPrompt(
   extraRoots?: string[],
   persona?: string,
   webTools?: { fetch: boolean; search: boolean },
+  onDemandTools?: boolean,
 ): string {
   const parts = [
     '你是 AgentBuddy，本地轻量的通用 AI 助理。通过工具操作用户工作区的文件与命令，覆盖办公文档、资料整理、日常问答与编程开发等多种任务。',
@@ -91,14 +92,18 @@ export function systemPrompt(
   }
   // /name 触发：正文作为当轮高优先级指令（仅本轮，不落历史）
   if (skillInstruction) parts.push(`高优先级指令（用户触发的技能正文，请严格遵循）：\n${skillInstruction}`);
-  // ⑤ MCP 连接器目录：#名称 提及即优先使用该连接器工具（P5）
+  // ⑤ MCP 连接器目录：全量常驻模式下 #名称 提及即优先使用；按需（deferred）模式下这是「发现索引」——
+  // 工具默认未载入参数 schema，需先 search_tools 检索命中，其 schema 于下一轮注入后方可正确调用
   if (mcpCatalog?.length) {
     const lines = mcpCatalog.map((s) => {
       const shown = s.tools.slice(0, 10).join(', ');
       const more = s.tools.length > 10 ? ` 等 ${s.tools.length} 个` : '';
       return `- #${s.name}${s.description ? `：${s.description}` : ''}（工具：${shown}${more}）`;
     });
-    parts.push(`已连接 MCP 连接器（用户消息中用 #名称 提及时优先使用对应连接器）：\n${lines.join('\n')}`);
+    const header = onDemandTools
+      ? '已连接 MCP 连接器（按需加载：下列工具默认未载入参数定义，不能直接调用；需要某连接器能力时先用 search_tools 描述需求检索，命中的工具从下一轮起加入可调用列表，再按其参数调用）：'
+      : '已连接 MCP 连接器（用户消息中用 #名称 提及时优先使用对应连接器）：';
+    parts.push(`${header}\n${lines.join('\n')}`);
   }
   // 联网能力说明：按本轮实际下发的 web 工具（源自 bus.schemas）措辞，绝不提及不可用的工具
   if (webTools?.fetch || webTools?.search) {
@@ -136,10 +141,13 @@ export async function assembleContext(opts: {
   // 联网提示按实际下发的 schema 推导（webfetch 内置常驻、websearch 配置后注入），避免提及不可用工具
   const toolNames = new Set((opts.tools ?? []).map((t) => t.function.name));
   const webTools = { fetch: toolNames.has('webfetch'), search: toolNames.has('websearch') };
+  // 按需加载：search_tools 在实发 schema 中 = MCP 走 deferred 模式，系统提示据此改为「发现索引 + 先检索」措辞
+  // （用字面量而非 import SEARCH_TOOLS_NAME：避免 context ↔ toolSearch 循环依赖，与 webfetch/websearch 约定一致）
+  const onDemandTools = toolNames.has('search_tools');
   const wire: LlmWireMessage[] = [
     {
       role: 'system',
-      content: systemPrompt(opts.workspace, opts.config.model, instructions, opts.mode ?? 'Ask', opts.skillCatalog, opts.skillInstruction, opts.mcpCatalog, opts.extraRoots, opts.persona, webTools),
+      content: systemPrompt(opts.workspace, opts.config.model, instructions, opts.mode ?? 'Ask', opts.skillCatalog, opts.skillInstruction, opts.mcpCatalog, opts.extraRoots, opts.persona, webTools, onDemandTools),
     },
     ...opts.history.map(toWire),
   ];
@@ -149,16 +157,36 @@ export async function assembleContext(opts: {
 
 /**
  * 本轮 prompt 的 token 预算 = contextWindow − 输出预留 − 工具 schema 估算，再留 5% 估算误差余量。
- * - 输出预留 max(OUTPUT_RESERVE, maxTokens)：至少 8k 安全垫，maxTokens 更大时按实际输出上限；
+ * - 输出预留见 outputReserve：至少 8k 安全垫，maxTokens 更大时按实际输出上限，但绝不超过窗口一半；
  * - 工具 schema 此前完全未计入，是「消息已 trim 仍超窗」的主因（后端把 tools 渲染进 prompt）；
  * - estimateTokens 是字符近似：未计 chat-template 每条消息的 role/特殊 token，且对 JSON schema /
  *   代码 / 英文技术文本低估真实 BPE 计数 → 乘 0.95 留余量，避免「估算刚好卡线、真实却超窗」的 400；
  * - 下限 4000 兜底，窗口极小时也不至于把预算算成 0/负数。
  */
 export function computePromptBudget(config: ModelConfig, tools?: LlmToolSchema[]): number {
-  const reserve = Math.max(OUTPUT_RESERVE, config.maxTokens);
+  const reserve = outputReserve(config.maxTokens, config.contextWindow);
   const toolsTokens = tools?.length ? estimateTokens(JSON.stringify(tools)) : 0;
   return Math.max(4000, Math.floor((config.contextWindow - reserve - toolsTokens) * 0.95));
+}
+
+/**
+ * 输出预留 = max(8k 安全垫, maxTokens)，但上限锁死在窗口的一半。
+ * 离线小窗口模型（如 vLLM max_model_len=4096）若沿用固定 8k 预留，reserve 会超过窗口本身：
+ * 既把 prompt 预算算穿（负数被 4000 下限兜住却仍大于真实可用），又让下发的 max_tokens 大于
+ * max_model_len 被服务端在处理输入前直接 400 拒绝。
+ */
+function outputReserve(maxTokens: number, windowTokens: number): number {
+  return Math.min(Math.max(OUTPUT_RESERVE, maxTokens), Math.max(512, Math.floor(windowTokens / 2)));
+}
+
+/**
+ * 实际下发的 max_tokens：只下调不上调——不超过用户配置，且不超过窗口的一半。
+ * vLLM 对 max_tokens > max_model_len 会在处理输入前就 400（「max_tokens=8192 cannot be greater than
+ * max_model_len=max_total_tokens=4096」），故小窗口必须先把输出上限压进窗口内；
+ * 大窗口模型 min 后取值不变，行为无感。至少 256 保证任何窗口下都能出字。
+ */
+export function clampOutputTokens(maxTokens: number, windowTokens: number): number {
+  return Math.min(maxTokens, Math.max(256, Math.floor(windowTokens / 2)));
 }
 
 /** JSON schema / 代码类 ASCII 文本真实 BPE 约 0.3~0.4 token/字符，estimateTokens 的 0.25 系数会低估 → 专用保守系数 */
@@ -183,7 +211,7 @@ export function pruneToolsToWindow(
   windowTokens: number,
   maxTokens: number,
 ): { kept: LlmToolSchema[]; dropped: string[] } {
-  const reserve = Math.max(OUTPUT_RESERVE, maxTokens);
+  const reserve = outputReserve(maxTokens, windowTokens);
   let room = windowTokens - reserve - SYSTEM_PROMPT_ALLOWANCE - MIN_MESSAGE_ROOM;
   const kept: LlmToolSchema[] = [];
   const dropped: string[] = [];

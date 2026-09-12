@@ -62,6 +62,17 @@ describe('upsert / load / remove / setEnabled', () => {
     expect((await store.load())['github']?.enabled).toBe(false);
   });
 
+  it('setAlwaysLoad 持久化强制常驻标志；upsert 往返不丢失 alwaysLoad', async () => {
+    await store.upsert(STDIO_CFG);
+    const on = await store.setAlwaysLoad('github', true);
+    expect(on.alwaysLoad).toBe(true);
+    expect((await store.load())['github']?.alwaysLoad).toBe(true); // ServerConfigSchema 未 strip
+    await store.upsert({ ...STDIO_CFG, alwaysLoad: true }); // 表单通道携带 alwaysLoad 往返一致
+    expect((await store.load())['github']?.alwaysLoad).toBe(true);
+    await store.setAlwaysLoad('github', false);
+    expect((await store.load())['github']?.alwaysLoad).toBe(false);
+  });
+
   it('load：文件缺失返回空映射；单条损坏跳过不阻塞其余', async () => {
     expect(await store.load()).toEqual({});
     await store.upsert(STDIO_CFG);
@@ -104,6 +115,14 @@ describe('importJson', () => {
     const imported = await store.importJson(text);
     expect(imported.find((c) => c.name === 'remote')).toMatchObject({ type: 'sse', url: 'https://example.com/mcp', enabled: false });
     expect(imported.find((c) => c.name === 'other')?.enabled).toBe(true);
+  });
+
+  it('alwaysLoad 字段透传（导入即强制常驻）；缺省为 false', async () => {
+    const imported = await store.importJson(JSON.stringify({
+      mcpServers: { gfx: { command: 'node', args: ['s.js'], alwaysLoad: true }, other: { command: 'node' } },
+    }));
+    expect(imported.find((c) => c.name === 'gfx')?.alwaysLoad).toBe(true);
+    expect(imported.find((c) => c.name === 'other')?.alwaysLoad).toBe(false);
   });
 
   it('transport: http 字段 → http 类型（Cocos Creator / 主流网关格式）', async () => {

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 /** Markdown 渲染（主流 Agent 同款输出）：GFM + 代码块高亮 + 复制按钮。
  * DOMPurify 清洗防 XSS；复制按钮用事件委托，流式重渲染不受影响。
- * 流式性能：token 高频到达期间节流渲染（THROTTLE_MS 至多一次）且代码块跳过 hljs 全文高亮 ——
- * 逐 token 全量 marked+hljs+sanitize+DOMParser 会打满渲染主线程，表现为「卡住、工具执行完才整段出现」；
- * 流结束立即做一次完整渲染（补高亮、去光标）。 */
+ * 流式性能（跟随模型吐字原速、平滑不卡顿）：requestAnimationFrame 合帧渲染替代旧的固定 100ms 节流——
+ * 一帧内到达的多个 token 只跑一次 marked+sanitize，既跟手（≈60fps）又每帧至多一次，不打满主线程；
+ * 流式期间代码块跳过 hljs 全文高亮，末尾光标改由纯 CSS（.md-body.is-streaming）绘制，
+ * 不再每帧 DOMParser 重解析整段 HTML（旧实现 O(n)/帧、长回复累积 O(n²) 卡顿）。流结束立即完整高亮渲染。 */
 import { onUnmounted, ref, watch } from 'vue';
 import DOMPurify from 'dompurify';
 import { Marked } from 'marked';
@@ -41,65 +42,42 @@ function highlight(text: string, language: string): string {
   }
 }
 
-/** 流式节流窗口：至多每 100ms 渲染一次（≈10fps 足够阅读，主线程留出余量） */
-const THROTTLE_MS = 100;
 const html = ref('');
-let timer: number | undefined;
+let raf: number | undefined;
 
 function renderNow(): void {
-  const clean = DOMPurify.sanitize(marked.parse(props.content ?? '') as string);
-  html.value = props.streaming ? withStreamEdge(clean) : clean;
+  html.value = DOMPurify.sanitize(marked.parse(props.content ?? '') as string);
+}
+
+/** 流式按帧合并：一帧内多次 token 只渲染一次，跟随模型原速且每帧至多一次，不打满主线程 */
+function scheduleRender(): void {
+  if (raf !== undefined) return;
+  raf = requestAnimationFrame(() => {
+    raf = undefined;
+    renderNow();
+  });
 }
 
 watch(
   [() => props.content, () => props.streaming],
   () => {
     if (!props.streaming) {
-      if (timer !== undefined) {
-        clearTimeout(timer);
-        timer = undefined;
+      if (raf !== undefined) {
+        cancelAnimationFrame(raf);
+        raf = undefined;
       }
-      renderNow(); // 流结束：立即完整高亮 + 收掉光标
+      renderNow(); // 流结束：立即完整高亮（末尾光标随 is-streaming class 移除而消失）
       return;
     }
-    if (timer === undefined) {
-      timer = window.setTimeout(() => {
-        timer = undefined;
-        renderNow();
-      }, THROTTLE_MS);
-    }
+    // 首帧立即出字，避免气泡挂载瞬间空白闪一下；其后按帧合并渲染
+    if (html.value === '') renderNow();
+    else scheduleRender();
   },
   { immediate: true },
 );
 onUnmounted(() => {
-  if (timer !== undefined) clearTimeout(timer);
+  if (raf !== undefined) cancelAnimationFrame(raf);
 });
-
-/** Streaming Text 同款：末尾 TAIL_CHARS 个字符包 .stream-tail 软模糊消解，
- * 并在文末内联插入常亮细光标（操作已清洗 HTML 的最后一个文本节点，不会切断标签） */
-const TAIL_CHARS = 6;
-function withStreamEdge(clean: string): string {
-  const doc = new DOMParser().parseFromString(`<div id="sb-root">${clean}</div>`, 'text/html');
-  const root = doc.getElementById('sb-root');
-  if (!root) return clean;
-  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let last: Text | null = null;
-  let node: Node | null;
-  while ((node = walker.nextNode())) if ((node.textContent ?? '').trim()) last = node as Text;
-  const caret = doc.createElement('span');
-  caret.className = 'stream-caret is-streaming';
-  if (last?.textContent) {
-    const tail = last.splitText(Math.max(0, last.textContent.length - TAIL_CHARS));
-    const span = doc.createElement('span');
-    span.className = 'stream-tail';
-    tail.parentNode?.insertBefore(span, tail);
-    span.appendChild(tail);
-    span.after(caret);
-  } else {
-    root.appendChild(caret); // 首 token 未到：空内容也显示光标
-  }
-  return root.innerHTML;
-}
 
 /** 事件委托：点「复制」→ 取同块 pre 文本写剪贴板，短暂反馈「已复制」 */
 function onContentClick(e: MouseEvent): void {
@@ -116,5 +94,5 @@ function onContentClick(e: MouseEvent): void {
 </script>
 
 <template>
-  <div class="md-body" @click="onContentClick" v-html="html" />
+  <div class="md-body" :class="{ 'is-streaming': streaming }" @click="onContentClick" v-html="html" />
 </template>

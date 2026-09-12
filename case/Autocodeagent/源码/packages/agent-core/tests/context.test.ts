@@ -1,7 +1,7 @@
 /** 上下文组装与截断单测（P1 验收：旧工具结果占位摘要，技术方案 §4.3） */
 import { describe, expect, it } from 'vitest';
 import type { ChatMessage, LlmToolSchema, LlmWireMessage, ModelConfig } from '@agentbuddy/shared';
-import { assembleContext, compactPlaceholder, computePromptBudget, dropOldMessages, estimateTokens, pruneToolsToWindow, toWire, trimToBudget } from '../src/context';
+import { assembleContext, clampOutputTokens, compactPlaceholder, computePromptBudget, dropOldMessages, estimateTokens, pruneToolsToWindow, toWire, trimToBudget } from '../src/context';
 
 const config: ModelConfig = {
   id: 'test', name: 't', provider: 'openai', baseUrl: 'http://x', model: 'gpt-4o-mini',
@@ -186,6 +186,20 @@ describe('assembleContext', () => {
     expect(instructIdx).toBeGreaterThan(catalogIdx); // 指令在目录之后追加，优先级最高层位
     expect(sys).toContain('【审查清单正文】逐项检查正确性');
   });
+
+  it('按需加载：实发 schema 含 search_tools → 系统提示切换为发现索引措辞', async () => {
+    const tools: LlmToolSchema[] = [
+      { type: 'function', function: { name: 'search_tools', description: 'd', parameters: {} } },
+    ];
+    const wire = await assembleContext({
+      workspace: null, config, history: [msg({})],
+      mcpCatalog: [{ name: 'gfx', description: '渲染', tools: ['render'] }],
+      tools,
+    });
+    const sys = wire[0]?.content ?? '';
+    expect(sys).toContain('按需加载');
+    expect(sys).toContain('search_tools');
+  });
 });
 
 describe('computePromptBudget（工具 schema 计入 + 估算余量，防 prompt+max_tokens 超窗触发 400）', () => {
@@ -237,5 +251,23 @@ describe('pruneToolsToWindow（窗口物理容量裁剪：schema 装不下时新
     const { kept, dropped } = pruneToolsToWindow(tools, 9000, 4096);
     expect(kept.map((t) => t.function.name)).toEqual(['read']);
     expect(dropped).toEqual(['mcp__a__t1']);
+  });
+});
+
+describe('clampOutputTokens（下发 max_tokens 窗口感知：max_tokens > max_model_len 会被 vLLM 处理输入前 400）', () => {
+  it('小窗口：输出上限压到窗口一半（8192 → 2048，消除 max_tokens>max_model_len 报错）', () => {
+    expect(clampOutputTokens(8192, 4096)).toBe(2048);
+  });
+
+  it('只降不升：maxTokens 小于窗口一半时原样返回（100 保持 100，不误抬）', () => {
+    expect(clampOutputTokens(100, 128000)).toBe(100);
+  });
+
+  it('大窗口无感：maxTokens 未超窗口一半时不变（8192 @ 32768 保持 8192）', () => {
+    expect(clampOutputTokens(8192, 32768)).toBe(8192);
+  });
+
+  it('极小窗口下限 256 兜底（任何窗口都能出字，不为 0/负）', () => {
+    expect(clampOutputTokens(8192, 400)).toBe(256);
   });
 });

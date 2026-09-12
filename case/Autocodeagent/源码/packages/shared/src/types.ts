@@ -369,6 +369,8 @@ export interface McpServerConfig {
   headers?: Record<string, string>;
   description?: string;
   enabled: boolean;
+  /** 强制常驻：即使 MCP schema 合计超阈值也全量下发工具参数，跳过按需检索（默认 false = 参与按需分流） */
+  alwaysLoad?: boolean;
   /** 上传的图标（data URL，≤100KB 原图） */
   icon?: string;
 }
@@ -384,4 +386,6 @@ export interface McpServerView {
   status: McpStatus;
   tools: McpToolView[];
   error?: string;
+  /** 该连接器工具当前处于 deferred 按需模式（未常驻参数定义，需 search_tools 检索后方可调用） */
+  onDemand?: boolean;
 }

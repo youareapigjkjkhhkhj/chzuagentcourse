@@ -39,6 +39,8 @@ export interface AgentBridge {
     /** P7：expertId 缺省 = 普通助理会话 */
     create(title: string, expertId?: string): Promise<IpcResult<SessionData>>;
     delete(id: string): Promise<IpcResult<void>>;
+    /** 清空当前会话：移除全部消息与 todos、标题复位，保留会话壳 */
+    clear(id: string): Promise<IpcResult<void>>;
     /** 侧栏会话搜索：标题 + 消息内容全文 grep（Main 侧执行） */
     search(query: string): Promise<IpcResult<SessionSearchHit[]>>;
     /** P2 3.3 节点回溯：回到该消息节点重来（逆序回滚 + 分叉新会话） */
@@ -103,6 +105,7 @@ export interface AgentBridge {
     upsert(input: McpUpsertInput): Promise<IpcResult<McpServerView[]>>;
     remove(name: string): Promise<IpcResult<McpServerView[]>>;
     setEnabled(name: string, enabled: boolean): Promise<IpcResult<McpServerView[]>>;
+    setAlwaysLoad(name: string, alwaysLoad: boolean): Promise<IpcResult<McpServerView[]>>;
     reconnect(name: string): Promise<IpcResult<McpServerView[]>>;
     importJson(text: string): Promise<IpcResult<{ imported: string[]; views: McpServerView[] }>>;
   };

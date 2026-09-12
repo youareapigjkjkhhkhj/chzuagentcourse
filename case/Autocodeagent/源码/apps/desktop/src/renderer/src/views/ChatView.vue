@@ -19,7 +19,7 @@ import MarkdownBody from '../components/MarkdownBody.vue';
 import WorkbenchPanel from '../components/workbench/WorkbenchPanel.vue';
 
 const props = defineProps<{ sessionId: string | null; workspaceName: string; workspaceRoots: string[]; workspaceActive: string | null; expert?: Expert | null }>();
-const emit = defineEmits<{ (e: 'pick-workspace'): void; (e: 'select-workspace-root', path: string): void; (e: 'remove-workspace-root', path: string): void; (e: 'workspace-changed'): void; (e: 'back-to-experts'): void; (e: 'rollback-done', branchSessionId: string): void }>();
+const emit = defineEmits<{ (e: 'pick-workspace'): void; (e: 'select-workspace-root', path: string): void; (e: 'remove-workspace-root', path: string): void; (e: 'workspace-changed'): void; (e: 'back-to-experts'): void; (e: 'rollback-done', branchSessionId: string): void; (e: 'session-cleared'): void }>();
 
 const { messages, busy, thinking, error, notice, openSession, send, stop, pendingPermission, resolvePermission, diffSignal, streamingId } = useAgent();
 
@@ -133,9 +133,16 @@ watch(busy, (now, prev) => {
   }
 });
 
-watch([messages, thinking], () => void nextTick(() => {
-  messageList.value?.scrollTo({ top: messageList.value.scrollHeight });
-}), { deep: true });
+// 自动滚动按帧合并：token 高频到达时每帧至多一次 scrollTo，避免逐 token 强制同步布局（读 scrollHeight）抖动
+let scrollRaf: number | undefined;
+function scheduleScroll(): void {
+  if (scrollRaf !== undefined) return;
+  scrollRaf = requestAnimationFrame(() => {
+    scrollRaf = undefined;
+    messageList.value?.scrollTo({ top: messageList.value.scrollHeight });
+  });
+}
+watch([messages, thinking], () => void nextTick(scheduleScroll), { deep: true });
 
 onMounted(async () => {
   await loadModels();
@@ -148,7 +155,10 @@ onMounted(async () => {
   });
 });
 
-onUnmounted(() => offMcpStream?.());
+onUnmounted(() => {
+  offMcpStream?.();
+  if (scrollRaf !== undefined) cancelAnimationFrame(scrollRaf);
+});
 
 /** 模型列表 + 当前激活项（模型配置中心维护，对话框下拉切换） */
 async function loadModels(): Promise<void> {
@@ -216,6 +226,22 @@ async function deleteMessage(m: ChatMessage): Promise<void> {
     return;
   }
   await openSession(props.sessionId);
+}
+
+/** 清空当前会话：移除全部消息与 todos（保留会话壳，可继续对话）。影响面大故二次确认；
+ * 成功后重置右栏工作台、从盘重载对齐 messages/todos，并通知上层刷新侧栏（标题已复位「新会话」）。生成中 Main 侧拒绝。 */
+async function clearSession(): Promise<void> {
+  if (!props.sessionId || busy.value) return;
+  const ok = window.confirm('清空当前会话的全部消息？此操作不可恢复（会话本身会保留，可继续对话）。');
+  if (!ok) return;
+  const res = await agent().session.clear(props.sessionId);
+  if (!res.ok) {
+    error.value = res.error ?? '清空失败';
+    return;
+  }
+  bench.reset();
+  await openSession(props.sessionId);
+  emit('session-cleared');
 }
 
 /** P2 3.3 节点回溯：仅 assistant 节点、且其后还有消息时可回（回到此处 = 抹掉之后的一切重来）。 */
@@ -422,6 +448,17 @@ async function onSend(): Promise<void> {
 
       <!-- 场景 B：对话流 + 底部输入卡 -->
       <template v-else>
+        <!-- 会话顶部工具条：清空当前会话（右对齐，生成中禁用；不可恢复故点击二次确认） -->
+        <div class="flex items-center justify-end px-6 pt-3 shrink-0">
+          <button
+            class="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-stone-400 hover:bg-stone-500/5 hover:text-rose-600 transition-std disabled:opacity-40 disabled:pointer-events-none"
+            title="清空当前会话的全部消息（会话保留，可继续对话）"
+            :disabled="busy"
+            @click="() => void clearSession()"
+          >
+            <span v-html="ico('trash')" /> 清空会话
+          </button>
+        </div>
         <div ref="messageList" class="flex-1 overflow-y-auto px-6 py-5 space-y-4">
 
           <template v-for="item in renderItems" :key="item.key">
