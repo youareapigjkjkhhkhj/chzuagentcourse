@@ -8,12 +8,17 @@
 
 ★ `voice_type` 存的是厂商音色 ID，但代码里不写任何字面量（AGENTS.md §4.1）：
 种子数据从环境变量读取，没配就诚实留空，设置页显示「未配置音色 ID」。
+
+★ P2 §5 说的「补充 provider_voice_type」就由 `voice_type` 本列承担 ——
+不再新开一列：两列存同一个值必然有一天对不上，而对不上时谁说了算没有答案。
+同理，**实时池的音色 ID 不落库**：那是环境相关值，按 `voice_pool("realtime")`
+在读取时从配置取（见 seeds/voices.py），免得改了 .env 还要同步刷库。
 """
 
 from __future__ import annotations
 
 from app.extensions import db
-from app.models.base import PkMixin, TimestampMixin
+from app.models.base import JSONField, PkMixin, TimestampMixin
 
 # provider 取值 → 对应哪条语音链路
 VOICE_PROVIDERS = ("volc_tts", "volc_realtime", "browser")
@@ -35,6 +40,15 @@ class VoiceProfile(PkMixin, TimestampMixin, db.Model):
 
     # 该音色的默认语速偏移（-50 ~ 100），用于让共用音色的角色听感可区分
     speech_rate = db.Column(db.Integer, nullable=False, default=0)
+
+    # 试听缓存（P2-A5）：合成过一次后这里就是可直接播的 URL。
+    # 重复点击「试听」走它，不再产生新文件、也不再计费。
+    preview_url = db.Column(db.String(255))
+    # 合成参数（emotion / loudness / pronunciation 覆盖等）。
+    # 厂商参数是会不断长出来的东西，一个 knob 一列会让表跟着厂商改版跑。
+    params_json = db.Column(db.Text)
+
+    params = JSONField("params_json")
 
     __table_args__ = (
         db.CheckConstraint(
@@ -63,8 +77,10 @@ class VoiceProfile(PkMixin, TimestampMixin, db.Model):
             "gender": self.gender,
             "style": self.style or "",
             "sampleUrl": self.sample_url or "",
+            "previewUrl": self.preview_url or "",
             "builtin": bool(self.builtin),
             "speechRate": self.speech_rate,
+            "params": self.params or {},
             "configured": self.configured,
         }
 

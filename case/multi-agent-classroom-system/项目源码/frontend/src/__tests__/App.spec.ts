@@ -27,11 +27,19 @@ vi.mock('@/api', () => ({
   enableProvider: vi.fn(),
   saveVoice: vi.fn(),
   saveGeneration: vi.fn(),
-  // 课堂演示页在有 `?course=` 时才拉这两样；这里补上是为了让那份替身完整 ——
+  // 课堂演示页在有 `?course=` 时才拉这几样；这里补上是为了让那份替身完整 ——
   // 少一个导出，import 到它的组件拿到的是 undefined，报错会指向别处
   fetchCourses: vi.fn(),
   fetchCourse: vi.fn(),
   fetchOutline: vi.fn(),
+  fetchAudioManifest: vi.fn(),
+  narrateCourse: vi.fn(),
+  // 语音：设置页的试听与用量（pane 切过去才拉）
+  fetchVoices: vi.fn(),
+  previewVoice: vi.fn(),
+  fetchVoiceUsage: vi.fn(),
+  // 实时语音的地址要到开麦克风那一刻才取
+  realtimeUrl: vi.fn(() => 'ws://localhost/ws/voice/realtime'),
 }))
 
 import * as api from '@/api'
@@ -57,6 +65,25 @@ function stubEmptyEnvironment() {
     whiteboard: true,
   })
   vi.mocked(api.fetchRoles).mockResolvedValue({ items: [], total: 0 })
+  vi.mocked(api.fetchCourses).mockResolvedValue({ items: [], total: 0, page: 1, size: 20 })
+  // 课堂页即使没有 `?course=` 也会读一次清单（没课号时读的是空串），给一份空的
+  vi.mocked(api.fetchAudioManifest).mockResolvedValue({
+    courseId: '',
+    voiceId: '',
+    speed: null,
+    rate: 1,
+    tone: '',
+    provider: '',
+    simulated: false,
+    enabled: false,
+    available: false,
+    fallback: 'text',
+    reason: 'voice_disabled',
+    beatCount: 0,
+    readyCount: 0,
+    beats: [],
+    running: false,
+  })
   vi.mocked(api.fetchCapabilities).mockResolvedValue({
     env: 'testing',
     version: '0.1.0',
@@ -78,6 +105,7 @@ function stubEmptyEnvironment() {
       intensities: ['low', 'medium', 'high'],
       scriptDetails: ['concise', 'normal', 'detailed'],
     },
+    materials: { enabled: true, maxBytes: 52428800 },
   })
   vi.mocked(api.fetchHealth).mockResolvedValue({
     status: 'ok',
@@ -103,6 +131,7 @@ const ROUTES = [
   { path: '/', name: 'index', component: () => import('@/views/IndexView.vue') },
   { path: '/workbench', name: 'workbench', component: () => import('@/views/WorkbenchView.vue') },
   { path: '/classroom', name: 'classroom', component: () => import('@/views/ClassroomView.vue') },
+  { path: '/classroom/record', name: 'classroom-record', component: () => import('@/views/ClassroomRecordView.vue') },
   { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
 ] as const
 
@@ -164,7 +193,7 @@ describe('四个页面', () => {
   it.each([
     ['/', '输入一个主题'],
     ['/workbench', '课程生成 Agent'],
-    ['/classroom', '课堂运行时'],
+    ['/classroom', '导出课件'],
     ['/settings', '模型服务商'],
   ])('%s 有内容且不报错', async (path, expected) => {
     const wrapper = await mountAt(path)

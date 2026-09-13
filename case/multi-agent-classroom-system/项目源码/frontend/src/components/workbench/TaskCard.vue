@@ -6,13 +6,15 @@
  * （P1-B5）。所以 `percent` 为 `null` 时显示的是「—」——「还不知道」和「0%」
  * 是两件事，前者不该画成一根会自己爬的进度条。
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
+import TaskTimeline from '@/components/workbench/TaskTimeline.vue'
 import type { JobStatus, LiveStep, WriteBatch } from '@/types/api'
 import { formatDurationMs } from '@/utils/format'
 import { JOB_STATUS_LABELS, STEP_CLASSES } from '@/utils/labels'
 
 const props = defineProps<{
+  jobId: string
   steps: LiveStep[]
   /** 写页那一步分批的子进度（服务端在 `step.progress` 里带过来的）。 */
   batches: WriteBatch[]
@@ -21,11 +23,18 @@ const props = defineProps<{
   status: JobStatus | ''
   canceled: boolean
   error: string
+  /**
+   * 能不能「继续生成」（P5-F5-9）。**由服务端判**：停下来了（失败 / 取消 /
+   * 被重启打断）且还有没跑完的步骤。前端自己拼 `status === 'failed'`
+   * 会漏掉后两种，而它们恰恰是最该续的。
+   */
+  resumable: boolean
 }>()
 
 const emit = defineEmits<{
   cancel: []
   retry: [stepId: string]
+  resume: []
 }>()
 
 const TERMINAL: readonly string[] = ['done', 'failed', 'canceled']
@@ -34,6 +43,12 @@ const percentText = computed(() => (props.percent === null ? '—' : `${props.pe
 
 /** 任务已经结束（或被取消）就没有「取消」可点了。 */
 const canCancel = computed(() => !props.canceled && !TERMINAL.includes(props.status))
+
+/**
+ * 时间线收不收起来。**默认收起**：任务卡的第一眼要留给进度本身，
+ * 「钱花在哪一步」是点开才看的东西。展开时组件才挂载，于是每次展开都是新取的数。
+ */
+const timelineOpen = ref(false)
 
 const statusText = computed(() => {
   if (props.canceled) return '已取消'
@@ -112,16 +127,47 @@ function batchWidth(batch: WriteBatch): string {
       <t-tag :theme="status === 'failed' ? 'danger' : 'default'" variant="light" size="small">
         {{ statusText }}
       </t-tag>
-      <t-button
-        v-if="canCancel"
-        class="wb-cancel"
-        size="small"
-        variant="outline"
-        @click="emit('cancel')"
-      >
-        取消生成
-      </t-button>
+      <div class="task-card__acts">
+        <!--
+          断点续跑：从第一个没做完的步骤接着跑，已经写好的页面一页都不重写。
+          与「重试」不是一回事 —— 那个是用户指着某一步说再来一次，
+          这个是「接着上次的地方往下跑」，断点由服务端从状态里自己找。
+        -->
+        <t-button
+          v-if="resumable"
+          class="wb-resume"
+          size="small"
+          theme="primary"
+          variant="outline"
+          @click="emit('resume')"
+        >
+          继续生成
+        </t-button>
+        <t-button
+          v-if="canCancel"
+          class="wb-cancel"
+          size="small"
+          variant="outline"
+          @click="emit('cancel')"
+        >
+          取消生成
+        </t-button>
+      </div>
     </div>
+
+    <button class="task-card__toggle" type="button" @click="timelineOpen = !timelineOpen">
+      {{ timelineOpen ? '收起时间线' : '查看时间线' }}
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        :class="{ 'is-open': timelineOpen }"
+      >
+        <path d="m6 9 6 6 6-6" />
+      </svg>
+    </button>
+    <TaskTimeline v-if="timelineOpen" :job-id="jobId" />
   </div>
 </template>
 
@@ -325,5 +371,38 @@ function batchWidth(batch: WriteBatch): string {
   justify-content: space-between;
   gap: 8px;
   margin-top: 12px;
+}
+
+.task-card__acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-card__toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: var(--td-text-secondary);
+  cursor: pointer;
+}
+
+.task-card__toggle:hover {
+  color: var(--td-brand-color);
+}
+
+.task-card__toggle svg {
+  width: 12px;
+  height: 12px;
+  transition: transform 0.15s;
+}
+
+.task-card__toggle svg.is-open {
+  transform: rotate(180deg);
 }
 </style>

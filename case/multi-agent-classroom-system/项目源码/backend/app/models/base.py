@@ -67,4 +67,15 @@ class PkMixin:
     id = db.Column(db.String(32), primary_key=True, default=new_id)
 
 
-__all__ = ["JSONField", "PkMixin", "TimestampMixin", "new_id"]
+def enum_check(column: str, values: tuple[str, ...], name: str) -> db.CheckConstraint:
+    """`<column> IN (...)` 那种 CHECK。
+
+    枚举值全部来自各模型模块的常量元组 —— 调用方一个字符串都不该现写。
+    SQLite 改不动 CHECK 约束，所以每加一个值都要配一条迁移（各模块的常量
+    元组上都有这句话）。
+    """
+    joined = ", ".join(f"'{value}'" for value in values)
+    return db.CheckConstraint(f"{column} IN ({joined})", name=name)
+
+
+__all__ = ["JSONField", "PkMixin", "TimestampMixin", "enum_check", "new_id"]

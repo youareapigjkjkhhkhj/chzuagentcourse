@@ -40,16 +40,43 @@ def json_body(required: bool = True) -> dict:
 def register_api(app: Flask) -> None:
     """注册全部蓝图。前缀统一在各自蓝图里写全，便于直接看路由表。"""
     from app.api.agents import bp as agents_bp
+    from app.api.classroom import bp as classroom_bp
     from app.api.courses import bp as courses_bp
+    from app.api.exports import bp as exports_bp
     from app.api.generation import bp as generation_bp
     from app.api.health import bp as health_bp
+    from app.api.materials import bp as materials_bp
     from app.api.settings import bp as settings_bp
+    from app.api.usage import bp as usage_bp
+    from app.api.voice import bp as voice_bp
+    from app.api.workbench import bp as workbench_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(settings_bp)
+    # 用量蓝图带 url_prefix `/api/usage`：它三条路由同属一个只读子域，
+    # 与课程/导出那种「一半挂课程下、一半挂自己下」的形状不同。
+    # 预算那两条按 §4.2 留在设置蓝图里（改预算与改音色是同一类动作）。
+    app.register_blueprint(usage_bp)
     app.register_blueprint(agents_bp)
     app.register_blueprint(generation_bp)
     app.register_blueprint(courses_bp)
+    # 导出蓝图同样写全路径：它一半挂在 `/api/courses/<id>/exports`
+    # （课程详情页的导出面板），一半挂在 `/api/exports/<id>`（产物本身）
+    app.register_blueprint(exports_bp)
+    # 材料蓝图也没有 url_prefix：它有一条 `/api/courses/<id>/materials`
+    # （课程关联），与课程蓝图的路由不重叠（课程那边没有 `/materials` 子路径）
+    app.register_blueprint(materials_bp)
+    # 工作台蓝图同样写全路径。它有一条 `/api/courses/<id>/chat/stream`，
+    # 与课程的 `/api/courses/<id>/...` 不重叠（课程那边没有 `/chat` 子路径）。
+    app.register_blueprint(workbench_bp)
+    # 语音蓝图没有 url_prefix：路由写的是全路径，好让它的 errorhandler
+    # 只圈住语音那几个端点（见 app/api/voice.py 顶部）
+    app.register_blueprint(voice_bp)
+    # 课堂蓝图同理没有 url_prefix：它的路由也写全路径。
+    # **必须在语音之后注册**：两条 `websocket=True` 路由的路径前缀没有交集
+    # （`/ws/voice/*` 与 `/ws/classroom/*`），顺序不影响匹配，但读路由表时
+    # 两条推送通道挨着看更清楚（/ws 一共就这两条）
+    app.register_blueprint(classroom_bp)
 
 
 __all__ = ["json_body", "register_api"]

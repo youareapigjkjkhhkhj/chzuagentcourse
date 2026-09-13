@@ -24,7 +24,14 @@ const NAV = [
   { name: 'settings', to: '/settings', label: '设置' },
 ] as const
 
-const activeName = computed(() => route.name)
+/**
+ * 顶栏点亮哪一项。
+ *
+ * 默认按路由名对上四个链接；子页面（课堂记录 `/classroom/record`）用
+ * `meta.nav` 指回它所属的那一项 —— 记录页是从课堂页跳过去的，人还在
+ * 这堂课的上下文里，四个链接全暗着会让人以为掉出了应用。
+ */
+const activeName = computed(() => (route.meta.nav as string | undefined) ?? route.name)
 </script>
 
 <template>

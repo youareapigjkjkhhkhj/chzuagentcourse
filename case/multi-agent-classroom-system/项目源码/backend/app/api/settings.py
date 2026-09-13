@@ -1,9 +1,15 @@
 """设置页接口（§4.2）。
 
-四个子域：
+五个子域：
 - providers  服务商卡片：列表 / 保存 / 测试连接 / 启用
 - voice      音色与语速、ASR 开关
 - generation 生成参数（页数 / 同学数 / 激烈度 / 详细度 / 三个开关）
+- pricing    价目表（P5，F5-7）—— 只写，读在 `GET /api/usage/models`
+- budget     预算上限与告警阈值（P5，F5-8）
+
+预算挂在这里而不是 `/api/usage` 下，理由与其它三项相同：它是**设置**，
+与「看用量」是两件事 —— 前者写、后者读，混在一个蓝图上，
+某天想给「看用量」开只读权限时会发现分不开。
 
 「测试连接」不叫「保存」——它真的会发一次 1-token 的请求（P0-A5）。
 失败时返回 200 + `ok:false` + 原因，而不是 5xx：探活成功地探出了「连不上」，
@@ -17,7 +23,8 @@ from flask import Blueprint
 
 from app.api import json_body
 from app.common.response import ok
-from app.services import provider_admin, settings_service
+from app.services import audit, provider_admin, settings_service
+from app.services.usage import budget, pricing
 
 bp = Blueprint("settings", __name__, url_prefix="/api/settings")
 
@@ -49,7 +56,17 @@ def save_provider(provider_id: str):
     字段缺省或空串 = **不改这一栏**（表单回显的是掩码，用户没动它就不该被覆盖）；
     想清空 Key 要用 `{"clearApiKey": true}`。
     """
-    return ok(provider_admin.save_provider(provider_id, json_body()))
+    body = json_body()
+    card = provider_admin.save_provider(provider_id, body)
+    # 审计只记**改了哪几栏的名字**，一个值都不记 —— 这几栏里就有 API Key 原文
+    #（AGENTS §19）。审计要回答的是「谁、什么时候、动过哪张卡」，
+    # 而不是「配的是什么」：后者是取证时翻库才该看的东西。
+    audit.record(
+        audit.ACTION_PROVIDER_UPDATE,
+        target=f"provider:{provider_id}",
+        detail={"fields": sorted(k for k, v in body.items() if v not in (None, ""))},
+    )
+    return ok(card)
 
 
 @bp.post("/providers/<provider_id>/test")
@@ -84,7 +101,11 @@ def enable_provider(provider_id: str):
 
     允许启用一张还没填 Key 的卡：用户的自然顺序是「先启用，再去填 Key」。
     """
-    return ok(provider_admin.enable_provider(provider_id))
+    card = provider_admin.enable_provider(provider_id)
+    # 启用是全局唯一的一次切换：它会把别的卡置为未启用，所以「什么时候换的、
+    # 换成谁」要留痕 —— 上游账单对不上时，这是第一个要看的时间点。
+    audit.record(audit.ACTION_PROVIDER_ENABLE, target=f"provider:{provider_id}")
+    return ok(card)
 
 
 # --- 语音 ---
@@ -143,3 +164,61 @@ def update_generation():
     越界返回 40001。
     """
     return ok(settings_service.update_generation(json_body()))
+
+
+@bp.put("/pricing")
+def update_pricing():
+    """改价目表（P5 §4.2：价格表「可在设置页维护」）。
+
+    请求示例：
+        PUT /api/settings/pricing
+        {"llm": {"deepseek-chat": {"promptPer1k": 1, "completionPer1k": 3}},
+         "tts": {"perKChars": 0.2}}
+
+    **读在 `/api/usage/models`，写在这里** —— 与预算同一套分法：看用量是读，
+    改价目表是设置。传进来的整段覆盖 `settings_kv.pricing`，`.env` 里的
+    `LLM_PRICE_*` / `VOICE_*_PRICE_*` 继续打底（见 `services/usage/pricing.py`）。
+
+    负数与拼错的档位一律 40001：负单价会让账本出现负金额，
+    而「花了 -3 元」会把别的链路花掉的钱抵掉一半。
+    """
+    return ok(pricing.update(json_body()))
+
+
+# --- 预算（P5 §4.2 / F5-8）---
+
+
+@bp.get("/budget")
+def get_budget():
+    """预算与当前用量：单课 token 上限、日预算、总额，各自用了多少（F5-8）。
+
+    请求示例：
+        GET /api/settings/budget
+
+    `global` / `day` 各一条（没设过的补一条默认的：全部为 0 = 不限），
+    加上每门配过预算的课各一条；`current` 里三个作用域都有位置
+    （单课那一档说的是「哪门课都还没指定」）。
+    每条都带着 `usedCost` / `usedTokens` / `alert`：设置页要显示
+    「日预算 10 元，今天已用 3.2 元」，分两次请求去拼，两半数字会来自不同时刻。
+
+    金额是**估算**（本机价目表乘出来的），每个响应都带 `note` 说明这件事。
+    """
+    return ok(budget.get_all())
+
+
+@bp.put("/budget")
+def update_budget():
+    """改预算。按作用域增量更新，只认传了的字段。
+
+    请求示例：
+        PUT /api/settings/budget
+        {"scope": "day", "limitCost": 20, "alertRatio": 0.8}
+        {"budgets": [{"scope": "day", "limitTokens": 200000},
+                     {"scope": "course", "refId": "c_01H…", "limitCost": 2}]}
+
+    `limitTokens` / `limitCost` 的 **0 = 不限**（而不是「限额为零」）：
+    用它把某一条关掉，比删行更好 —— 删行与「从没设过」在库里长得一样。
+    单课预算必须带 `refId`，不带就报 40001（不带就是「所有课程」，
+    那是 `global` 的意思，不能悄悄退化）。
+    """
+    return ok(budget.update(json_body()))

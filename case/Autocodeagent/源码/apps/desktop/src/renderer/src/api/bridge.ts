@@ -14,6 +14,7 @@ import type {
   RollbackResult,
   SessionData,
   SessionMeta,
+  SessionRunState,
   SessionSearchHit,
   SettingsSetInput,
   SkillMeta,
@@ -53,6 +54,8 @@ export interface AgentBridge {
   agent: {
     ask(payload: AskInput): Promise<IpcResult<void>>;
     abort(sessionId: string): Promise<IpcResult<boolean>>;
+    /** 会话进行态：切换会话时对齐 busy / 恢复挂起权限卡 */
+    state(sessionId: string): Promise<IpcResult<SessionRunState>>;
   };
   permission: {
     resolve(payload: { requestId: string; allow: boolean; remember: boolean }): Promise<IpcResult<boolean>>;

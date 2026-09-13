@@ -215,14 +215,11 @@ class OpenAICompatibleLLM(LLMProvider):
             # response_format=json_schema 是 OpenAI 的新参数，各家兼容程度参差，
             # 用它会把「能用」的范围缩小一大圈 —— 对我们来说不划算。
             payload["response_format"] = {"type": "json_object"}
-            payload["messages"] = [
-                *payload_messages,
-                {
-                    "role": "system",
-                    "content": "只输出 JSON，且必须符合以下 JSON Schema：\n"
-                    + json.dumps(json_schema, ensure_ascii=False),
-                },
-            ]
+            payload["messages"] = _with_json_rule(
+                payload_messages,
+                "只输出 JSON，且必须符合以下 JSON Schema：\n"
+                + json.dumps(json_schema, ensure_ascii=False),
+            )
         payload.update({k: v for k, v in extra.items() if v is not None})
         return payload
 
@@ -343,6 +340,26 @@ class OpenAICompatibleLLM(LLMProvider):
         if isinstance(exc, openai.OpenAIError):
             return f"上游 SDK 报错：{type(exc).__name__}"
         return f"{type(exc).__name__}: {exc}"
+
+
+def _with_json_rule(messages: list[dict], rule: str) -> list[dict]:
+    """把「只输出 JSON，符合这个 Schema」并进**第一条 system 消息**里。
+
+    这段要求原来是以一条 system 消息**追加在末尾**的：OpenAI、DeepSeek 都收，
+    但按 Qwen 模板校验的服务商（vLLM 一类）直接 400 ——
+    `System message must be at the beginning`。
+
+    也不能简单地往前面再插一条 system 了事：那种校验认的是「**第一条**」而不是
+    「开头附近」，两条连着的 system 会在第二条上翻车，等于换了个姿势报同一个错。
+    所以并进已有的第一条，全程只有一条 system，且一定在 0 号位。
+    """
+    if messages and str(messages[0].get("role") or "") == "system":
+        head = dict(messages[0])
+        head["content"] = "\n\n".join(
+            part for part in (str(head.get("content") or ""), rule) if part
+        )
+        return [head, *messages[1:]]
+    return [{"role": "system", "content": rule}, *messages]
 
 
 def _request_timeout(timeout: float | None) -> dict:

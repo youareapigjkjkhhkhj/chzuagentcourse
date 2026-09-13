@@ -1,0 +1,371 @@
+.drawer {
+  width: 340px;
+  flex-shrink: 0;
+  background: var(--td-bg-container);
+  border-left: 1px solid var(--td-component-stroke);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.drawer.is-collapsed {
+  width: 44px;
+}
+
+.drawer__rail {
+  flex: 1;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 0;
+  color: var(--td-text-secondary);
+}
+
+.drawer__rail:hover {
+  background: var(--td-bg-container-hover);
+}
+
+.drawer__rail svg {
+  width: 18px;
+  height: 18px;
+}
+
+.drawer__rail-text {
+  writing-mode: vertical-rl;
+  font-size: 12px;
+  letter-spacing: 2px;
+}
+
+.drawer__head {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--td-component-stroke);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.drawer__head h3 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.drawer__head .spacer {
+  flex: 1;
+}
+
+.head-hint {
+  font-size: 12px;
+}
+
+.drawer__fold {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--td-text-placeholder);
+  display: flex;
+  padding: 2px;
+}
+
+.drawer__fold svg {
+  width: 14px;
+  height: 14px;
+}
+
+.drawer__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.drop {
+  border: 1px dashed var(--td-component-border);
+  border-radius: var(--td-radius-medium);
+  padding: 14px 10px;
+  text-align: center;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--td-text-secondary);
+}
+
+.drop:hover {
+  border-color: var(--td-brand-color);
+  color: var(--td-brand-color);
+  background: var(--td-brand-color-light);
+}
+
+.drop svg {
+  width: 20px;
+  height: 20px;
+}
+
+.drop__hint {
+  font-size: 11px;
+  color: var(--td-text-placeholder);
+}
+
+.drawer__error {
+  font-size: 12px;
+  color: var(--td-error-color);
+  line-height: 1.6;
+}
+
+.drawer__error.is-net {
+  color: var(--td-warning-color);
+}
+
+.drawer__warn {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--td-warning-color);
+  background: var(--td-warning-color-light);
+  border-radius: var(--td-radius-default);
+  padding: 8px 10px;
+}
+
+.hits,
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 「全部 / 已加入这门课」的切换：一个小按钮，说清现在列的是哪一批 */
+.list__filter {
+  align-self: flex-start;
+  border: none;
+  background: transparent;
+  padding: 2px 0;
+  font-size: 12px;
+  color: var(--td-text-secondary);
+  cursor: pointer;
+  border-bottom: 1px dashed var(--td-component-border);
+}
+
+.list__filter:hover,
+.list__filter.is-on {
+  color: var(--td-brand-color);
+  border-bottom-color: var(--td-brand-color);
+}
+
+.hits__hint {
+  font-size: 12px;
+  padding: 6px 2px;
+}
+
+.hit {
+  text-align: left;
+  border: 1px solid var(--td-component-border);
+  border-radius: var(--td-radius-default);
+  background: transparent;
+  padding: 8px 10px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hit:hover {
+  border-color: var(--td-brand-color);
+}
+
+.hit__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--td-text-placeholder);
+}
+
+.hit__head .spacer {
+  flex: 1;
+}
+
+.hit__name {
+  color: var(--td-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 130px;
+}
+
+.hit__text {
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--td-text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.hit__text :deep(mark),
+.chunk__text :deep(mark) {
+  background: var(--td-warning-color-2);
+  color: inherit;
+  padding: 0 1px;
+}
+
+.mat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  border-radius: var(--td-radius-default);
+  cursor: pointer;
+  font-size: 12.5px;
+}
+
+.mat:hover {
+  background: var(--td-bg-container-hover);
+}
+
+.mat.is-on {
+  background: var(--td-brand-color-light);
+}
+
+.mat__name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mat__meta {
+  font-size: 11px;
+}
+
+.mat .spacer {
+  flex: 1;
+}
+
+.mat__act {
+  border: none;
+  background: transparent;
+  font-size: 11.5px;
+  color: var(--td-text-placeholder);
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.mat__act:hover {
+  color: var(--td-brand-color);
+}
+
+.mat__act.is-danger {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.mat__act.is-danger:hover {
+  color: var(--td-error-color);
+}
+
+.preview {
+  border-top: 1px solid var(--td-component-stroke);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.preview__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview__name {
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview__head .text-placeholder {
+  flex: 1;
+  font-size: 11px;
+}
+
+.tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tree__node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 5px 6px;
+  border-radius: var(--td-radius-default);
+  font-size: 12.5px;
+  color: var(--td-text-secondary);
+  cursor: pointer;
+}
+
+.tree__node:hover {
+  background: var(--td-bg-container-hover);
+  color: var(--td-brand-color);
+}
+
+.tree__title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chunk {
+  border: 1px solid transparent;
+  border-radius: var(--td-radius-default);
+  padding: 6px 8px;
+  background: var(--td-bg-page);
+}
+
+.chunk.is-focus {
+  border-color: var(--td-warning-color);
+  background: var(--td-warning-color-light);
+}
+
+.chunk__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.chunk__section {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--td-text-placeholder);
+}
+
+.chunk__text {
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--td-text-secondary);
+  word-break: break-word;
+}
+
+.mono {
+  font-family: var(--td-font-mono);
+}

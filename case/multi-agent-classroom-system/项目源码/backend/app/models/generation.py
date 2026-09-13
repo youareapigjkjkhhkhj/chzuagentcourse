@@ -109,7 +109,15 @@ class GenStep(PkMixin, TimestampMixin, db.Model):
     detail_json = db.Column(db.Text)
     duration_ms = db.Column(db.Integer, nullable=False, default=0)
     tokens = db.Column(db.Integer, nullable=False, default=0)
+    #: 这一步**一共跑过几次**（P5-F5-10）。断点续跑会接着跑失败的那一步，
+    #: 于是同一个步骤行会被写第二遍；次数留在行上，用户才分得清
+    #: 「一次就成」与「重试三次才成」——只留最后一次的耗时是看不出这个的。
+    attempts = db.Column(db.Integer, nullable=False, default=0, server_default="0")
     error = db.Column(db.Text)
+    #: 失败归类（rate_limit / timeout / schema_invalid…），与账本同源
+    #: （`llm.error_code_of`）。`error` 那句话是给人读的，这个是给机器分组的：
+    #: 前端据此决定是「去查 Key」还是「等一会儿再试」。
+    error_code = db.Column(db.String(32), nullable=False, default="", server_default="")
     started_at = db.Column(db.String(32))
     finished_at = db.Column(db.String(32))
 
@@ -140,7 +148,9 @@ class GenStep(PkMixin, TimestampMixin, db.Model):
             "detail": self.detail or {},
             "durationMs": self.duration_ms,
             "tokens": self.tokens,
+            "attempts": self.attempts or 0,
             "error": self.error or "",
+            "errorCode": self.error_code or "",
             "startedAt": self.started_at,
             "finishedAt": self.finished_at,
         }

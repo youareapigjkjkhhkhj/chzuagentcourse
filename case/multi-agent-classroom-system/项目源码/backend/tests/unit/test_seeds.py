@@ -27,6 +27,14 @@ VOICE_ENV = {
     "VOLC_TTS_VOICE_SCIENCE": "vendor-science-voice-id",
 }
 
+#: 实时池（P2）：同一批老师的另一套 ID，键与 TTS 那套**成对但不同** ——
+#: 两个池子不通用，拿错一个上游直接 InvalidSpeaker。
+REALTIME_VOICE_ENV = {
+    "VOLC_REALTIME_VOICE_TEACHER": "vendor-teacher-realtime-id",
+    "VOLC_REALTIME_VOICE_HISTORY": "vendor-history-realtime-id",
+    "VOLC_REALTIME_VOICE_SCIENCE": "vendor-science-realtime-id",
+}
+
 
 @pytest.fixture()
 def seeded(app_factory):
@@ -38,7 +46,9 @@ def seeded(app_factory):
     return application
 
 
-def test_seed_creates_one_teacher_and_three_classmates(seeded):
+def test_seed_creates_one_teacher_and_five_classmates(seeded):
+    """一位老师 + 五位同学。**给满**：课堂按设置里的「AI 同学数量」取前 N 位，
+    库里只有 3 位的话，设置调到 4、5 也没人多说一句话。"""
     from app.models import AgentRole
 
     with seeded.app_context():
@@ -46,10 +56,10 @@ def test_seed_creates_one_teacher_and_three_classmates(seeded):
         students = AgentRole.query.filter_by(role="student").all()
 
     assert len(teachers) == 1, "只能有一位主讲老师"
-    assert len(students) == 3, f"应有 3 名 AI 同学，实际 {len(students)}"
+    assert len(students) == 5, f"应有 5 名 AI 同学，实际 {len(students)}"
 
     names = {s.name for s in students}
-    assert names == {"林晓", "陈默", "苏雨"}, names
+    assert names == {"林晓", "陈默", "苏雨", "周野", "顾棠"}, names
     assert teachers[0].name == "沈老师"
 
 
@@ -94,6 +104,42 @@ def test_seed_leaves_voice_id_blank_when_unconfigured(app_factory):
     assert len(voices) == 3
     assert all(v.voice_type == "" for v in voices)
     assert all(v.configured is False for v in voices)
+
+
+def test_realtime_voice_ids_come_from_their_own_keys_and_stay_out_of_the_db(app_factory):
+    """实时池 ID 读自己的键，且**不落库** —— 换了 .env 立刻生效，不用重灌种子。"""
+    from app.models import VoiceProfile
+    from app.seeds import run_seed
+    from app.seeds.voices import missing_voice_ids, voice_pool
+
+    app = app_factory(env={**VOICE_ENV, **REALTIME_VOICE_ENV})
+    run_seed()
+
+    with app.app_context():
+        realtime = voice_pool("realtime")
+        assert realtime["沈老师"] == "vendor-teacher-realtime-id"
+        assert realtime["顾老师"] == "vendor-history-realtime-id"
+        assert realtime["陆老师"] == "vendor-science-realtime-id"
+        assert missing_voice_ids() == {"tts": [], "realtime": []}
+
+        # 库里的 voice_type 只有 TTS 池那一套：实时池 ID 属于「环境」，不属于「数据」
+        stored = {v.voice_type for v in VoiceProfile.query.all()}
+        assert "vendor-teacher-realtime-id" not in stored
+        assert stored == set(VOICE_ENV.values())
+
+
+def test_missing_voice_ids_reports_the_two_pools_separately(app_factory):
+    """只配了 TTS 池时，实时池要单独报出来 —— 「讲稿没人念」和「不能对话」是两件事。"""
+    from app.seeds import run_seed
+    from app.seeds.voices import missing_voice_ids
+
+    app = app_factory(env=VOICE_ENV)
+    run_seed()
+
+    with app.app_context():
+        missing = missing_voice_ids()
+        assert missing["tts"] == []
+        assert missing["realtime"] == ["沈老师", "顾老师", "陆老师"]
 
 
 def test_seed_links_roles_to_voice_profiles(seeded):
@@ -287,7 +333,8 @@ def test_seed_is_safe_on_empty_database(app_factory):
     app_factory(env=VOICE_ENV)
     run_seed()
 
-    assert AgentRole.query.count() == 4
+    # 1 老师 + 5 同学：给满，课堂按设置里的「AI 同学数量」取前 N 位
+    assert AgentRole.query.count() == 6
 
 
 def test_seed_returns_a_summary(seeded):
@@ -298,7 +345,7 @@ def test_seed_returns_a_summary(seeded):
         summary = run_seed()
 
     assert isinstance(summary, dict)
-    assert summary["agentRoles"] == 4
+    assert summary["agentRoles"] == 6
     assert summary["voiceProfiles"] == 3
     assert summary["courses"] == 2
     assert summary["coursePages"] == 24

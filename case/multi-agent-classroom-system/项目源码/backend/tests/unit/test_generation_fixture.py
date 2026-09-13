@@ -7,6 +7,9 @@
 
 1. **分派只认任务头**。认不出就返回 None，由 `MockLLM` 回落到 `_fill` ——
    P0 的老用例（拿一个任意 schema 要 JSON）靠这条活着。
+   只有工作台那一轮是例外：那句提示词是手写的、没有任务头，桩按形状认
+   （`fixture._PLAN_MARK`）—— 它还认不出来时，离线跑工作台永远只出 `reply`、
+   一个技能都不调，`agent.skill` 那两帧就没人验过。
 2. **确定性**。同一个输入永远同一个输出，且不许用内置 `hash()`
    （它对 str 每个进程加一次随机盐，会让验收脚本「昨天过、今天不过」）。
 3. **大纲跟着提示词走**。章数与正文页数读的是提示词自己许下的预算
@@ -22,6 +25,7 @@ from __future__ import annotations
 import builtins
 import json
 import zlib
+from typing import ClassVar
 
 import pytest
 
@@ -273,3 +277,196 @@ def test_mock_llm_still_fills_an_unknown_schema():
         json_schema={"type": "object", "properties": {"name": {"type": "string"}}},
     )
     assert json.loads(result.text) == {"name": "示例文本"}
+
+
+# --- 材料在场时的出处与缺口（P4-A5 / P4-A8 的离线那一半）---
+
+
+#: 一片材料的正文（`material_block` 里那段就是它）。两段话分属两个主题，
+#: 用来区分「材料里有」与「材料里没有」。
+CHUNK_GRADIENT = (
+    "梯度下降是沿着当前点的负梯度方向走一小步，步长由学习率决定。"
+    "学习率太大会来回震荡，太小则收敛得很慢。"
+)
+CHUNK_MATERIAL = [
+    {
+        "chunkId": "k_0001",
+        "text": CHUNK_GRADIENT,
+        "fileName": "讲义.md",
+        "page": 12,
+        "section": "第三章 > 3.2 梯度下降",
+        "score": 0.82,
+    }
+]
+
+
+def _page_with_material(kind: str, chunks=CHUNK_MATERIAL, **kwargs) -> list[dict]:
+    return prompts.page_messages(
+        _page_task(kind, **kwargs),
+        profile=PROFILE,
+        outline={"title": TOPIC, "chapters": []},
+        materials=chunks,
+    )
+
+
+def test_a_page_about_material_quotes_it_verbatim():
+    """标题在材料里找得到 → 出处是**那一块的原文连续片段**，不是拼出来的句子。"""
+    from app.services.materials import citations
+
+    messages = _page_with_material("concept", title="梯度下降")
+    data = fixture.answer(messages, schema.schema_for_kind("concept"))
+
+    assert [item["chunkId"] for item in data["sources"]] == ["k_0001"]
+    quote = data["sources"][0]["quote"]
+    # 用产品那把尺子核对：归一化后必须是原文的子串（P4-C2）
+    assert citations._squeeze(quote) in citations._squeeze(CHUNK_GRADIENT)
+    assert len(citations._squeeze(quote)) >= 20
+    assert data["gaps"] == []
+
+
+def test_a_page_the_material_does_not_cover_says_so():
+    """材料里没有这一页讲的词 → 说缺口，而不是编一段看不出来的话（P4-A8）。"""
+    messages = _page_with_material("concept", title="马尔可夫链")
+    data = fixture.answer(messages, schema.schema_for_kind("concept"))
+
+    assert data["sources"] == []
+    assert data["gaps"] and "马尔可夫链" in data["gaps"][0]
+
+
+def test_structural_pages_carry_no_citations_in_the_material_mode():
+    """封面 / 大纲页 / 测验页不产出处也不说缺口：它们本来就没有依据（§5）。"""
+    for kind in ("cover", "outline", "quiz"):
+        data = fixture.answer(
+            _page_with_material(kind, title="梯度下降"), schema.schema_for_kind(kind)
+        )
+        assert data["sources"] == [] and data["gaps"] == [], kind
+
+
+def test_without_material_nothing_is_said_about_gaps():
+    """没材料时（P1 的纯主题生成）不说「材料没写」—— 本来就没有材料。"""
+    data = fixture.answer(_page_messages("concept"), schema.schema_for_kind("concept"))
+
+    assert data["sources"] == [] and data["gaps"] == []
+
+
+def test_the_caption_is_not_quoted():
+    """围栏里那行「（出处：…）」是给模型看的线索，不是材料原文 —— 抄了就当不了引文。"""
+    from app.services.materials import citations
+
+    data = fixture.answer(_page_with_material("concept", title="梯度下降"), schema.schema_for_kind("concept"))
+    quote = data["sources"][0]["quote"]
+
+    assert "出处：" not in quote
+    assert citations._squeeze(quote) in citations._squeeze(CHUNK_GRADIENT)
+
+
+# --- 工作台那一轮（P4-F4-10） ---
+
+
+class _FakeCourse:
+    """`_plan_messages` 只从课程上读那么几样（`course_digest`）。"""
+
+    title = "机器学习入门"
+    status = "ready"
+    dsl: ClassVar[dict] = {"chapters": []}
+
+
+def _plan_messages(text: str, *, page_no: int = 0, monkeypatch=None) -> list[dict]:
+    """**真提示词**：工作台那一轮的拼法（`agent._plan_messages`）。
+
+    课程现状那一行要查库（`store.pages_of`），这里给它一个空课程 ——
+    桩认的是提示词的**形状**，而那形状正是要验的东西，所以不能手抄一份。
+    """
+    from app.services.courses import store
+    from app.services.workbench import agent
+
+    if monkeypatch is not None:
+        monkeypatch.setattr(store, "pages_of", lambda course: [])
+    return agent._plan_messages(
+        _FakeCourse(), None, {"text": text, "refPageNo": page_no, "history": []}
+    )
+
+
+def _plan_of(text: str, *, page_no: int = 0, monkeypatch) -> dict:
+    """走 `MockLLM` 那一道（桩 → JSON 文本），再过一遍**真的计划校验器**。"""
+    from app.services.workbench import agent
+
+    messages = _plan_messages(text, page_no=page_no, monkeypatch=monkeypatch)
+    raw = MockLLM().chat(messages, json_schema=agent.PLAN_SCHEMA).text
+    return agent._parse_plan(raw)
+
+
+def test_a_sentence_about_a_page_turns_into_the_matching_skill(monkeypatch):
+    """「把这一页说得口语一点」→ change_tone，页号取自「用户正看着」那一页。"""
+    plan = _plan_of("把这一页说得口语一点", page_no=3, monkeypatch=monkeypatch)
+
+    assert [item["skill"] for item in plan["actions"]] == ["change_tone"]
+    assert plan["actions"][0]["args"]["tone"] == "更口语"
+    assert plan["actions"][0]["args"]["pageNos"] == [3]
+    assert plan["reply"] and "示例文本" not in plan["reply"]
+
+
+def test_rewrite_and_delete_carry_the_page_they_mean(monkeypatch):
+    """页号是技能参数里最贵的一样东西，桩不许把它写错也不许编。"""
+    rewrite = _plan_of("这一页重写一下，讲得再细一点", page_no=5, monkeypatch=monkeypatch)
+    delete = _plan_of("删掉这一页", page_no=2, monkeypatch=monkeypatch)
+
+    assert rewrite["actions"][0]["skill"] == "rewrite_page"
+    assert rewrite["actions"][0]["args"]["pageNo"] == 5
+    assert delete["actions"][0]["skill"] == "remove_page"
+    assert delete["actions"][0]["args"]["pageNo"] == 2
+
+
+def test_without_a_page_number_the_skill_falls_back_to_its_own_default(monkeypatch):
+    """「用户正看着」没指定时**不编页号**：技能自己有缺省（当前页 / 第一章）。"""
+    plan = _plan_of("重写一下这一页", page_no=0, monkeypatch=monkeypatch)
+
+    assert plan["actions"][0]["skill"] == "rewrite_page"
+    assert "pageNo" not in plan["actions"][0]["args"]
+
+
+def test_a_sentence_that_asks_for_nothing_gets_no_action(monkeypatch):
+    """认不出意图就不调技能 —— 提示词里就是这么叮嘱真模型的。"""
+    plan = _plan_of("这门课主要讲的是什么？", page_no=3, monkeypatch=monkeypatch)
+
+    assert plan["actions"] == []
+    assert plan["reply"]  # 但话还是要说一句，不能空着
+
+
+def test_the_plan_prompt_is_recognised_by_its_shape_alone(monkeypatch):
+    """工作台那一轮没有任务头 —— 桩要是只认任务头，离线就永远调不动技能。"""
+    messages = _plan_messages("删掉这一页", page_no=2, monkeypatch=monkeypatch)
+
+    assert fixture._task_of(messages) == {}  # 确实没有任务头
+    assert fixture._is_plan(messages)
+    data = fixture.answer(messages, {"type": "object"})
+    assert data is not None and data["actions"][0]["skill"] == "remove_page"
+
+
+def test_a_prompt_that_is_not_a_plan_still_falls_through(monkeypatch):
+    """别的提示词里偶然出现一句小标题，不算计划（`_is_plan` 要求两个同时在）。"""
+    assert fixture.answer([{"role": "user", "content": "【可用技能】就这些"}], {"type": "object"}) is None
+    # 两行都在了才是 —— 顺带钉住确定性：同一个输入两次一模一样
+    messages = _plan_messages("把这一页说得口语一点", page_no=3, monkeypatch=monkeypatch)
+    assert fixture.answer(messages, {"type": "object"}) == fixture.answer(messages, {"type": "object"})
+
+
+def test_a_pipeline_shaped_title_still_finds_its_material():
+    """管线自己拼的页标题（「认识梯度下降：先看整体」）也要能找到依据。
+
+    标题是章标签加页标签拼出来的，材料里不会有这么一句整话 —— 桩要一路退到
+    「梯度下降」这种切片。退不到的话，离线跑出来页页都报「材料没写」。
+    """
+    messages = _page_with_material("concept", title="认识梯度下降：先看整体")
+    data = fixture.answer(messages, schema.schema_for_kind("concept"))
+
+    assert [item["chunkId"] for item in data["sources"]] == ["k_0001"]
+    assert data["gaps"] == []
+
+
+def test_short_overlaps_do_not_count_as_evidence():
+    """四字以下的重合到处都是，不能拿它当依据 —— 找不到就说找不到。"""
+    messages = _page_with_material("concept", title="材料里没有的：核心方法")
+    data = fixture.answer(messages, schema.schema_for_kind("concept"))
+
+    assert data["sources"] == []

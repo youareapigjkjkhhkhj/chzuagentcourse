@@ -1,0 +1,79 @@
+# EduAgentX 一键部署（P5-A11 / §6）
+#
+#   cp backend/.env.example backend/.env   # 填 Key（不填也能起：走 Mock）
+#   docker compose up -d
+#   open http://localhost:5000
+#
+# 两个档：
+#   app        默认这一档就够了。容器同时提供 API 与前端页面（单端口）。
+#   nginx      要 TLS / 域名 / 反代时用：`docker compose --profile tls up -d`
+#
+# **不要横向扩容**（P5 §8）：SQLite 是单写者，课堂的在线名单也在进程内存里，
+# 所以 app 只有一个实例、gunicorn 只有一个 worker（见 backend/gunicorn.conf.py）。
+# 并发靠 gevent 的 greenlet，不靠多副本。
+
+services:
+  app:
+    build:
+      # 上下文是「项目源码/」：镜像要同时拿到 backend/ 与 frontend/
+      context: .
+      dockerfile: Dockerfile
+    image: eduagentx:latest
+    env_file:
+      # 与 `make dev` 用的是**同一份** .env：两台机器上的配置只该有一处，
+      # 复制一份到别处，迟早出现「容器里配了、本机没配」这种对不上的事。
+      #
+      # 用短写法而不是 `path:/required:false` 那种长写法：后者要 compose 2.24+，
+      # 而「干净机器」上装的可能是更老的版本 —— 那种错会以「语法不认识」的
+      # 样子出现，和真实原因（文件没建）差得很远。缺文件时先 `make env`。
+      - ./backend/.env
+    environment:
+      # 容器里是生产模式：关掉调试器与自动重载，缺凭据只警告不崩
+      APP_ENV: production
+      # 跑在 nginx 后面时才可信；直接暴露端口时保持 false，
+      # 否则审计日志里的 IP 就是调用方自己填的（services/audit.py）
+      AUDIT_TRUST_PROXY: "false"
+    ports:
+      - "5000:5000"
+    volumes:
+      # 宿主机的 ./backend/data 直接对着镜像里的同一棵树。库里只存相对路径
+      # （P2-C4 / P4-C3 / P5-C1），所以一个挂载点就覆盖了全部状态：
+      # SQLite、材料原件、合成音频、导出产物、备份归档。
+      # 它和 `make dev` 用的是同一份数据 —— 想隔离就改这一行。
+      - ./backend/data:/app/backend/data
+    healthcheck:
+      # 与镜像里那条同源（Dockerfile 的 HEALTHCHECK）。这里再写一遍是为了
+      # 让 `docker compose ps` 直接能看到 healthy/unhealthy。
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys, urllib.request
+          u = urllib.request.urlopen('http://127.0.0.1:5000/api/health', timeout=4)
+          sys.exit(0 if u.status == 200 else 1)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      # 冷启动预算 30s（P5-D4）留足：迁移 + 首次建目录都算在这一段里
+      start_period: 20s
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  nginx:
+    # 可选档：`--profile tls` 才会起。要 TLS 就把它顶在前面，
+    # app 的 5000 就可以只绑 127.0.0.1 了（改下面的 ports）。
+    image: nginx:1.27-alpine
+    profiles: ["tls"]
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # 证书自己放：正式的用 certbot/ACME 签，本地自签也行
+      # （自签的话浏览器会拦一次，继续访问即可）。
+      - ./docker/certs:/etc/nginx/certs:ro
+    restart: unless-stopped

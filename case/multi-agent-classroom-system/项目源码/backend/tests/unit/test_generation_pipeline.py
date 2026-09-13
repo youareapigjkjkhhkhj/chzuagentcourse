@@ -31,6 +31,7 @@ from app.models import (
     ModelCall,
 )
 from app.providers.base import LLMProvider, LLMResult, ProbeResult
+from app.providers.tts.mock import MockTTS
 from app.services.courses import store
 from app.services.generation.llm import OutputInvalidError
 from app.services.generation.pipeline import (
@@ -220,14 +221,101 @@ def test_write_step_exposes_batches_for_the_sub_rows(app):
     assert sum(batch["total"] for batch in batches) == len(store.pages_of(rig.course))
 
 
-def test_tts_is_skipped_with_a_reason_in_p1(app):
+# --- 语音合成（P2-A2 / P2-G3）---
+
+#: 种子里老师那一档音色要的上游音色 ID。音色 ID 一律走配置注入，
+#: 代码里不出现字面量（AGENTS §4.1）。
+VOICE_ENV = {
+    "VOLC_TTS_VOICE_TEACHER": "vendor-teacher",
+    "VOLC_TTS_VOICE_HISTORY": "",
+    "VOLC_TTS_VOICE_SCIENCE": "vendor-science",
+}
+
+
+def _seeded_rig(app_factory, *, env: dict | None = None):
+    """一台灌过种子（内置音色 + 老师角色）的机器上跑一遍整条管线。
+
+    种子是必须的：音色档来自 `voice_profiles` 表，没有它连「用哪个音色」都
+    定不下来 —— 那不是语音这一步的问题，是「这台机器还没初始化」。
+    """
+    application = app_factory(seed=True, env={**VOICE_ENV, **(env or {})})
+    return _rig(application)
+
+
+def test_tts_is_skipped_when_no_voice_is_configured(app):
+    """没有可用音色＝这节课没有声音，**不是失败**（P2-G3）。"""
     rig = _rig(app)
 
     run_job(rig.job.id, llm=rig.llm)
 
     tts = step_of(rig.job, "tts")
     assert tts.status == "skipped"
-    assert "P2" in tts.detail["reason"]
+    assert "音色" in tts.detail["reason"]
+    assert rig.job.status == "done", "语音缺席不该拖垮整课"
+
+
+def test_tts_is_skipped_when_the_switch_is_off(app_factory):
+    """`VOICE_ENABLED=false`：部署方关掉语音，课堂退化成纯文字（P2-G3）。"""
+    rig = _seeded_rig(app_factory)
+    rig.app.config["VOICE_ENABLED"] = False
+
+    run_job(rig.job.id, llm=rig.llm)
+
+    tts = step_of(rig.job, "tts")
+    assert tts.status == "skipped"
+    assert "VOICE_ENABLED" in tts.detail["reason"]
+    assert rig.job.status == "done"
+
+
+def test_the_tts_step_synthesizes_every_beat(app_factory):
+    """音色配好了就真合成，且这一步只占 5% —— 页面的进度不受它影响。"""
+    from app.models import AudioAsset
+
+    rig = _seeded_rig(app_factory)
+
+    run_job(rig.job.id, llm=rig.llm)
+
+    tts = step_of(rig.job, "tts")
+    assert tts.status == "done", tts.error
+    assert tts.detail["beats"] > 0
+    assert tts.detail["failed"] == 0
+    assert tts.detail["synthesized"] == tts.detail["beats"]
+    assert AudioAsset.query.count() == tts.detail["beats"]
+
+
+def test_the_tts_step_reuses_the_audio_it_already_has(app_factory):
+    """幂等：第二次跑同一门课，一句都不重合成（缓存命中，不重复花钱）。"""
+    rig = _seeded_rig(app_factory)
+
+    run_job(rig.job.id, llm=rig.llm)
+    first = step_of(rig.job, "tts").detail
+
+    retry_step(rig.job.id, step_of(rig.job, "tts").id, llm=rig.llm)
+
+    again = step_of(rig.job, "tts").detail
+    assert again["cached"] == first["synthesized"]
+    assert again["synthesized"] == 0
+
+
+def test_a_tts_that_fails_on_every_beat_is_reported_but_does_not_block(app_factory):
+    """一句都没合出来是真失败（配错了），但**课照常交付**（P1-F1）。"""
+    from app.services.provider_registry import get_registry
+
+    rig = _seeded_rig(app_factory)
+    get_registry().register(BrokenTTS())
+
+    run_job(rig.job.id, llm=rig.llm)
+
+    tts = step_of(rig.job, "tts")
+    assert tts.status == "failed"
+    assert "一句都没合成" in (tts.error or "")
+    # 任务 failed、课程 ready、页面一页不少 —— 这三件事说的不是同一件事：
+    # 「这次跑完了没有」/「这门课能不能上」/「内容写出来了没有」。
+    # 语音一句都没合出来是要人去修配置的，所以任务该红；但它不该让学生没课上。
+    assert rig.job.status == "failed"
+    assert rig.course.status == "ready"
+    assert store.pages_of(rig.course)
+    assert all(page.status == "ready" for page in store.pages_of(rig.course))
 
 
 # --- 大纲确认（P1-A3）---
@@ -454,6 +542,9 @@ class Rig:
     job: GenJob
     llm: "StubLLM"
     options: dict = field(default_factory=dict)
+    #: 跑这一趟的 app。少数用例要改配置（比如关掉语音总开关），
+    #: 而配置是 app 级的 —— 顺手带着，省得每个用例再各拿一次 `current_app`。
+    app: Any = None
 
 
 def _rig(app, *, options: dict | None = None, llm: "StubLLM | None" = None) -> Rig:
@@ -462,7 +553,13 @@ def _rig(app, *, options: dict | None = None, llm: "StubLLM | None" = None) -> R
     merged = {**DEFAULT_OPTIONS, **(options or {})}
     course = store.create_course(title="机器学习入门", topic="机器学习入门", options=merged)
     job = start_job(course, options=merged)
-    return Rig(course=course, job=job, llm=llm or StubLLM(mode=merged.get("mode", "lecture")), options=merged)
+    return Rig(
+        course=course,
+        job=job,
+        llm=llm or StubLLM(mode=merged.get("mode", "lecture")),
+        options=merged,
+        app=app,
+    )
 
 
 def _declared(step_type: str):
@@ -636,3 +733,18 @@ class StubLLM(LLMProvider):
         if self.page_factory is not None:
             return self.page_factory(task, self.counts[number])
         return _page_dsl(task)
+
+
+class BrokenTTS(MockTTS):
+    """占住默认那个名字，但每次合成都炸。
+
+    用来验「音色配了、服务商也在，就是一合就错」——真实世界里的样子是
+    上游欠费、音色 ID 被停用。它必须是**逐句**炸（不是 `configured=False`）：
+    这两种故障在管线里走的是两条完全不同的路（跳过 vs 失败）。
+    """
+
+    def __init__(self, name: str = "mock") -> None:
+        super().__init__(name)
+
+    def synthesize(self, *args, **kwargs):
+        raise RuntimeError("上游拒绝了这次合成（测试桩）")

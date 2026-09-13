@@ -251,7 +251,23 @@ def capabilities() -> dict:
         "capabilities": result,
         "providers": report["providers"],
         "generation": settings_service.generation_limits(),
+        "materials": _materials_capability(),
     }
+
+
+def _materials_capability() -> dict:
+    """材料功能开没开（P4-G3）。前端据此决定**显不显示**材料入口。
+
+    它不是「服务商那四类能力」之一（材料不依赖任何上游凭据，是一整套功能
+    的开关），所以平级放在 `capabilities` 旁边，而不是塞进那个字典里 ——
+    塞进去会让人以为它也需要配 key。
+
+    `maxBytes` 跟着一起给：前端在上传前就能说「超过 50MB 传不了」，
+    不必先传一遍再吃一个 413。
+    """
+    from app.services.materials import policy
+
+    return {"enabled": policy.enabled(), "maxBytes": policy.max_bytes()}
 
 
 def _app_version() -> str:
@@ -335,10 +351,24 @@ def _build_llm(registry: ProviderRegistry, cfg: dict, *, rows: Sequence[Provider
 
 
 def _build_speech(registry: ProviderRegistry, cfg: dict) -> None:
-    """语音三件套：P0 只有骨架，注册进来是为了让设置页能显示「未配置」。"""
+    """语音三件套。
+
+    没配 Key 时照注册（`configured=False`）—— 设置页要能显示「未配置」，
+    课堂要能走 Mock 降级，两条路都得先有个对象在注册表里。
+    """
     from app.providers.asr.volc_asr import VolcASR
     from app.providers.tts.volc_realtime import VolcRealtime
     from app.providers.tts.volc_tts import VolcTTS
+    from app.seeds.voices import BUILTIN_VOICES
+
+    # 音色清单从**配置**里取（同一份 BUILTIN_VOICES 也用于落库的种子），
+    # 厂商 ID 因此只存在于 .env 一处（AGENTS.md §4.1）。
+    tts_voices = {
+        str(v["name"]): str(cfg.get(v["env_key"]) or "").strip() for v in BUILTIN_VOICES
+    }
+    realtime_voices = {
+        str(v["name"]): str(cfg.get(v["realtime_env_key"]) or "").strip() for v in BUILTIN_VOICES
+    }
 
     registry.register(
         VolcTTS(
@@ -350,6 +380,8 @@ def _build_speech(registry: ProviderRegistry, cfg: dict) -> None:
             sample_rate=int(cfg.get("VOLC_TTS_SAMPLE_RATE") or 24000),
             speech_rate=int(cfg.get("VOLC_TTS_SPEECH_RATE") or 0),
             enable_subtitle=bool(cfg.get("VOLC_TTS_ENABLE_SUBTITLE")),
+            voices=tts_voices,
+            timeout=float(cfg.get("VOLC_TTS_TIMEOUT") or 0) or None,
         )
     )
     registry.register(
@@ -359,6 +391,7 @@ def _build_speech(registry: ProviderRegistry, cfg: dict) -> None:
             model=str(cfg.get("VOLC_REALTIME_MODEL") or ""),
             speaker=str(cfg.get("VOLC_REALTIME_SPEAKER") or ""),
             qpm_limit=int(cfg.get("VOLC_REALTIME_QPM_LIMIT") or 60),
+            voices=realtime_voices,
         )
     )
     registry.register(
@@ -366,7 +399,8 @@ def _build_speech(registry: ProviderRegistry, cfg: dict) -> None:
             api_key=str(cfg.get("VOLC_ASR_API_KEY") or ""),
             endpoint=str(cfg.get("VOLC_ASR_ENDPOINT") or ""),
             resource_id=str(cfg.get("VOLC_ASR_RESOURCE_ID") or ""),
-            packet_ms=int(cfg.get("VOLC_ASR_PACKET_MS") or 200),
+            # 不填就交给 Provider 自己的缺省值 —— 包长是它的规格，不是配置层的
+            packet_ms=cfg.get("VOLC_ASR_PACKET_MS") or None,
         )
     )
 

@@ -5,9 +5,12 @@
 技术栈固定为 **Flask + Vue3 + SQLite**：文本模型走 OpenAI 兼容协议（DeepSeek / OpenAI / Qwen / Kimi / 自建均可），语音走火山引擎大模型语音。
 浏览器只跟自己的 Flask 说话，任何厂商凭据都不出服务端。
 
-> 当前进度：**P0（工程基座与能力抽象）、P1（课程生成内核）已交付** —— 首页输入主题 → 工作台六步任务卡实时跑完 → 12 页课程（大纲 / 讲稿 / 测验）落库，刷新还在。
-> 课堂演示页目前是生成结果的**只读预览**（真正的课堂运行时在 P3），语音适配器到 P2 接通。
-> 计划与验收口径见 [`../项目文档/`](../项目文档)，工程规则见 [`../AGENTS.md`](../AGENTS.md)。
+> 当前进度：**P0 ~ P5 已交付**。首页输入主题 → 工作台六步任务卡实时跑完 → 12 页课程
+> （大纲 / 讲稿 / 测验）落库，刷新还在 → 课堂页 AI 老师真讲课、AI 同学在讨论区发言、
+> 学生举手提问（语音走火山引擎）→ 课件资料可上传检索 → 导出 PPTX / HTML / PDF，
+> 带成本看板与预算、断点续跑、访问码、备份恢复。
+> 计划与验收口径见 [`../项目文档/`](../项目文档)，工程规则见 [`../AGENTS.md`](../AGENTS.md)，
+> 要往服务器上放请看 [部署文档](docs/部署文档.md) 与 [运维手册](docs/运维手册.md)。
 
 ---
 
@@ -68,13 +71,39 @@ bash scripts/dev.sh          # Git Bash / macOS / Linux
 
 ---
 
+## 部署
+
+一台干净机器上要能用起来，三条命令：
+
+```bash
+cp backend/.env.example backend/.env     # 填 SECRET_KEY / FERNET_KEY
+docker compose up -d --build
+open http://<机器IP>:5000                # docker compose ps 等它变成 healthy
+```
+
+要 TLS / 域名加 `--profile tls`（配 `docker/nginx.conf`）；不用 Docker 的物理机装法、
+访问码怎么开、升级怎么回滚，都在 [docs/部署文档.md](docs/部署文档.md)；
+日常的备份恢复、日志、审计、成本与排障在 [docs/运维手册.md](docs/运维手册.md)。
+
+两条**不要改**的：`gunicorn.conf.py` 里的 `worker_class = "gevent"`（SSE/WS 是长连接）
+与 `workers = 1`（SQLite 单写者 + 课堂在线名单在进程内存里）。理由写在文件开头。
+
+---
+
 ## 验收
 
 ```bash
 python scripts/accept_p0.py     # P0：A 类 11 条
 python scripts/accept_p1.py     # P1-G2：A/B/C 类 30+ 条，离线桩，不联网也不需要 Key
-python scripts/test.py          # 前后端全部测试（P0-G1 / P1-G3）
+python scripts/accept_p2.py     # P2-G2：语音三条链路，离线 Mock，三个实例
+python scripts/accept_p3.py     # P3-G2：无头 WS 课堂，十二页课从头走到下课
+python scripts/accept_p4.py     # P4-G2：材料解析与工作台对话
+python scripts/accept_p5.py     # P5-G2：导出三格式 + 看板 + 续跑 + 访问码 + 备份演练
+python scripts/test.py          # 前后端全部测试
 ```
+
+P1 ~ P5 那几套**都不碰你的数据**：各自起后端连临时库（跑完删掉），
+模型/语音/材料全走离线替身 —— 断网、没 Key 照样跑得完。
 
 `accept_p0.py` 会自己拉起服务（已经在跑的就复用），跑完关掉；**不改你的数据** —— 它试写的假 Key 会挑「未配置且没存过 Key」的空卡，验完按原值还原。
 
@@ -141,28 +170,42 @@ python -c "import json;a=json.load(open('lh.json'))['audits'];print(a['interacti
 项目源码/
 ├── backend/
 │   ├── app/
-│   │   ├── api/            # 蓝图：health / settings / providers / courses / generation（只做取参 → 调 service → 包信封）
-│   │   ├── common/         # 信封与错误、日志脱敏、加密、SSRF 校验、写队列、任务器
-│   │   ├── models/         # Provider / VoiceProfile / AgentRole / Course / GenJob / GenStep / GenEvent ...（Key 只进不出）
+│   │   ├── api/            # 蓝图：health / settings（含服务商与音色）/ courses / generation /
+│   │   │                   #   agents / voice / materials / workbench / classroom / exports /
+│   │   │                   #   usage（只做取参 → 调 service → 包信封）
+│   │   ├── common/         # 信封与错误、日志脱敏与轮转、加密、SSRF 校验、写队列、任务器、
+│   │   │                   #   access.py = 站点访问码门禁；site.py = 托管前端产物（P5）
+│   │   ├── models/         # Provider / VoiceProfile / AgentRole / Course / GenJob / GenStep /
+│   │   │                   #   Material / Export / ModelCall / DailyUsage / Budget / AuditLog（Key 只进不出）
 │   │   ├── providers/      # LLM / TTS / ASR / Realtime 抽象 + mock + 火山与 OpenAI 兼容实现
-│   │   │                   #   llm/fixture.py = 离线课程桩（P1 的 A 类验收与示例课演示靠它）
-│   │   ├── services/       # provider_registry / provider_admin / settings
+│   │   │                   #   llm/fixture.py = 离线课程桩（各期验收与示例课演示靠它）
+│   │   ├── services/       # provider_registry / provider_admin / settings / audit / backup
 │   │   │                   #   generation/ = 生成管线（intake · pipeline · schema · prompts · filter · events）
 │   │   │                   #   courses/    = 课程读写（store 是页面与 DSL 的唯一事实来源）
+│   │   │                   #   classroom/  = 课堂运行时（P3）；voice/（P2）；materials/（P4）
+│   │   │                   #   exports/    = IR → PPTX/HTML/PDF + 队列 + 一次性下载（P5）
+│   │   │                   #   usage/      = 用量埋点 · 聚合 · 定价 · 预算（P5）
 │   │   ├── seeds/          # 内置音色、课堂角色、示例课程
+│   │   ├── templates/      # access.html（访问码校验页，后端渲染：那一刻前端产物正被它挡着）
 │   │   └── config.py       # 所有厂商凭据 / 端点 / 音色 ID 都从这里读 .env
 │   ├── migrations/         # Alembic
 │   ├── tests/              # unit（不联网）+ contract（接口契约）
-│   └── data/               # SQLite 与上传目录（gitignore）
+│   ├── data/               # 全部状态：SQLite · 上传 · 材料 · 音频 · 导出 · 备份（gitignore）
+│   └── gunicorn.conf.py    # 生产入口（gevent / workers=1，理由见文件头）
 ├── frontend/
 │   └── src/
-│       ├── api/            # axios 实例：注入 X-Request-Id、解包信封
+│       ├── api/            # axios 实例：注入 X-Request-Id、解包信封、40304 跳校验页
 │       ├── components/     # AppHeader / ProviderCard / ProviderFormDrawer / CapabilityPanel
-│       │                   #   workbench/ = 任务卡 · 大纲树 · 页面预览与编辑；classroom/ · home/
+│       │                   #   CostBoard · BudgetEditor · PricingEditor（P5 成本）
+│       │                   #   workbench/ = 任务卡 · 时间线 · 大纲树 · 页面编辑 · 导出 · 材料 · 对话
+│       │                   #   classroom/ = 讲台 · 讨论区 · 随堂测验；home/ = 主题输入 · 课程卡
 │       ├── styles/         # tokens.css：原型设计令牌 + TDesign 主题覆盖
-│       ├── stores/         # Pinia：settings（服务商/音色/生成参数）/ courses（列表与生成任务）/ user
-│       └── views/          # 首页 / 工作台 / 课堂演示 / 设置
-└── scripts/                # dev.sh · dev.ps1 · test.py · accept_p0.py · accept_p1.py
+│       ├── stores/         # Pinia：settings（服务商/音色/生成参数/预算）/ courses / user
+│       └── views/          # 首页 / 工作台 / 课堂演示 / 课堂记录 / 设置（含成本看板）
+├── docs/                   # 部署文档 · 运维手册
+├── docker/                 # entrypoint.sh · nginx.conf（TLS 档的示例）
+├── Dockerfile · docker-compose.yml · .dockerignore
+└── scripts/                # dev.sh · dev.ps1 · test.py · accept_p0.py ~ accept_p5.py
 ```
 
 ---
@@ -206,8 +249,13 @@ python -c "import json;a=json.load(open('lh.json'))['audits'];print(a['interacti
 | `make seed` | `cd backend && .venv/Scripts/python -m flask --app "app:create_app()" seed` |
 | `make migrate` | `cd backend && .venv/Scripts/python -m flask --app "app:create_app()" db upgrade` |
 | `make lint` / `make build` | 见上方验收表 E1 / D3 |
-| `make accept` | `python scripts/accept_p0.py` 然后 `python scripts/accept_p1.py` |
-| `make accept-p1` | `python scripts/accept_p1.py`（离线桩，不需要 Key） |
+| `make accept` | 依次跑 `scripts/accept_p0.py` ~ `accept_p5.py` |
+| `make accept-p1` … `accept-p5` | `python scripts/accept_pN.py`（都是离线实例，不需要 Key） |
+| `make env` | `cp backend/.env.example backend/.env` |
+| `make up` / `make down` | `docker compose up -d --build` / `down`（要 Docker；`PROFILE=tls` 带上 nginx） |
+| `make backup` / `make restore` | `cd backend && .venv/Scripts/python -m flask --app "app:create_app()" backup`，恢复见运维手册 |
+| `make clean-exports` | `cd backend && .venv/Scripts/python -m flask --app "app:create_app()" exports-cleanup` |
+| `make deps-audit` | 见运维手册 §8（**要联网**） |
 
 **PowerShell 说「禁止运行脚本」**：`powershell -ExecutionPolicy Bypass -File scripts\dev.ps1`，或一次性放开当前用户：`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`。
 
@@ -221,17 +269,26 @@ python -c "import json;a=json.load(open('lh.json'))['audits'];print(a['interacti
 
 **改了样式但页面没变**：确认 `src/main.ts` 里 `tdesign-vue-next/es/style/index.css` 仍在自有 `tokens.css` **之前**引入 —— 顺序反了，`--td-*` 覆盖就失效。
 
-**Windows 控制台中文乱码**：`chcp 65001` 切到 UTF-8 代码页再跑命令。
+**Windows 控制台中文乱码**：`chcp 65001` 切到 UTF-8 代码页再跑命令。CLI 的输出只用中文与 ASCII，正是为了这个。
+
+**想放到局域网上给同事用**：开访问码（`SITE_ACCESS_CODE`），否则知道地址的人都能用。它是一张门禁卡（共用一个码），不是账号体系 —— 细节与风控见 [部署文档 §2](docs/部署文档.md)。
+
+**页面打开是空的，端口 5000 上只有 API**：开发机上没跑过 `npm run build` 时后端**只提供 API**，这是设计如此（见 `backend/app/common/site.py` 第 1 条）。跑一次 `make build` 再重启。
+
+**数据在哪 / 怎么备份**：全部状态在 `backend/data/`。别 `cp` 那个 `.db` —— WAL 下拷出来的是「看着正常、其实少一截」的文件。用 `make backup`（SQLite 在线备份 API）与 `make restore`：[运维手册 §3](docs/运维手册.md)。
 
 ---
 
+## 想要真效果，需要两样东西
+
+1. **可用的文本模型 Key** —— 课程生成要走真模型才有真内容。没 Key 也**跑得动**：
+   `.env` 里留空或 `LLM_PROVIDER=mock`，离线桩产出固定但结构完整的内容，
+   验收与演示都够用；
+2. **火山语音的音色 ID** —— 填进 `.env` 的 `VOLC_TTS_VOICE_*` / `VOLC_REALTIME_VOICE_*`，
+   重启后端。设置页会显示「已配置 / 未配置」，没填时调用如实返回 `40201`（还没配齐），
+   不会假装出声。三套语音链路（TTS 2.0 / 实时语音 / 流式识别）的音色池**互不通用**，
+   填错池子会被上游以 `InvalidSpeaker` 拒绝 —— 见「配置项」那节。
+
 ## 下一步
 
-**P2（语音能力接入）**：把已产出的 beat 化讲稿交给火山大模型 TTS，课堂演示页才会真的出声。
-
-开工前需要两样东西：
-
-1. **可用的文本模型 Key** —— 课程生成必须走真模型才能验 D 类（耗时/token）与 E 类（内容质量）。
-   现在没 Key 也**跑得动**：`LLM_PROVIDER=mock` 用离线桩产出固定内容，验收与演示都够用；
-2. **火山语音的音色 ID** —— 填进 `.env` 的 `VOLC_TTS_VOICE_*`，重启后端。设置页会显示「已配置 / 未配置」，
-   没填的时候调用如实返回 `40201`（还没配齐），不会假装出声。
+P6（扩展能力）的计划见 [`../项目文档/P6-扩展能力.md`](../项目文档/P6-扩展能力.md)。

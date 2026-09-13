@@ -161,13 +161,19 @@ def test_a_timeout_is_recorded_with_its_own_error_code(app):
 
 def test_accounting_failure_does_not_lose_the_page(app, monkeypatch):
     """记账写不进去（例如库被锁死）时，已经花掉的钱当然要报错，
-    但不能把这一页**已经生成好的内容**一起丢掉 —— 两者不是一个优先级。"""
+    但不能把这一页**已经生成好的内容**一起丢掉 —— 两者不是一个优先级。
+
+    打的是 `services/usage/ledger.py` 的 `db_write`：P5 起**账本的写入点只有那一处**
+    （`generation/llm.py` 只是把数字交给它），所以「写库失败」这个仿真
+    也只能打在那里 —— 打在这一层的旧名字上，测试会以「属性不存在」失败，
+    而那看起来像是测试写错了，实际是账本换了一条路。
+    """
     provider = ScriptedLLM(json.dumps(_page(), ensure_ascii=False))
 
-    def boom():
+    def boom(fn):
         raise RuntimeError("database is locked")
 
-    monkeypatch.setattr("app.services.generation.llm.db_write", lambda fn: boom())
+    monkeypatch.setattr("app.services.usage.ledger.db_write", boom)
 
     call = call_json(provider, _messages(), schema=schema_for_kind("concept"))
 

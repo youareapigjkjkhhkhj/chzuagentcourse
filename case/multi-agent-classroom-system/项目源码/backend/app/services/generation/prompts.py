@@ -25,7 +25,8 @@ from typing import Any, Mapping, Sequence
 from app.services.generation.schema import MAX_CHAPTERS
 
 #: 提示词版本。改提示词就改它（日期），版本表里跟着走（技术方案 §209）。
-PROMPT_VERSION = "2026-09-12"
+#: 2026-09-13：材料注入带真实 chunkId，写页追加【引用要求】（P4-4）。
+PROMPT_VERSION = "2026-09-13"
 
 #: 主题的字数上限（P1-F1：≤200 字）。接口层会先判一次并报 40001，
 #: 这里再截一次 —— 提示词是最后一道，不能假设上游一定拦住了。
@@ -60,7 +61,7 @@ _SYSTEM = """你是一位资深的课程设计师，为中学与高校课堂设�
 
 
 def profile_messages(
-    topic: str, options: Mapping[str, Any], materials: Sequence[str] = ()
+    topic: str, options: Mapping[str, Any], materials: Sequence[Any] = ()
 ) -> list[dict]:
     """第一步：解析需求与受众画像（§4.2）。"""
     body = [
@@ -82,7 +83,7 @@ def profile_messages(
 
 
 def outline_messages(
-    topic: str, profile: Mapping[str, Any], options: Mapping[str, Any], materials: Sequence[str] = ()
+    topic: str, profile: Mapping[str, Any], options: Mapping[str, Any], materials: Sequence[Any] = ()
 ) -> list[dict]:
     """第二步：生成课程大纲（§4.2）。这一步之后可能停下来等用户确认。"""
     plan = page_budget(options)
@@ -113,7 +114,7 @@ def page_messages(
     profile: Mapping[str, Any],
     outline: Mapping[str, Any] | None = None,
     previous: Mapping[str, Any] | None = None,
-    materials: Sequence[str] = (),
+    materials: Sequence[Any] = (),
 ) -> list[dict]:
     """第三步：写一页的内容与讲稿（§4.2 的上下文组装）。
 
@@ -152,18 +153,24 @@ def page_messages(
             "- narration 按 beat 写：每句一个意思，**每句不超过 60 字**，"
             "这一页一共 3~8 句；它会被逐句合成为语音",
             "- visual.desc 描述这一页该配什么图，让画图的人知道画什么",
+            "- 这一页讲的是流程、结构或对比时，同时给 visual.spec：rows 是节点网格"
+            "（最多 4 行 ×3 列，节点 {text, shape, accent}，text 不超过 8 个字，"
+            "shape 取 box/ellipse/diamond，判定用 diamond），edges 是箭头"
+            "（[{from: [行号, 列号], to: [行号, 列号], label}]，行列都从 0 开始，"
+            "label 不超过 6 个字）；服务端会按它出图。讲不出结构的页面省略 spec 即可",
             "- 不要重复前几页已经讲过的要点，需要用到时一句话带过即可",
             _JSON_ONLY,
         ]
     )
-    return _conversation(body, materials)
+    # 写页是产出 `sources` 的那一步（F4-8）：有材料时追加引用要求
+    return _conversation(body, materials, citations=True)
 
 
 def discussion_messages(
     chapter: Mapping[str, Any],
     pages: Sequence[Mapping[str, Any]],
     profile: Mapping[str, Any],
-    materials: Sequence[str] = (),
+    materials: Sequence[Any] = (),
 ) -> list[dict]:
     """第四步：出章末讨论问题（§4.2 的 quiz 行）。
 
@@ -212,7 +219,7 @@ def rewrite_messages(
     *,
     profile: Mapping[str, Any],
     outline: Mapping[str, Any] | None = None,
-    materials: Sequence[str] = (),
+    materials: Sequence[Any] = (),
 ) -> list[dict]:
     """第五步之外的一步：重写**已经写好**的一页（P1-A7）。
 
@@ -251,7 +258,8 @@ def rewrite_messages(
             _JSON_ONLY,
         ]
     )
-    return _conversation(body, materials)
+    # 重写同样要重给出处（P1-A7 的重写也走材料那条路，溯源跟着新版本走）
+    return _conversation(body, materials, citations=True)
 
 
 # --- 页数预算 ---
@@ -312,20 +320,56 @@ def task_header(**fields: Any) -> str:
     return "【任务】" + json.dumps(fields, ensure_ascii=False)
 
 
-def material_block(chunks: Sequence[str]) -> str:
+def material_block(chunks: Sequence[Any]) -> str:
     """把材料片段包成分隔符围栏（§4.3）。
 
     围栏不是为了好看：模型分不清「我该做什么」和「材料里有人这么写」，
     而分隔符 + 声明是让它分清的最低成本手段。
+
+    每一片带一个 **chunkId**（材料分块的 id，`chunk:abc123` 这种）与一行出处小字：
+    模型要在 `sources` 里回填它（F4-8），而核对引文时我们也靠它认「这一块」——
+    用「第几片」当标记的话，重新解析后片号会变，已经落库的出处就全部指错了。
+    传纯字符串（不带 id）仍然可以，此时用序号代替：那是没接材料时的老用法。
     """
     blocks = []
     for index, chunk in enumerate(chunks, start=1):
-        text = str(chunk).strip()[:MAX_MATERIAL_CHARS]
-        if text:
-            blocks.append(f"<<<MATERIAL chunk:{index}>>>\n{text}\n<<<END>>>")
+        item = _material_item(chunk, index)
+        if item["text"]:
+            blocks.append(
+                f"<<<MATERIAL chunk:{item['id']}>>>\n{item['caption']}{item['text']}\n<<<END>>>"
+            )
     if not blocks:
         return ""
     return MATERIAL_DECLARATION + "\n" + "\n".join(blocks)
+
+
+def _material_item(chunk: Any, index: int) -> dict[str, str]:
+    """一片材料 → `{id, caption, text}`。字典是检索结果（带真实 id 与出处），
+    纯字符串只带正文。"""
+    if isinstance(chunk, Mapping):
+        chunk_id = str(chunk.get("chunkId") or chunk.get("id") or index)
+        text = str(chunk.get("text") or "")
+        caption = _material_caption(chunk)
+    else:
+        chunk_id, text, caption = str(index), str(chunk), ""
+    return {"id": chunk_id, "caption": caption, "text": text.strip()[:MAX_MATERIAL_CHARS]}
+
+
+def _material_caption(chunk: Mapping[str, Any]) -> str:
+    """出处小字：「（出处：讲义.md 第 12 页 · 第一章 > 1.1 倒排索引）」。
+
+    这是给模型看的**额外线索**（它据此判断这片讲的是不是这一页要的东西），
+    引文本身仍然要它自己从正文里抄。
+    """
+    parts = [str(chunk.get("fileName") or "")]
+    page = chunk.get("page")
+    if page:
+        parts.append(f"第 {page} 页")
+    section = str(chunk.get("section") or "")
+    if section:
+        parts.append(section)
+    line = " · ".join(part for part in parts if part)
+    return f"（出处：{line}）\n" if line else ""
 
 
 def wrap_user_text(text: str, *, label: str = "USER_INPUT") -> str:
@@ -334,15 +378,54 @@ def wrap_user_text(text: str, *, label: str = "USER_INPUT") -> str:
     return f"<<<{label}>>>\n{body}\n<<<END_{label}>>>"
 
 
-def _conversation(body: Sequence[str], materials: Sequence[str]) -> list[dict]:
+def _conversation(
+    body: Sequence[str], materials: Sequence[Any], *, citations: bool = False
+) -> list[dict]:
+    """拼一次调用。`citations=True` 时在材料后面追加引用要求（写页/重写那两条路）。"""
     material = material_block(materials) if materials else ""
     parts = [*body]
     if material:
+        # 引用要求放在材料**后面**：它讲的是「上面这些片段怎么用」，
+        # 写在前面的话，中间隔着几千字材料，模型很容易当没看见。
         parts.extend(["", "【参考资料】", material])
+        if citations:
+            parts.extend(["", MATERIAL_CITATION_RULES])
     return [
         {"role": "system", "content": _SYSTEM},
         {"role": "user", "content": "\n".join(part for part in parts if part is not None)},
     ]
+
+
+def source_retry(problems: Sequence[str]) -> str:
+    """引文核对不过时回喂给模型的那段话（P4-A7）。
+
+    把**具体哪一条不对**带上：只说「引文有问题」的话，模型多半会原样再输出一遍，
+    而重试只有一次。逐字要求也在这里重申一句 —— 常见的错法是「概括了一下」。
+    """
+    bullets = "\n".join(f"- {item}" for item in problems[:3])
+    return (
+        "刚才的输出里有出处没能核对上：\n"
+        f"{bullets}\n"
+        "请重新输出完整的 JSON：quote 必须是材料原文里**一字不差**的连续片段"
+        "（不能概括、不能拼接、不能跨段），或者去掉那一条出处；"
+        "材料里确实没有写到的内容，放进 gaps。"
+    )
+
+
+#: 材料模式下对「写什么」的硬约束（§5 的 Prompt 约束要点）。
+#: 两条都在这里写死：不许凭常识补、缺口要显式说出来。
+MATERIAL_CITATION_RULES = "\n".join(
+    [
+        "【引用要求】",
+        "- 这一页的内容必须依据上面的材料，**不要凭常识补充材料里没有的事实**；",
+        "- 每个要点都在 sources 里给出处：{chunkId, quote}，chunkId 用材料片上的那个"
+        "（形如 chunk:abc123），quote 是材料原文里**连续的一段话**，"
+        "至少 20 个字，不要改写、不要拼接、不要跨段；",
+        "- 材料没有覆盖、但这一页必须讲到的子主题，写进 gaps（例如"
+        "「材料未涉及 XX 的实现细节」）—— 宁可标出来，也不要编一段看不出来的话；",
+        "- 没有依据的页（如封面、大纲、总结）留空 sources 即可。",
+    ]
+)
 
 
 def _profile_block(profile: Mapping[str, Any]) -> str:
@@ -413,6 +496,7 @@ PAGE_KINDS_TEXT = (
 )
 
 __all__ = [
+    "MATERIAL_CITATION_RULES",
     "MAX_TOPIC_CHARS",
     "PROMPT_VERSION",
     "content_page_limit",
@@ -422,6 +506,7 @@ __all__ = [
     "page_budget",
     "page_messages",
     "profile_messages",
+    "source_retry",
     "task_header",
     "wrap_user_text",
 ]

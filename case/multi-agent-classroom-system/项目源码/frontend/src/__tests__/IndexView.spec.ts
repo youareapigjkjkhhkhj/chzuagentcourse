@@ -71,6 +71,7 @@ const CAPABILITIES = {
     intensities: ['low', 'medium', 'high'],
     scriptDetails: ['concise', 'normal', 'detailed'],
   },
+  materials: { enabled: true, maxBytes: 52428800 },
 }
 
 async function mountHome() {

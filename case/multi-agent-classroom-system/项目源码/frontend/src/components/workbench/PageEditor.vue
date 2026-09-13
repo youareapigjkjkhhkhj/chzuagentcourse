@@ -52,6 +52,13 @@ interface Draft {
 }
 
 const draft = ref<Draft>({ title: '', subtitle: '', bullets: [], narration: [] })
+/**
+ * 面板收不收起来。默认开着 —— 它是这一页的编辑面，进来就该看见。
+ * 收起是为了「这一页的版式我想看全」：中间那格预览有 960px 上限，
+ * 收掉这 300px 是给它留白，不是它能不能显示完的前提。
+ */
+const collapsed = ref(false)
+
 const rewriteOpen = ref(false)
 const instruction = ref('')
 const saving = ref(false)
@@ -154,66 +161,83 @@ async function onRewrite(): Promise<void> {
 </script>
 
 <template>
-  <aside class="props">
-    <h4>
+  <aside class="props" :class="{ 'is-collapsed': collapsed }">
+    <!-- 整行可点：收起之后预览那边就宽出来一块，再点一下收回 -->
+    <h4
+      class="props__head"
+      :title="collapsed ? '展开页面属性' : '收起页面属性'"
+      @click="collapsed = !collapsed"
+    >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
         <path d="M4 6h16M4 12h16M4 18h10" />
       </svg>
-      页面属性
+      <span class="props__title">页面属性</span>
+      <span class="spacer" />
+      <span class="props__chevron" :class="{ 'is-folded': collapsed }">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M15 6l-6 6 6 6" />
+        </svg>
+      </span>
     </h4>
 
-    <div class="props__actions">
-      <t-button class="wb-rewrite" size="small" variant="outline" @click="rewriteOpen = !rewriteOpen">
-        AI 重写此页
-      </t-button>
-      <t-button class="wb-save" size="small" theme="primary" :loading="saving" @click="onSave">
-        保存
-      </t-button>
-    </div>
-
-    <div v-if="rewriteOpen" class="rewrite-panel">
-      <p class="rewrite-panel__hint">选一个方向，或者自己写一句要求：</p>
-      <div class="rewrite-panel__chips">
-        <button
-          v-for="item in QUICK_INSTRUCTIONS"
-          :key="item"
-          class="rewrite-chip"
-          :class="{ 'is-on': instruction === item }"
-          @click="instruction = item"
-        >
-          {{ item }}
-        </button>
+    <!--
+      `v-show` 而不是 `v-if`：收起一下**不该把没保存的草稿丢掉**。草稿是跟着
+      `props.page` 重填的（见 `watch`），组件一卸载就白填了。
+    -->
+    <div v-show="!collapsed" class="props__body">
+      <div class="props__actions">
+        <t-button class="wb-rewrite" size="small" variant="outline" @click="rewriteOpen = !rewriteOpen">
+          AI 重写此页
+        </t-button>
+        <t-button class="wb-save" size="small" theme="primary" :loading="saving" @click="onSave">
+          保存
+        </t-button>
       </div>
-      <t-input v-model="instruction" size="small" placeholder="例如：多举一个生活中的例子" />
-      <t-button class="rewrite-go" size="small" theme="primary" :loading="rewriting" block @click="onRewrite">
-        重写
-      </t-button>
-    </div>
 
-    <div class="t-form-item">
-      <label>页面标题</label>
-      <t-input v-model="draft.title" size="small" />
-    </div>
+      <div v-if="rewriteOpen" class="rewrite-panel">
+        <p class="rewrite-panel__hint">选一个方向，或者自己写一句要求：</p>
+        <div class="rewrite-panel__chips">
+          <button
+            v-for="item in QUICK_INSTRUCTIONS"
+            :key="item"
+            class="rewrite-chip"
+            :class="{ 'is-on': instruction === item }"
+            @click="instruction = item"
+          >
+            {{ item }}
+          </button>
+        </div>
+        <t-input v-model="instruction" size="small" placeholder="例如：多举一个生活中的例子" />
+        <t-button class="rewrite-go" size="small" theme="primary" :loading="rewriting" block @click="onRewrite">
+          重写
+        </t-button>
+      </div>
 
-    <div class="t-form-item">
-      <label>副标题</label>
-      <t-input v-model="draft.subtitle" size="small" placeholder="可留空" />
-    </div>
+      <div class="t-form-item">
+        <label>页面标题</label>
+        <t-input v-model="draft.title" size="small" />
+      </div>
 
-    <div v-if="draft.bullets.length" class="t-form-item">
-      <label>要点（一行一条）</label>
-      <t-textarea v-model="bulletsText" :autosize="{ minRows: 3, maxRows: 8 }" />
-    </div>
+      <div class="t-form-item">
+        <label>副标题</label>
+        <t-input v-model="draft.subtitle" size="small" placeholder="可留空" />
+      </div>
 
-    <div class="t-form-item">
-      <label>讲稿（AI 教师口述）</label>
-      <div class="page-narration">
-        <t-textarea
-          v-for="(beat, index) in draft.narration"
-          :key="index"
-          v-model="beat.text"
-          :autosize="{ minRows: 2, maxRows: 6 }"
-        />
+      <div v-if="draft.bullets.length" class="t-form-item">
+        <label>要点（一行一条）</label>
+        <t-textarea v-model="bulletsText" :autosize="{ minRows: 3, maxRows: 8 }" />
+      </div>
+
+      <div class="t-form-item">
+        <label>讲稿（AI 教师口述）</label>
+        <div class="page-narration">
+          <t-textarea
+            v-for="(beat, index) in draft.narration"
+            :key="index"
+            v-model="beat.text"
+            :autosize="{ minRows: 2, maxRows: 6 }"
+          />
+        </div>
       </div>
     </div>
   </aside>
@@ -228,6 +252,16 @@ async function onRewrite(): Promise<void> {
   border-radius: var(--td-radius-medium);
   box-shadow: var(--td-shadow-1);
   padding: 18px;
+  /* 收起时宽度是动画过去的，中间那一刻里头的表单得被裁掉 */
+  overflow: hidden;
+  transition: width 0.2s ease;
+}
+
+/* 收起态：一根窄条，标题竖排（与材料抽屉的收起轨同一个视觉语言） */
+.props.is-collapsed {
+  width: 48px;
+  padding: 12px 8px;
+  cursor: pointer;
 }
 
 .props h4 {
@@ -243,6 +277,47 @@ async function onRewrite(): Promise<void> {
   width: 15px;
   height: 15px;
   color: var(--td-brand-color);
+  flex-shrink: 0;
+}
+
+.props__head {
+  cursor: pointer;
+  user-select: none;
+}
+
+.props__head .spacer {
+  flex: 1;
+}
+
+.props__head:hover .props__title {
+  color: var(--td-brand-color);
+}
+
+.props__chevron {
+  display: flex;
+  color: var(--td-text-placeholder);
+  transition: transform 0.2s ease;
+}
+
+.props__chevron svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* 收起来之后这个箭头是「再点一下就回来」，所以掉个头 */
+.props__chevron.is-folded {
+  transform: rotate(180deg);
+}
+
+.props.is-collapsed h4 {
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 0;
+}
+
+.props.is-collapsed .props__title {
+  writing-mode: vertical-rl;
+  letter-spacing: 2px;
 }
 
 .props__actions {

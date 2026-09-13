@@ -27,8 +27,22 @@ openai>=1.40,<2.0
 # then serves as prompt text, validator and typed object at once.
 pydantic>=2.0,<3.0
 
-# -- Realtime channel (installed but NOT enabled in P0; enabled in P3) --
-Flask-SocketIO>=5.3,<6.0
+# -- Material pipeline (P4 sec.2: .md/.txt/.pdf/.docx/.pptx -> chunks -> BM25) --
+# Four parsers, one job each; the whitelist and magic-number checks in
+# app/services/materials/policy.py sit in front of all of them.
+# No vector DB: AGENTS sec.20 pins jieba + BM25 for retrieval (a course handout
+# is a few hundred chunks, and its terminology matches the query's wording).
+jieba>=0.42.1,<0.43
+PyMuPDF>=1.24.3,<2.0
+python-docx>=1.1,<2.0
+python-pptx>=1.0,<2.0
+
+# -- Realtime channel (P2 sec.4.2: raw WebSocket at /ws/voice/realtime) --
+# simple-websocket hands Werkzeug a real WS upgrade on that exact path, which is
+# what the contract pins (JSON text frames + binary audio frames, correlated by
+# `seq`). Socket.IO would put its own engine.io framing on the wire and move the
+# path -- so Flask-SocketIO is deliberately not a dependency. The vendor's own
+# client stays behind the provider layer (app/providers/).
 simple-websocket>=1.0
 
 # -- Engineering --

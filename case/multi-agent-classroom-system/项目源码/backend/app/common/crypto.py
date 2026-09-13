@@ -15,9 +15,21 @@ import hmac
 from cryptography.fernet import Fernet, InvalidToken
 from flask import current_app
 
+from app.common.errors import AppError
 
-class CryptoError(Exception):
-    """密钥缺失、格式非法或密文被篡改。"""
+
+class CryptoError(AppError):
+    """密钥缺失、格式非法或密文被篡改。
+
+    继承 `AppError` 而不是裸 `Exception`：这几种情况都**说得出怎么办**
+    （「生成一个 FERNET_KEY 填进 .env 再重启」），而裸异常会被全局兜底
+    处理器按未知故障处理 —— 用户拿到「服务器内部错误」，运维文档里承诺的
+    那句话一个字也没露出来（README「常见问题」与部署文档 §2 都写着它会报
+    「未配置 FERNET_KEY」）。
+    """
+
+    code = 50002
+    http_status = 500
 
 
 # 已知的 Key 前缀，按长度降序匹配，让设置页能一眼看出是哪家的 Key

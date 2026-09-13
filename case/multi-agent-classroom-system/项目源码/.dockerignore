@@ -1,0 +1,34 @@
+# 构建上下文是「项目源码/」，所以下面的路径都从这里算起。
+#
+# 这份文件同时守着两件 P5 明写的事：
+#   1. `.env` 不进镜像（P5-F3）—— 里面有 LLM / TTS / 实时语音的 Key，
+#      镜像一旦被推走，那把 Key 就跟着走了。
+#   2. `data/` 不进镜像 —— 那是运行时的卷，镜像里带着一份旧的会在
+#      第一次启动时被挂载覆盖掉，而且它可能装着别人的课程。
+
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.coverage
+**/.idea
+
+# 凭据与运行时数据
+backend/.env
+backend/data
+backend/instance
+
+# 前端：依赖重建（镜像里那一层用 npm ci），产物在 node 阶段现打
+frontend/node_modules
+frontend/dist
+
+# 与运行无关的
+.git
+.gitignore
+docker-compose.yml
+samples
+scripts
+*.md
+Makefile

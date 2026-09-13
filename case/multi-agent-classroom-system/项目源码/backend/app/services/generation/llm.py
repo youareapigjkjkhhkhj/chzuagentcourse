@@ -25,11 +25,8 @@ from typing import Any, Callable, Mapping, Sequence
 
 from flask import current_app
 
-from app.common.dbw import db_write
 from app.common.errors import AppError
 from app.common.logging import get_logger
-from app.extensions import db
-from app.models import ModelCall
 from app.providers.base import LLMProvider, ProviderError
 from app.services.generation.schema import (
     SchemaInvalid,
@@ -37,6 +34,7 @@ from app.services.generation.schema import (
     parse_page,
     schema_for_kind,
 )
+from app.services.usage import ledger
 
 logger = get_logger("app.generation.llm")
 
@@ -108,6 +106,9 @@ def call_json(
     timeout: float | None = None,
     job_id: str = "",
     owner_id: str = "",
+    step_id: str = "",
+    ref_type: str = "",
+    ref_id: str = "",
 ) -> JsonCall:
     """要一次结构化输出，并保证它要么是合格的、要么是记过账的失败。
 
@@ -119,6 +120,9 @@ def call_json(
                缺省只要求是合法 JSON 对象。
         timeout: 单次调用超时（秒）。缺省读 `GEN_PAGE_TIMEOUT`。
         job_id / owner_id: 记账用。账本不建外键，删课也不会丢账。
+        step_id: 生成任务里的哪一步（`gen_steps.id`）。工作台改课那条路没有步骤，留空。
+        ref_type / ref_id: 这笔调用「为谁花的」。不给时按 `job` 归到 `job_id` 上
+            （见 `_attribution`）—— 调用方不必为了记一笔账先查一次课程表。
 
     Raises:
         OutputInvalidError: 重试后仍不合格。
@@ -131,6 +135,8 @@ def call_json(
     reason = ""
     attempts = 0
 
+    where = _attribution(job_id=job_id, ref_type=ref_type, ref_id=ref_id)
+
     while attempts < MAX_ATTEMPTS:
         attempts += 1
         started = perf_counter()
@@ -139,16 +145,18 @@ def call_json(
             result = provider.chat(conversation, json_schema=schema, timeout=limit)
         except AppError as exc:
             _record(
-                provider, result=None, tokens=0, latency_ms=_elapsed_ms(started),
-                ok=False, error_code=_error_code(exc), job_id=job_id, owner_id=owner_id,
+                provider, result=None, latency_ms=_elapsed_ms(started),
+                ok=False, error_code=error_code_of(exc), job_id=job_id, owner_id=owner_id,
+                step_id=step_id, **where,
             )
             raise
         except Exception as exc:
             # 适配器只该抛 AppError；真漏出来别的，也要变成能看懂的 50201，
             # 而不是让一个 KeyError 一路冒到 SSE 里变成 50001。
             _record(
-                provider, result=None, tokens=0, latency_ms=_elapsed_ms(started),
+                provider, result=None, latency_ms=_elapsed_ms(started),
                 ok=False, error_code="upstream_error", job_id=job_id, owner_id=owner_id,
+                step_id=step_id, **where,
             )
             raise ProviderError(
                 f"服务商 {provider.name} 调用失败：{type(exc).__name__}",
@@ -163,15 +171,17 @@ def call_json(
         except SchemaInvalid as exc:
             reason = exc.reason
             _record(
-                provider, result=result, tokens=tokens, latency_ms=latency_ms,
+                provider, result=result, latency_ms=latency_ms,
                 ok=False, error_code="schema_invalid", job_id=job_id, owner_id=owner_id,
+                step_id=step_id, **where,
             )
             conversation = _with_feedback(conversation, result.text, reason)
             continue
 
         _record(
-            provider, result=result, tokens=tokens, latency_ms=latency_ms,
+            provider, result=result, latency_ms=latency_ms,
             ok=True, error_code="", job_id=job_id, owner_id=owner_id,
+            step_id=step_id, **where,
         )
         return JsonCall(
             data=data,
@@ -196,6 +206,9 @@ def call_page(
     timeout: float | None = None,
     job_id: str = "",
     owner_id: str = "",
+    step_id: str = "",
+    ref_type: str = "",
+    ref_id: str = "",
 ) -> JsonCall:
     """要一页内容。
 
@@ -213,6 +226,9 @@ def call_page(
         timeout=timeout,
         job_id=job_id,
         owner_id=owner_id,
+        step_id=step_id,
+        ref_type=ref_type,
+        ref_id=ref_id,
     )
 
 
@@ -257,55 +273,95 @@ def _clip(text: str) -> str:
     return clean[:_FEEDBACK_CHARS] + "\n…（输出过长，已截断）"
 
 
+def _attribution(*, job_id: str, ref_type: str, ref_id: str) -> dict[str, str]:
+    """这笔调用记在谁头上。
+
+    调用方不指定时按 `job` 归到 `job_id` 上 —— 生成期的每一次调用都发生在
+    某个任务里，而**任务知道自己是哪门课的**（`gen_jobs.course_id`）。
+    让调用方为了记一笔账先查一次课程表，是把归属的复杂度摊到了七八个调用点上，
+    而它们本来只关心「写这一页」。
+
+    工作台改课那条路没有 job（它不是一个异步任务），所以那边显式传
+    `ref_type="chat"` + 课程 id。
+    """
+    if ref_type:
+        return {"ref_type": ref_type, "ref_id": ref_id or job_id}
+    if job_id:
+        return {"ref_type": "job", "ref_id": job_id}
+    return {"ref_type": "", "ref_id": ref_id}
+
+
 def _record(
     provider: LLMProvider,
     *,
     result: Any,
-    tokens: int,
     latency_ms: int,
     ok: bool,
     error_code: str,
     job_id: str,
     owner_id: str,
+    step_id: str = "",
+    ref_type: str = "",
+    ref_id: str = "",
 ) -> None:
-    """写一行 model_calls。
+    """把这一次调用交给账本（`services/usage/ledger.py`）。
+
+    token 在这里拆成输入 / 输出两半：只有总数的话，「为什么这次特别贵」
+    在界面上永远答不出来（输入输出的价差通常有好几倍）。
+    `Result.usage` 缺项时按 0 记 —— 账少一个零比调用失败轻得多。
 
     记账失败**不阻断生成**：内容已经生成好了，因为一次写库冲突把它丢掉，
-    比少记一笔账更糟。但一定要留下 error 级日志 —— P5 对账时那是线索。
+    比少记一笔账更糟。但账本那边一定会留下 error 级日志 —— P5 对账时那是线索。
     """
+    usage: Mapping[str, Any] = {}
+    if result is not None:
+        raw = getattr(result, "usage", None)
+        usage = raw if isinstance(raw, Mapping) else {}
+    prompt = _as_int(usage.get("prompt_tokens"))
+    completion = _as_int(usage.get("completion_tokens"))
+
     model = ""
     if result is not None:
         model = str(getattr(result, "model", "") or "")
     model = model or str(getattr(provider, "default_model", "") or provider.name)
 
-    def _write() -> None:
-        db.session.add(
-            ModelCall(
-                kind="llm",
-                provider=provider.name,
-                model=model[:64],
-                tokens=tokens,
-                latency_ms=latency_ms,
-                ok=ok,
-                error_code=error_code or None,
-                job_id=job_id or None,
-                owner_id=owner_id or None,
-            )
-        )
+    ledger.record(
+        "llm",
+        provider=provider.name,
+        model=model,
+        prompt_tokens=prompt,
+        completion_tokens=completion,
+        # 上游给了 total 就用它的：兼容实现里 total 可能含缓存命中等口径，
+        # 自己加出来的数会与账单差一截（见 `count_tokens`）。
+        tokens=count_tokens(usage) if usage else 0,
+        latency_ms=latency_ms,
+        ok=ok,
+        error_code=error_code,
+        job_id=job_id,
+        owner_id=owner_id,
+        step_id=step_id,
+        ref_type=ref_type or ("job" if job_id else ""),
+        ref_id=ref_id or job_id,
+    )
 
-    try:
-        db_write(_write)
-    except Exception as exc:
-        logger.error("写入 model_calls 失败（job=%s）：%s", job_id or "-", type(exc).__name__)
 
+def error_code_of(exc: BaseException) -> str:
+    """失败原因归类。优先用适配器给的那份（timeout / rate_limit / …）。
 
-def _error_code(exc: BaseException) -> str:
-    """失败原因归类。优先用适配器给的那份（timeout / rate_limit / …）。"""
+    公开（P5-F5-10）：**同一句话只写一遍**。账本里的 `model_calls.error_code`
+    与步骤上的 `gen_steps.error_code` 是同一个判断的两次落地 —— 分头各写一份
+    映射表，迟早会出现「账单说限流、时间线说超时」，而那时用户不知道该信哪个。
+
+    返回值截到 32 字符：它要进 `String(32)` 的列（见 `gen_steps.error_code`）。
+    """
     details = getattr(exc, "details", None)
     if isinstance(details, Mapping):
         code = details.get("error")
         if isinstance(code, str) and code.strip():
             return code.strip()[:32]
+    if isinstance(exc, SchemaInvalid):
+        # 裸的校验失败（`parse` 抛出来的那种）：不是上游的错，是我们判它不合格
+        return "schema_invalid"
     return {
         50401: "timeout",
         42901: "rate_limit",
@@ -333,5 +389,6 @@ __all__ = [
     "call_page",
     "clip_feedback",
     "count_tokens",
+    "error_code_of",
     "page_timeout",
 ]

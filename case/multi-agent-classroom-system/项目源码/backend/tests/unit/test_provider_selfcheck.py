@@ -199,44 +199,61 @@ def test_self_check_reports_no_error_when_speech_credentials_are_complete():
 
 
 def test_self_check_says_when_a_capability_is_not_implemented_yet():
-    """凭据齐了 ≠ 现在能用：P0 的语音适配器只有骨架，必须说出来。
+    """凭据齐了 ≠ 现在能用：适配器还没实现时必须说出来。
 
     不吭声的后果是假绿灯 —— 用户看到三张全绿的卡片去上课，然后在第一次
     播放时吃 50201（未实现），而不是 40201（没配）。他接下来会去改 Key、
     换音色、重装依赖，唯独不会想到「这条路还没写」。
+
+    这条路上现在没有真实实例了（P2 三个适配器都已落地），所以自带桩：
+    机制留着是为了下一个能力（P6 的扩展音色之类）不再重演一次假绿灯。
     """
+    from app.providers.asr.mock import MockASR
+    from app.providers.tts.mock import MockRealtime, MockTTS
     from app.services.provider_registry import registry_from_config, self_check
 
-    report = self_check(registry_from_config(_SPEECH_ENV))
+    class PendingTTS(MockTTS):
+        implemented = False
+
+        def __init__(self, name: str = "volc_tts") -> None:
+            super().__init__(name)
+
+    class PendingASR(MockASR):
+        implemented = False
+
+        def __init__(self, name: str = "volc_asr") -> None:
+            super().__init__(name)
+
+    class PendingRealtime(MockRealtime):
+        implemented = False
+
+        def __init__(self, name: str = "volc_realtime") -> None:
+            super().__init__(name)
+
+    registry = registry_from_config(_SPEECH_ENV)
+    registry.register(PendingTTS())
+    registry.register(PendingASR())
+    registry.register(PendingRealtime())
+
+    report = self_check(registry)
 
     for kind, label in _SPEECH_LABELS.items():
         issue = next(i for i in report["issues"] if i["code"] == f"{kind}_pending")
         assert issue["level"] == "warning", "配置没写错，别升格成 error 把人赶去改配置"
         assert label in issue["message"]
-        assert "P2" in issue["message"]
 
 
 def test_self_check_is_quiet_once_the_capability_really_works():
-    """反向：适配器真的实现了就闭嘴。
+    """反向：适配器真的实现了就闭嘴（P2 之后这就是**默认状态**）。
 
     少了这条，上面那条可能只是因为「它总在报警」而通过 ——
     永远为真的警告和不报警一样没用。
     """
-    from app.providers.tts.mock import MockTTS
     from app.services.provider_registry import registry_from_config, self_check
 
-    class ReadyTTS(MockTTS):
-        """占住 volc_tts 这个名字，假装 P2 已经把实现填进去了。"""
+    report = self_check(registry_from_config(_SPEECH_ENV))
 
-        def __init__(self, name: str = "volc_tts") -> None:
-            super().__init__(name)
-
-    registry = registry_from_config(_SPEECH_ENV)
-    registry.register(ReadyTTS())
-
-    report = self_check(registry)
-
-    assert [i for i in report["issues"] if i["code"] == "tts_pending"] == []
+    assert [i for i in report["issues"] if i["code"].endswith("_pending")] == []
 
 
 def test_self_check_calls_a_half_configured_speech_provider_an_error():

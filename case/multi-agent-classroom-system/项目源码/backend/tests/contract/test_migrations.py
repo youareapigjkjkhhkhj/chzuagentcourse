@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import inspect, text
+from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 
@@ -14,6 +15,10 @@ pytestmark = pytest.mark.contract
 
 #: P0 的初始版本号。写死是对的：历史不可重写，这个 id 一旦生成就不会变。
 P0_REVISION = "3375f280213f"
+
+#: P4 的版本号（P5 的前一站）。用它当起点，测的才是「带着真数据的库升级」——
+#: 从空库一路升到最新是抓不到「扩列把老行写坏」这类问题的。
+P4_REVISION = "e81d7febf2ff"
 
 #: P0 建的八张表（含 alembic_version）
 EXPECTED_TABLES = {
@@ -218,6 +223,116 @@ def test_seed_reason_is_accepted_by_the_new_constraint(app_factory):
     db.session.commit()
 
     assert db.session.execute(text("SELECT count(*) FROM course_page_versions")).scalar() == 4
+
+
+def test_p5_ledger_columns_do_not_lose_rows(app_factory):
+    """P5 给账本扩列时，**已经记下的账不能少一行、也不能被改数**。
+
+    为什么单拎出来测：`model_calls` 是账本（「钱已经花出去了」），而 P5 那条迁移
+    要往上加八列。纯 `ADD COLUMN` 在 SQLite 上是原地操作、不会丢数据 —— 但这句话
+    得由一条用例来证明，而不是靠「应该是这样」。顺带钉住两件事：
+
+    - `tokens` 升级后还是原来那个**总数**（P1-D4 的 `_ledger_tokens()` 按它求和，
+      改含义等于推翻一条已验收的口径）；
+    - 新加的那几列在老行上是 `0` / 空串，而不是 NULL —— 让读它的地方不必到处写 `or 0`。
+    """
+    from flask_migrate import downgrade, upgrade
+
+    app_factory(create_tables=False)
+    upgrade(revision=P4_REVISION)
+
+    db.session.execute(
+        text(
+            "INSERT INTO model_calls (id, kind, provider, model, tokens, latency_ms, ok,"
+            " job_id, owner_id, created_at, updated_at)"
+            " VALUES ('mc1', 'llm', 'deepseek', 'deepseek-chat', 1234, 800, 1, 'j1', 'u1',"
+            " 'x', 'x')"
+        )
+    )
+    db.session.commit()
+
+    upgrade()
+
+    row = db.session.execute(
+        text(
+            "SELECT tokens, prompt_tokens, completion_tokens, units, unit_name,"
+            " est_cost, ref_type, ref_id, step_id FROM model_calls WHERE id = 'mc1'"
+        )
+    ).one()
+    assert row[0] == 1234, "升级把账本里的 token 总数改了"
+    assert row[1:] == (0, 0, 0, "", 0.0, "", "", ""), f"新列在老行上不是 0/空串：{row[1:]}"
+
+    # 降级只该拿走 P5 加的东西，账本身照样留着
+    downgrade(revision=P4_REVISION)
+    assert db.session.execute(text("SELECT tokens FROM model_calls")).scalar() == 1234
+
+
+def test_p5_audit_logs_keep_rows_and_gain_ip(app_factory):
+    """P5-A14 要的 `ip`/`ua`：老的审计行不丢，新列留空。"""
+    from flask_migrate import upgrade
+
+    app_factory(create_tables=False)
+    upgrade(revision=P4_REVISION)
+    db.session.execute(
+        text(
+            "INSERT INTO audit_logs (id, action, target, owner_id, created_at, updated_at)"
+            " VALUES ('al1', 'course.create', 'course:c1', 'u1', 'x', 'x')"
+        )
+    )
+    db.session.commit()
+
+    upgrade()
+
+    row = db.session.execute(
+        text("SELECT action, target, ip, ua FROM audit_logs WHERE id = 'al1'")
+    ).one()
+    assert row == ("course.create", "course:c1", "", ""), row
+
+
+def test_p5_exports_file_path_must_stay_relative(app_factory):
+    """P5-C1 的落库判据：产物路径必须在 `data/exports/` 下、且不许走出目录。
+
+    绝对路径一换机器就全指向不存在的地方，还会把「谁的电脑」写进库 —— 与 P2-C4
+    对音频路径的要求同一条口径。这条约束建在**表上**（SQLite 加不了 CHECK，
+    所以在建表时就写上），这里验的是它真拦得住，而不是「模型里写了」。
+    """
+    from flask_migrate import upgrade
+
+    app_factory(create_tables=False)
+    upgrade()
+    db.session.execute(
+        text(
+            "INSERT INTO courses (id, title, status, page_count, duration_min,"
+            " created_at, updated_at) VALUES ('c1', '测试课', 'ready', 1, 10, 'x', 'x')"
+        )
+    )
+    db.session.commit()
+
+    def _insert(export_id: str, path: str) -> None:
+        db.session.execute(
+            text(
+                "INSERT INTO exports (id, course_id, owner_id, format, scope, status,"
+                " progress, file_path, size_bytes, error, expires_at, finished_at,"
+                " created_at, updated_at)"
+                " VALUES (:id, 'c1', 'u1', 'pptx', 'course', 'done', 100, :path, 1, '', 'x',"
+                " 'x', 'x', 'x')"
+            ),
+            {"id": export_id, "path": path},
+        )
+        db.session.commit()
+
+    _insert("e-ok", "data/exports/c1/e-ok.pptx")  # 合法：相对路径、在导出目录下
+
+    for index, bad in enumerate(
+        (
+            "C:\\Users\\someone\\e.pptx",  # Windows 绝对路径
+            "/srv/app/e.pptx",  # POSIX 绝对路径
+            "data/exports/../../etc/passwd",  # 相对路径但走岔了
+        )
+    ):
+        with pytest.raises(IntegrityError):
+            _insert(f"e-bad{index}", bad)
+        db.session.rollback()
 
 
 def test_migration_files_are_committed():

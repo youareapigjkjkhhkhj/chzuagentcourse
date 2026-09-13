@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import re
+import time
 from datetime import datetime
 
 import pytest
@@ -195,6 +196,13 @@ def test_timestamps_are_utc_iso8601(app):
 
 
 def test_updated_at_advances_on_update(app):
+    """改了就得看得见：`updated_at` 是「这行什么时候被动过」的唯一答案。
+
+    醒来这一下是必须的。本机（Windows）`datetime.now()` 的粒度约 15.6ms ——
+    连续取两万次只有 87 个不同的值，两次 commit 落在同一个时钟滴答里就会写到
+    一模一样的 ISO 串，于是「必须前进」这条断言会随机器快慢时红时绿。
+    睡过一个滴答，测的就还是「更新会推进 updated_at」，而不是时钟分辨率。
+    """
     from app.models import User
 
     with app.app_context():
@@ -202,6 +210,8 @@ def test_updated_at_advances_on_update(app):
         db.session.add(user)
         db.session.commit()
         first = user.updated_at
+
+        time.sleep(0.02)
 
         user.name = "李老师"
         db.session.commit()

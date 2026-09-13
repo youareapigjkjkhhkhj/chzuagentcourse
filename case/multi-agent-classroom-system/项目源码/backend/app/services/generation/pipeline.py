@@ -37,21 +37,21 @@ from flask import current_app
 
 from app.common.context import real_app
 from app.common.dbw import db_write
-from app.common.errors import AppError, NotFoundError
+from app.common.errors import AppError, NotFoundError, StateError
 from app.common.logging import get_logger
 from app.common.timeutil import elapsed_ms, parse_iso, utcnow_iso
 from app.extensions import db
 from app.models import Course, CoursePage, GenJob, GenStep, ModelCall
 from app.providers.base import LLMProvider
 from app.services.courses import store
-from app.services.generation import events, prompts
+from app.services.generation import events, prompts, sourcing
 from app.services.generation.filter import (
     OUTCOME_BLOCKED,
     OUTCOME_REGENERATED,
     record_hit,
     scan_page,
 )
-from app.services.generation.llm import call_json, call_page, clip_feedback
+from app.services.generation.llm import call_json, call_page, clip_feedback, error_code_of
 from app.services.generation.schema import (
     SchemaInvalid,
     parse_discussion,
@@ -61,6 +61,8 @@ from app.services.generation.schema import (
     schema_for_outline,
     schema_for_profile,
 )
+from app.services.materials import citations
+from app.services.usage import budget
 
 logger = get_logger("app.generation.pipeline")
 
@@ -119,6 +121,21 @@ class PipelineCancelled(Exception):
 
 class StepSkipped(Exception):
     """这一步这次不跑（可选步骤）。带一个给人看的理由。"""
+
+
+@dataclass(frozen=True)
+class PageFailure:
+    """一页没写成：给人看的原因 + 给机器分组的归类码（P5-F5-10）。
+
+    两者分开是有用的：`message` 是「第 3 页生成失败：模型输出不符合页面要求…」，
+    用户读它；`code` 是 `rate_limit` / `timeout` / `schema_invalid`，
+    前端读它来决定提示语是「等一会儿再试」还是「去设置页看看 Key」。
+    只有一句话的失败原因，界面就只能对着一堆不同的故障说同一句「失败了」。
+    """
+
+    message: str
+    #: 缺省是「模型没写好」，也就是这一页**被尝试过**、只是没成。
+    code: str = "page_failed"
 
 
 # --- 对外入口 ---
@@ -188,7 +205,17 @@ def percent_of(step: GenStep) -> int:
 def start_job(
     course: Course, *, options: Mapping[str, Any] | None = None, owner_id: str = ""
 ) -> GenJob:
-    """建任务并铺好步骤行。**不做任何模型调用** —— 接口层要立刻返回（P1-B1）。"""
+    """建任务并铺好步骤行。**不做任何模型调用** —— 接口层要立刻返回（P1-B1）。
+
+    建行之前先过一次预算（P5-F5-8）：超了直接 `StateError`，**一行都不落库**。
+    建了任务再拒的话，那门课会永远停在 `queued`，而用户看到的是一次「点了没反应」——
+    钱没花出去，却多出一条再也跑不完的任务。
+
+    这里查的是**三个作用域全查**（含单课）：接口层在建课之前只能查全局与日预算
+    （那时还没有课程 id），单课预算只有到这里才知道该查谁。
+    """
+    budget.ensure_allowed(course_id=course.id, owner_id=owner_id or course.owner_id or "")
+
     merged = {**DEFAULT_OPTIONS, **dict(options or {})}
     merged.setdefault("topic", course.topic or course.title)
     merged.setdefault("concurrency", concurrency())
@@ -330,6 +357,107 @@ def retry_step(job_id: str, step_id: str, *, llm: LLMProvider | None = None) -> 
     return run_job(job_id, llm=llm, resume=True)
 
 
+def prepare_resume(job_id: str) -> GenJob:
+    """把任务摆回「可以接着跑」的样子，**不跑**。幂等。
+
+    从第一个**没做完**的步骤（见 `_is_finished`）起，把 `failed` 与被取消打断的
+    `skipped` 放回 `wait`；它前面的步骤一行都不动 —— 把已经写好的页重跑一遍，
+    是在替用户烧第二次钱。
+
+    单拎出来是因为它得在**请求线程**里做完（见 `POST /jobs/{id}/resume`）：
+    状态改在后台线程里的话，接口返回给用户的还是那个旧的终态
+    （`status: failed, resumable: true`），界面照着它渲染，看起来像没点上；
+    紧接着的那次状态查询也会读到旧值 —— 前端与验收脚本都是这么问的。
+    真正花时间的是后面的 `run_job`，那一半才该在后台。
+    """
+    job = db.session.get(GenJob, job_id)
+    if job is None:
+        raise NotFoundError(f"生成任务 {job_id} 不存在")
+    if job.status in {"done", "paused"}:
+        # done：没有要跑的了；paused：那是在等用户确认大纲，不该被这里悄悄跳过
+        # （用户自己的那一步审查，只有他自己能点掉，见 `POST /courses/{id}/outline`）。
+        raise StateError(_nothing_to_resume(job))
+
+    steps = steps_of(job)
+    first = next((step for step in steps if not _is_finished(step)), None)
+    if first is not None:
+        def _reset() -> None:
+            for step in steps:
+                if step.seq < first.seq:
+                    continue
+                if step.status in {"failed", "skipped"}:
+                    step.status = "wait"
+                    step.error = None
+                    step.error_code = ""
+                    # 「这次不适用于你」与「你被取消了」都写成 skipped，
+                    # 但只有后者要重跑（见 `_is_finished`）。标记要一起摘掉，
+                    # 否则它重跑完还是带着一个「已取消」的旧详情。
+                    detail = dict(step.detail or {})
+                    if detail.pop("canceled", None):
+                        step.detail = detail
+
+        db_write(_reset)
+
+    course = db.session.get(Course, job.course_id)
+    if course is not None:
+        # 课程回到 generating：任务又要跑起来了，课程列表里那条「失败」得跟着变，
+        # 否则用户在列表里看到的是红的、点进去却在转圈。跑完（或再被取消）时
+        # 由 assemble / _settle_cancellation 改成终态。
+        _touch_course(course, status="generating")
+    _touch_job(job, status="queued", error="")
+    with _cancel_lock:
+        _cancel_flags.discard(job_id)
+    return job
+
+
+def resume_job(job_id: str, *, llm: LLMProvider | None = None) -> GenJob:
+    """断点续跑：从**第一个没做完的步骤**接着跑（P5-F5-9 / P5-A9）。
+
+    与 `retry_step` 的区别是「谁说了算」：重试是用户指着某一步说「就它」，
+    续跑是对着整个任务说「接着来」。
+
+    三道保险，缺一不可：
+
+    1. `prepare_resume`：从第一个没做完的步骤起，把 `failed` 与被取消打断的
+       `skipped` 放回 `wait`；它前面的步骤一行都不动。
+    2. `run_job`：它本来就跳过 `done`/`skipped` 的步骤。
+    3. `_write_one`：页面级的幂等检查（`status == "ready"` 就不重写）。
+
+    第 3 条才是 P5-A9 真正要验的那条 —— 「前 6 页未重复调用 LLM」量的是
+    `model_calls` 有没有新增，而前两条只保证我们不**主动**去写那 6 页。
+    三道都在，是因为它们在不同的线程里跑（前两条在请求线程、第 3 条在写页的子线程），
+    谁也替不了谁。
+
+    取消过的任务也能续（`canceled`）：用户取消的意思是「别再花钱了」，
+    不是「把已经买到的扔掉」—— 页面一页没删，课程回到 draft，接着写正是他想要的。
+    """
+    prepare_resume(job_id)
+    return run_job(job_id, llm=llm, resume=True)
+
+
+def _is_finished(step: GenStep) -> bool:
+    """这一步是不是「不用再跑了」。
+
+    `skipped` 有**两种**来源，在这里必须分开 —— 混为一谈的后果很具体：
+
+    - **可选步骤这次不适用**（没配音色 → tts 跳过）：正常收场，别再跑一遍；
+    - **取消打断的半途收手**（`detail.canceled`）：它没做完，续跑要接着做。
+
+    看成一个的话，续跑会跳过那个被取消的 write，直接从 quiz 接着往下走 ——
+    最后交出一门少了最后几页、却显示「已完成」的课。这是最难发现的一类错：
+    每一处状态都是对的，只有内容少了几页。
+    """
+    if step.status == "done":
+        return True
+    return step.status == "skipped" and not (step.detail or {}).get("canceled")
+
+
+def _nothing_to_resume(job: GenJob) -> str:
+    if job.status == "paused":
+        return "任务停在大纲确认，请先确认大纲"
+    return "这个任务已经生成完成，没有要接着跑的部分"
+
+
 def request_cancel(job_id: str) -> GenJob | None:
     """请求取消。状态**在这里**就改掉，不等工作线程（P1-A9：3 秒内）。
 
@@ -376,6 +504,9 @@ class StepContext:
     owner_id: str
     #: 非空表示这一步没做完，但**后面的步骤照跑**（P1-F1：单步失败不中断整课）。
     failure: str = ""
+    #: `failure` 的归类码（P5-F5-10）。步骤函数在填 `failure` 时顺手填它；
+    #: 不填就按「内部错误」记 —— 见 `_run_step` 里那两处兜底。
+    failure_code: str = ""
     tokens: int = 0
     model: str = ""
     model_name: str = ""
@@ -414,10 +545,16 @@ class StepContext:
 
 def _run_step(ctx: StepContext) -> str:
     step = ctx.step
-    _touch_step(step, status="running", started_at=utcnow_iso(), error=None, detail={"percent": 0})
+    # attempts 在这里 +1，也就是「这一步开始跑了第几次」（P5-F5-10）。
+    # 只加不清零：重试与断点续跑都会再进一次这里，而「跑过三次才成」
+    # 正是用户去查上游的那个信号 —— 清零就把它抹平了。
+    run_no = int(step.attempts or 0) + 1
+    _touch_step(step, status="running", started_at=utcnow_iso(), error=None, error_code="",
+                attempts=run_no, detail={"percent": 0})
     _touch_job(ctx.job)
     events.emit(ctx.job_id, "step.start", {
-        "stepId": step.id, "type": step.type, "title": step.title, "progress": ctx.job.progress,
+        "stepId": step.id, "type": step.type, "title": step.title,
+        "attempt": run_no, "progress": ctx.job.progress,
     })
     started = perf_counter()
 
@@ -427,7 +564,9 @@ def _run_step(ctx: StepContext) -> str:
         _touch_step(step, status="skipped", finished_at=utcnow_iso(), detail={**ctx.detail, "canceled": True})
         return "canceled"
     except StepSkipped as exc:
-        _touch_step(step, status="skipped", finished_at=utcnow_iso(), detail={"reason": str(exc)})
+        # 跳过不是失败，**不记 error_code** —— 它在时间线上是灰的，不是红的
+        _touch_step(step, status="skipped", finished_at=utcnow_iso(),
+                    duration_ms=_ms(started), detail={"reason": str(exc)})
         events.emit(ctx.job_id, "step.done", {
             "stepId": step.id, "type": step.type, "skipped": True, "detail": {"reason": str(exc)},
             "progress": _touch_job(ctx.job).progress,
@@ -435,23 +574,28 @@ def _run_step(ctx: StepContext) -> str:
         return "skipped"
     except Exception as exc:  # 任何异常都不该让整课崩掉（P1-F1）
         message = _error_text(exc)
-        _touch_step(step, status="failed", error=message, finished_at=utcnow_iso(),
-                    duration_ms=_ms(started))
+        code = error_code_of(exc)
+        _touch_step(step, status="failed", error=message, error_code=code,
+                    finished_at=utcnow_iso(), duration_ms=_ms(started))
         # 栈只进 DEBUG 日志、且只打位置不打局部变量：局部变量里躺着提示词与
         # 模型输出，那是 AGENTS §19 明令不入日志的东西。排障时打开 DEBUG 就够定位了。
-        logger.warning("步骤 %s 失败（job=%s）：%s", step.type, ctx.job_id, message)
+        logger.warning("步骤 %s 失败（job=%s code=%s）：%s", step.type, ctx.job_id, code, message)
         logger.debug("步骤 %s 的异常栈", step.type, exc_info=True)
         events.emit(ctx.job_id, "step.failed", {
-            "stepId": step.id, "type": step.type, "error": message,
-            "progress": _touch_job(ctx.job).progress,
+            "stepId": step.id, "type": step.type, "error": message, "errorCode": code,
+            "attempts": run_no, "progress": _touch_job(ctx.job).progress,
         })
         return "failed"
 
     status = "failed" if ctx.failure else "done"
+    # 步骤函数填了 failure 却没填归类码时兜一个：时间线上宁可显示一个笼统的红，
+    # 也不要因为缺码而在前端渲染出空白。空串只留给「成功」。
+    code = (ctx.failure_code or "step_failed") if ctx.failure else ""
     _touch_step(
         step,
         status=status,
         error=ctx.failure or None,
+        error_code=code,
         finished_at=utcnow_iso(),
         duration_ms=_ms(started),
         tokens=ctx.tokens,
@@ -462,11 +606,12 @@ def _run_step(ctx: StepContext) -> str:
             "provider": getattr(ctx.provider, "name", ""),
             "tokens": ctx.tokens,
             "latencyMs": _ms(started),
+            "attempts": run_no,
             "promptVersion": prompts.PROMPT_VERSION,
         },
     )
     events.emit(ctx.job_id, "step.done", {
-        "stepId": step.id, "type": step.type, "tokens": ctx.tokens,
+        "stepId": step.id, "type": step.type, "tokens": ctx.tokens, "errorCode": code,
         "detail": ctx.detail, "progress": _touch_job(ctx.job).progress,
     })
     return status
@@ -481,7 +626,7 @@ def parse_topic(ctx: StepContext) -> None:
     call = call_json(
         ctx.provider, messages,
         schema=schema_for_profile(), parse=parse_profile,
-        job_id=ctx.job_id, owner_id=ctx.owner_id,
+        job_id=ctx.job_id, owner_id=ctx.owner_id, step_id=ctx.step.id,
     )
     ctx.count(call.tokens, call.model)
     store.set_dsl_meta(ctx.course, {"audienceProfile": call.data})
@@ -490,16 +635,25 @@ def parse_topic(ctx: StepContext) -> None:
 
 
 def build_outline(ctx: StepContext) -> None:
-    """生成大纲，并**在这里把全部页行铺出来**（页号从此定死）。"""
+    """生成大纲，并**在这里把全部页行铺出来**（页号从此定死）。
+
+    关联了材料的课（F4-7）在这里就带上材料：大纲要贴着讲义的章节走，
+    而不是生成完之后再让用户手动改（P4-A5 的第一道）。
+    """
     profile = _profile_of(ctx.course)
     # 校验的是**正文页**上限：总页数上限减去系统必补的几页（见 prompts.page_budget）
     limit = prompts.content_page_limit(ctx.options, max_total=max_page_count())
-    messages = prompts.outline_messages(ctx.topic, profile, ctx.options)
+    materials = list(
+        sourcing.inject(
+            ctx.course.id, ctx.topic, limit=citations.config_int("MATERIAL_OUTLINE_TOP_K", 5)
+        ).values()
+    )
+    messages = prompts.outline_messages(ctx.topic, profile, ctx.options, materials=materials)
     call = call_json(
         ctx.provider, messages,
         schema=schema_for_outline(max_pages=limit),
         parse=lambda text: parse_outline(text, max_pages=limit),
-        job_id=ctx.job_id, owner_id=ctx.owner_id,
+        job_id=ctx.job_id, owner_id=ctx.owner_id, step_id=ctx.step.id,
     )
     ctx.count(call.tokens, call.model)
     outline = call.data
@@ -524,6 +678,7 @@ def write_pages(ctx: StepContext) -> None:
     rows = store.pages_of(ctx.course)
     if not rows:
         ctx.failure = "没有可写的页面（大纲未生成或页面已被删空）"
+        ctx.failure_code = "no_pages"
         return
 
     batches = _build_batches(rows)
@@ -538,6 +693,7 @@ def write_pages(ctx: StepContext) -> None:
     total = len(pending)
     done = 0
     failed_pages: list[int] = []
+    failed_codes: list[str] = []
     options = dict(ctx.options)
 
     # 结果按**提交顺序**取（future.result() 会等这一个，而不是等最先完成的那个）：
@@ -546,7 +702,7 @@ def write_pages(ctx: StepContext) -> None:
         futures = {
             pool.submit(_write_one, ctx.app, PageTask(
                 job_id=ctx.job_id, course_id=ctx.course.id, page_id=row.id,
-                provider=ctx.provider, owner_id=ctx.owner_id,
+                provider=ctx.provider, owner_id=ctx.owner_id, step_id=ctx.step.id,
             )): row.page_no
             for row in pending
         }
@@ -555,6 +711,7 @@ def write_pages(ctx: StepContext) -> None:
             done += 1
             if result["status"] == "failed":
                 failed_pages.append(result["pageNo"])
+                failed_codes.append(str(result.get("errorCode") or "page_failed"))
             if result.get("tokens"):
                 ctx.count(int(result["tokens"]), str(result.get("model") or ""))
             _mark_batch(batches, result["pageNo"], result["status"])
@@ -562,6 +719,9 @@ def write_pages(ctx: StepContext) -> None:
 
     if failed_pages:
         ctx.failure = "第 " + "、".join(str(no) for no in sorted(failed_pages)) + " 页生成失败"
+        # 归类码取**第一页**的：几页同时失败时（限流最常见的形态就是「并发三页一起撞墙」），
+        # 用户要做的是同一件事，而把几个码拼在一起只会让前端挑不出一个来显示。
+        ctx.failure_code = failed_codes[0]
     elif ctx.stop():
         raise PipelineCancelled
     ctx.detail["batches"] = _finalize_batches(batches, rows)
@@ -576,6 +736,7 @@ def make_quiz_and_discussion(ctx: StepContext) -> None:
     chapters = (ctx.course.dsl or {}).get("chapters") or []
     if not chapters:
         ctx.failure = "没有可出题的章节（大纲未生成）"
+        ctx.failure_code = "no_chapters"
         return
 
     profile = _profile_of(ctx.course)
@@ -592,6 +753,7 @@ def make_quiz_and_discussion(ctx: StepContext) -> None:
             parse=parse_discussion,
             job_id=ctx.job_id,
             owner_id=ctx.owner_id,
+            step_id=ctx.step.id,
         )
         ctx.count(call.tokens, call.model)
         updated.append({"no": chapter.get("no"), "discussion": call.data["questions"]})
@@ -601,8 +763,69 @@ def make_quiz_and_discussion(ctx: StepContext) -> None:
 
 
 def synthesize_narration(ctx: StepContext) -> None:
-    """P2 接语音。P1 只把讲稿写好 —— 讲稿是语音合成的输入，它本身已经产物化了。"""
-    raise StepSkipped("语音合成在 P2 接入；P1 已产出可合成的 beat 化讲稿")
+    """整课预合成（P2-A2）：把写好的讲稿变成一句一句的音频。
+
+    **走的是与「全部合成」按钮同一条路**（`voice.jobs.run`）。合成是幂等的、
+    按规格哈希认缓存，所以「老师点过按钮」与「管线跑过这一步」既不重复花钱，
+    也不会互相打架。在这里另拼一遍参数（音色、语速、纠音表）迟早会分叉 ——
+    接口那边加了 `force`，管线这边忘了，症状是「重生成之后声音还是旧的」。
+
+    没有声音的几条路**跳过**而不是失败，它们都只说明「这节课没有声音」，
+    课程本身是好的（P2-G3：关掉语音之后课堂仍是一节可读、可打字的纯文字课堂）：
+
+    - 总开关关着（`VOICE_ENABLED=false`）；
+    - 没有可用的音色（上游音色 ID 没配）；
+    - 服务商配不上（40201）—— 语音是附加产物，Key 没填不该让整课判失败。
+
+    反过来说，**一句都没合出来**是真失败：那说明音色或服务商配错了，
+    而用户看到的应该是一个能去修的错，不是「这节课就是没有声音」。
+    """
+    # 局部 import：语音是可选的一整块，管线的主链路（解析→大纲→写页）不该
+    # 因为语音包里的任何东西而导入失败（AGENTS §14.2 的分层也要求这一层
+    # 只认「谁调我」，不认厂商细节）。
+    from app.services.voice import jobs as voice_jobs
+
+    def _progress(done: int, count: int) -> None:
+        # 合成是一句一句来的，进度就是「第几句」。百分比之外再留一份数字，
+        # 好让进度条说得比「37%」具体一点。
+        ctx.progress(int(done * 100 / count) if count else 0, {"done": done, "beats": count})
+
+    try:
+        report = voice_jobs.run(ctx.course.id, on_progress=_progress)
+    except AppError as exc:
+        # 40201 之类：这一课没有声音，但课是完整的
+        raise StepSkipped(f"{exc.message}（这节课没有声音）") from exc
+
+    if not report.get("enabled"):
+        raise StepSkipped(_no_voice_reason(report.get("reason") or ""))
+
+    total = int(report.get("total") or 0)
+    ctx.detail.update(
+        {
+            "beats": total,
+            "synthesized": int(report.get("synthesized") or 0),
+            "cached": int(report.get("cached") or 0),
+            "failed": len(report.get("failed") or []),
+        }
+    )
+    if total and report.get("reason") == "all_failed":
+        # 进 detail、也进 failure：这一句错误是给用户看的
+        ctx.failure = f"{total} 句讲稿一句都没合成出声音，请检查音色与服务商配置"
+        ctx.failure_code = "voice_all_failed"
+    ctx.progress(100)
+
+
+#: 「这节课没有声音」的四种说法。理由要分得开：开关关着是部署的决定、
+#: 音色没配是使用者的选择、服务商没配是 Key 没填 —— 修法完全不同。
+_NO_VOICE_REASONS: dict[str, str] = {
+    "voice_disabled": "语音功能已关闭（VOICE_ENABLED=false），这节课是纯文字的",
+    "voice_not_configured": "还没有可用的音色（上游音色 ID 未配置），这节课没有声音",
+    "course_not_found": "课程在合成前已被删除",
+}
+
+
+def _no_voice_reason(reason: str) -> str:
+    return _NO_VOICE_REASONS.get(reason, "这节课没有合成语音")
 
 
 def assemble_course(ctx: StepContext) -> None:
@@ -655,6 +878,9 @@ class PageTask:
     page_id: str
     provider: LLMProvider
     owner_id: str
+    #: 这一页算在 `gen_steps` 的哪一步上（P5-C2 的账本要用它回答
+    #: 「钱花在哪一步」）。空串也合法 —— 手工触发单页重写时没有步骤。
+    step_id: str = ""
 
 
 def _write_one(app: Any, task: PageTask) -> dict:
@@ -684,50 +910,90 @@ def _write_one(app: Any, task: PageTask) -> dict:
             "pageNo": number, "chapterNo": page.chapter_no, "kind": page.kind,
             "title": page.title or "", "points": _points_of(course, number),
         }
-        messages = prompts.page_messages(target, profile=profile, outline=outline, previous=previous)
+        # 材料注入（F4-7）：按这一页要讲的东西检索这门课关联的材料。
+        # 没有材料时拿到的是空表，后面每一步都会自然退回去（P4-G3）。
+        injected = sourcing.inject(
+            task.course_id,
+            sourcing.page_query(target),
+            limit=citations.config_int("MATERIAL_PAGE_TOP_K", 8),
+        )
+        messages = prompts.page_messages(
+            target, profile=profile, outline=outline, previous=previous,
+            materials=list(injected.values()),
+        )
 
-        produced = _produce(page, task, messages, number)
-        if isinstance(produced, str):
+        produced = _produce(page, task, messages, number, injected=injected)
+        if isinstance(produced, PageFailure):
             # 失败原因既是页面的 error，也是这一步的汇总信息（「第 3 页生成失败」）
-            store.mark_page_failed(page, produced)
-            logger.warning("写页失败（job=%s page=%s）：%s", job_id, number, produced)
-            return {"pageNo": number, "status": "failed", "error": produced}
-        dsl, tokens, model, attempts = produced
+            store.mark_page_failed(page, produced.message)
+            logger.warning(
+                "写页失败（job=%s page=%s code=%s）：%s", job_id, number, produced.code, produced.message
+            )
+            return {"pageNo": number, "status": "failed", "error": produced.message,
+                    "errorCode": produced.code}
+        dsl, tokens, model, attempts, sources = produced
 
         try:
             store.save_page(
                 page, dsl, reason="generate", model=model, tokens=tokens,
                 meta={"promptVersion": prompts.PROMPT_VERSION, "generatedAt": utcnow_iso(),
-                      "attempts": attempts},
+                      "attempts": attempts, "sources": sources},
             )
+            # 溯源落到 page_sources（F4-8）：与页面内容分两次写，见 sourcing.persist
+            sourcing.persist(page, dsl)
         except Exception as exc:  # 落库失败也只算这一页失败
             message = f"第 {number} 页写入失败：{type(exc).__name__}"
             store.mark_page_failed(page, message)
             logger.error("写页落库失败（job=%s page=%s）：%s", job_id, number, type(exc).__name__)
-            return {"pageNo": number, "status": "failed", "error": message}
+            return {"pageNo": number, "status": "failed", "error": message,
+                    "errorCode": "page_write_failed"}
 
         events.emit(job_id, "page.ready", {
             "pageNo": number, "kind": page.kind, "title": page.title or "",
             "chapterNo": page.chapter_no, "rev": page.rev, "attempts": attempts,
+            # 出处条数与「有没有引文没对上」：前端据此决定徽标是亮的还是黄的
+            "sources": len(dsl.get("sources") or []),
+            "sourceMissing": bool(dsl.get("sourceMissing")),
         })
         return {"pageNo": number, "status": "ready", "tokens": tokens, "model": model,
-                "attempts": attempts}
+                "attempts": attempts, "sources": len(dsl.get("sources") or [])}
 
 
 def _produce(
-    page: CoursePage, task: PageTask, messages: list[dict], number: int
-) -> tuple[dict, int, str, int] | str:
-    """调用模型产出这一页（含合规检查）。返回内容，或**失败原因**（字符串）。
+    page: CoursePage, task: PageTask, messages: list[dict], number: int,
+    *, injected: Mapping[str, dict] | None = None,
+) -> tuple[dict, int, str, int, dict] | PageFailure:
+    """调用模型产出这一页（含合规检查与出处定案）。返回内容，或**失败的原因与归类**。
 
     调用与落库分成两步、失败用返回值而不是异常 —— 这样「模型没写好」和
     「写库没写成」在日志与页面的 error 里是两句不同的话，排障时不用去猜。
+
+    出处定案（`sourcing.settle`）摆在合规检查**之后**：合规不过这一页根本不上架，
+    再花一次调用去核对它的引文纯属浪费。重试也共用同一条对话 ——
+    「上一版讲了什么」与「要改什么」都靠 `messages` 后面的两轮补上。
     """
     blocked = ""
+    # 重生成时要把「上一版说了什么」回喂给模型，而合规重写会换掉那一版，
+    # 所以用一个小格子跟着当前这一版的原文走（闭包拿不到后来的赋值）。
+    state = {"text": ""}
+
+    def _regenerate(feedback: str) -> tuple[dict, int]:
+        again = call_page(
+            task.provider,
+            [*messages, {"role": "assistant", "content": clip_feedback(state["text"])},
+             {"role": "user", "content": feedback}],
+            kind=page.kind, page_no=number, chapter_no=page.chapter_no,
+            job_id=task.job_id, owner_id=task.owner_id, step_id=task.step_id,
+        )
+        return again.data, again.tokens
+
     try:
         call = call_page(task.provider, messages, kind=page.kind, page_no=number,
-                         chapter_no=page.chapter_no, job_id=task.job_id, owner_id=task.owner_id)
+                         chapter_no=page.chapter_no, job_id=task.job_id,
+                         owner_id=task.owner_id, step_id=task.step_id)
         dsl, tokens, model = call.data, call.tokens, call.model
         attempts = call.attempts
+        state["text"] = call.text
 
         hits = scan_page(dsl)
         if hits:
@@ -736,7 +1002,7 @@ def _produce(
                 [*messages, {"role": "assistant", "content": clip_feedback(call.text)},
                  {"role": "user", "content": _SENSITIVE_RETRY.format(words="、".join(hits))}],
                 kind=page.kind, page_no=number, chapter_no=page.chapter_no,
-                job_id=task.job_id, owner_id=task.owner_id,
+                job_id=task.job_id, owner_id=task.owner_id, step_id=task.step_id,
             )
             tokens += call2.tokens
             attempts += call2.attempts
@@ -754,12 +1020,19 @@ def _produce(
                            extra={"courseId": task.course_id, "pageNo": number})
                 dsl = call2.data
                 model = call2.model or model
+                state["text"] = call2.text
     except Exception as exc:  # 单页失败只标记这一页（P1-F1）
-        return f"第 {number} 页生成失败：{_error_text(exc)}"
+        # 归类码跟着**原始异常**走：限流就是限流，超时就是超时（P5-A10 要看的正是这个）
+        return PageFailure(f"第 {number} 页生成失败：{_error_text(exc)}", error_code_of(exc))
 
     if blocked:
-        return blocked
-    return dsl, tokens, model, attempts
+        return PageFailure(blocked, "content_blocked")
+
+    dsl, summary = sourcing.settle(dsl, injected or {}, regenerate=_regenerate)
+    # 重试那次也是真花钱的调用，照样进账本（它已经在 ModelCall 里，这里只是
+    # 把它加进这一步的合计，免得「账单比进度条上的数字多」）
+    tokens += int(summary.get("retryTokens") or 0)
+    return dsl, tokens, model, attempts, summary
 
 
 # --- 上下文（每一步都从库里读，见模块 docstring 第 1 条）---
@@ -926,6 +1199,9 @@ def recover_stuck_jobs() -> dict[str, int]:
             # 步骤也停在 running，跟着一起收：否则重试时它会从 wait 之外的地方开始
             step.status = "failed"
             step.error = RESTART_ERROR
+            # 归类码：重启与「上游挂了」是两回事，时间线上要分得开 ——
+            # 前者该点「继续生成」，后者得先看看上游（P5-A9 / P5-A10）。
+            step.error_code = "interrupted"
 
     db_write(_work)
     for job in jobs:
@@ -1042,6 +1318,7 @@ __all__ = [
     "PIPELINE",
     "RESTART_ERROR",
     "WEIGHTS",
+    "PageFailure",
     "PipelineCancelled",
     "Step",
     "StepContext",
@@ -1053,6 +1330,7 @@ __all__ = [
     "percent_of",
     "recover_stuck_jobs",
     "request_cancel",
+    "resume_job",
     "retry_step",
     "run_job",
     "start_job",

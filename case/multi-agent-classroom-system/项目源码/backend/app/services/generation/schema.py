@@ -28,8 +28,10 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic import ValidationError as PydanticValidationError
+
+from app.services.generation import diagram
 
 #: P1 §3.2 的九种页型。与 app/models/course.py 的 PAGE_KINDS 必须一致 ——
 #: 那边是数据库 CHECK，这边是生成约束，两边对不上就会出现「生成得出、存不进」。
@@ -107,11 +109,62 @@ class Beat(BaseModel):
     estSec: int = 0
 
 
+class DiagramNode(BaseModel):
+    """示意图里的一个节点。text 是节点上的字，一行放不下会自动折行。"""
+
+    text: str = ""
+    shape: str = "box"  # box | ellipse | diamond
+    accent: bool = False  # 强调（这一页的主角）
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_text(cls, value: Any) -> Any:
+        """节点写成一句光字（`"收集资料"`）也认 —— 模型省事时的常见写法。"""
+        return {"text": value} if isinstance(value, str) else value
+
+
+class DiagramEdge(BaseModel):
+    """一条箭头。`from` / `to` 是 `[行号, 列号]`（从 0 开始），指向 rows 里的节点。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_: tuple[int, int] = Field(default=(0, 0), alias="from")
+    to: tuple[int, int] = Field(default=(0, 0))
+    label: str = ""
+
+
+class DiagramSpec(BaseModel):
+    """结构化示意图：节点摆成网格，箭头连它们。服务端按这个渲染成 SVG。
+
+    坐标由服务端算（模型画不准自由坐标，但「谁指向谁」说得准），
+    所以这里只要**结构**：最多 4 行 ×3 列、最多 12 条箭头。
+    """
+
+    rows: list[list[DiagramNode]] = Field(
+        default_factory=list, max_length=diagram.MAX_ROWS, description="节点网格，一行一个流程阶段"
+    )
+    edges: list[DiagramEdge] = Field(
+        default_factory=list, max_length=diagram.MAX_EDGES, description="箭头，用 [行号,列号] 指节点"
+    )
+
+
 class Visual(BaseModel):
-    """图示描述。P1 只出描述，不真出图（P1 §3.2）。"""
+    """图示。`desc` 是给人看的描述，`spec` 是能真画出图的结构（服务端据此出 SVG）。"""
 
     type: str = ""
     desc: str = ""
+    spec: DiagramSpec | None = None
+
+    @field_validator("spec", mode="before")
+    @classmethod
+    def _salvage_spec(cls, value: Any) -> Any:
+        """图画不出来不该拖垮整页：spec 不合格就当没给，desc 照旧留着。"""
+        if value is None:
+            return None
+        try:
+            return DiagramSpec.model_validate(value)
+        except PydanticValidationError:
+            return None
 
 
 class Interaction(BaseModel):
@@ -224,6 +277,18 @@ class DiscussionDraft(BaseModel):
     questions: list[str] = Field(default_factory=list)
 
 
+class SourceRef(BaseModel):
+    """一条出处（F4-8）：这一页的哪句话出自材料的哪一块。
+
+    `chunkId` 是**材料分块的 id**（检索给模型看的那一段），不是页号 ——
+    页号会因为重新解析而变，分块 id 不会。`quote` 必须是原文的连续片段，
+    它由 `services/materials/citations.py` 逐字核对（P4-C2）。
+    """
+
+    chunkId: str = ""
+    quote: str = ""
+
+
 class PageDraft(BaseModel):
     """一页的全部可能字段。哪种页型要哪些，由 KindRule 说了算。"""
 
@@ -236,7 +301,25 @@ class PageDraft(BaseModel):
     visual: Visual | None = None
     interaction: Interaction | None = None
     boardPlan: list[BoardItem] = Field(default_factory=list)
-    sources: list[str] = Field(default_factory=list)
+    #: 出处（P4-4）。`gaps` 是「材料里没有、这一页又必须讲」的部分（P4-A8）——
+    #: 显式列出来，好过让模型凭常识编一段看不出来的话。
+    sources: list[SourceRef] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+    #: 这一页有出处没核对上（§5）。由管线在校验后**重写**，不是模型的自我评价 ——
+    #: 放在 Schema 里是为了让 DSL 的形状在一处说清（前端据此标黄提示）。
+    sourceMissing: bool = False
+
+    @field_validator("sources", mode="before")
+    @classmethod
+    def _drop_legacy_sources(cls, value: Any) -> Any:
+        """P1 时代 `sources` 是一串自由文本（「参考《讲义》第三章」）。
+
+        那种串没有 chunkId，无从核对，留着只会在界面上显示一个点不开的出处。
+        在这里丢掉，而不是报错：旧课程重新生成时不该因为一个老字段整页失败。
+        """
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, (dict, SourceRef))]
+        return value
 
     #: outline
     chapters: list[Chapter] = Field(default_factory=list)
@@ -688,7 +771,18 @@ def _to_dsl(kind: str, draft: PageDraft, *, page_no: int, chapter_no: int) -> di
             for item in draft.boardPlan
             if item.desc.strip()
         ],
-        "sources": [s.strip() for s in draft.sources if s.strip()],
+        # 出处：只留两端都有内容的（缺 chunkId 的点不开，缺 quote 的核不了）。
+        # **对不对**不在这里判 —— 那要拿材料原文比，属于 citations 的事（P4-C2）。
+        "sources": [
+            {"chunkId": item.chunkId.strip(), "quote": item.quote.strip()}
+            for item in draft.sources
+            if item.chunkId.strip() and item.quote.strip()
+        ],
+        # 材料缺口（P4-A8）：写成一句能直接显示给学生看的话
+        "gaps": [gap.strip() for gap in draft.gaps if gap.strip()],
+        # 出处的核对结果由管线写（见 PageDraft.sourceMissing）；这里先把模型
+        # 自己写的那个值带过来，免得它凭空消失
+        "sourceMissing": bool(draft.sourceMissing),
         "chapters": [
             {"no": chapter.no, "title": chapter.title.strip(), "pages": list(chapter.pages)}
             for chapter in draft.chapters
@@ -712,10 +806,22 @@ def _to_dsl(kind: str, draft: PageDraft, *, page_no: int, chapter_no: int) -> di
 
 
 def _visual(visual: Visual | None) -> dict | None:
-    """没有 desc 的图示描述是空话 —— 前端画不出来，当作没给。"""
+    """没有 desc 的图示描述是空话 —— 前端画不出来，当作没给。
+
+    有 `spec` 就顺带把 SVG 画出来存进 DSL：渲染是**确定性**的，落库后
+    导出三格式与网页放映用的是同一份字节，不必各自再画一遍。画不出来
+    （节点太少、结构认不出）就只留 desc，退回「文字描述 + 占位」的老样子。
+    """
     if visual is None or not visual.desc.strip():
         return None
-    return {"type": visual.type.strip() or "diagram", "desc": visual.desc.strip()}
+    page_visual: dict[str, Any] = {"type": visual.type.strip() or "diagram", "desc": visual.desc.strip()}
+    if visual.spec is not None:
+        spec = visual.spec.model_dump(by_alias=True)
+        svg = diagram.render(spec)
+        if svg:
+            page_visual["spec"] = spec
+            page_visual["svg"] = svg
+    return page_visual
 
 
 def _code(code: CodeBlock | None) -> dict | None:

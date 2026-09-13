@@ -15,9 +15,12 @@ import type { Checkpoint } from './checkpoint';
 import type { LlmClient } from './llm/client';
 import type { ToolBus } from './tools/bus';
 import { ReadState, type ToolContext } from './tools/types';
+import { TASK_TOOL_NAME } from './tools/taskTool';
 
 /** 单次任务最大轮数（长任务支持；超窗口由 context.ts 两级降级兜底） */
 export const MAX_TURNS = 200;
+/** 子代理（task）并行上限：一轮派多个 task 时限流，防同时打爆本地推理服务；纯 read 并行不受此限 */
+export const PARALLEL_LIMIT = 4;
 const TOOL_TIMEOUT_MS = 60_000;
 /** length 截断自动续写上限（防无限续写循环） */
 const MAX_AUTO_CONTINUE = 3;
@@ -278,7 +281,15 @@ export async function runTurn(dep: TurnDeps): Promise<void> {
     const parsed = res.toolCalls!.map(parseCall); // hasToolCalls===true 已确保 toolCalls 非空
     const allRead = parsed.every((p) => riskOf(dep.bus, p) === 'READ');
     if (allRead && parsed.length > 1) {
-      await Promise.all(parsed.map((p) => execCall(dep, p, failures, discovered, todoState)));
+      const run = (p: ParsedCall): Promise<boolean> => execCall(dep, p, failures, discovered, todoState);
+      if (parsed.some((p) => p.call.name === TASK_TOOL_NAME)) {
+        // 含 task（派发子代理）→ 并发池限流 + 检查熔断（防一轮派多个子代理打爆本地推理）
+        const tripped = await runPool(parsed, PARALLEL_LIMIT, run);
+        if (tripped || dep.signal.aborted) return;
+      } else {
+        // 纯 read → 全并行（既有行为不变）
+        await Promise.all(parsed.map(run));
+      }
     } else {
       for (const p of parsed) {
         const tripped = await execCall(dep, p, failures, discovered, todoState);
@@ -287,6 +298,23 @@ export async function runTurn(dep: TurnDeps): Promise<void> {
     }
   }
   dep.emit({ type: 'error', sessionId: dep.sessionId, message: `达到 maxTurns（${MAX_TURNS}），任务未完成` });
+}
+
+/**
+ * 并发池：以 limit 为上限并行执行 fn，全部完成后返回「是否有任一熔断（tripped）」。手写信号量，无新依赖。
+ * 用于一轮派发多个 task 子代理时的限流（纯 read 仍走 Promise.all 全并行，不受此限）。
+ */
+export async function runPool<T>(items: readonly T[], limit: number, fn: (item: T) => Promise<boolean>): Promise<boolean> {
+  let idx = 0;
+  let tripped = false;
+  const worker = async (): Promise<void> => {
+    while (idx < items.length) {
+      const t = await fn(items[idx++]!);
+      if (t) tripped = true;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return tripped;
 }
 
 function parseCall(call: StoredToolCall): ParsedCall {

@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import Any, Iterable, Mapping, Sequence
 
 from app.common.dbw import db_write
+from app.common.errors import NotFoundError
 from app.common.logging import get_logger
 from app.extensions import db
 from app.models import PAGE_VERSION_REASONS, Course, CoursePage, CoursePageVersion
@@ -68,7 +69,19 @@ def purge_course(course: Course) -> None:
     这里给的是运维用的那一把 —— 清归档、删测试数据、以及 P1-C3 那条
     「删完不留孤儿」的断言。级联靠的是 `ondelete="CASCADE"` 加
     `PRAGMA foreign_keys=ON`，本函数只发一条 `DELETE FROM courses`。
+
+    磁盘上的音频走 `voice.assets.purge_course` 显式清（P2-C2）：外键级联管得到
+    `audio_assets` 的行，管不到 `data/` 里的文件 —— 只删行就会留下一堆
+    再也没人认领的 mp3（`audio_assets` 正是那张「谁是谁」的表）。
+    先删文件再删行：反过来的话，删文件失败时这些文件就成了孤儿。
+
+    P5 的导出产物（`exports.course_id` 同样是 CASCADE）走同一条路，理由一模一样。
     """
+    from app.services.exports import queue as exports_queue
+    from app.services.voice import assets
+
+    assets.purge_course(course)
+    exports_queue.purge_course(course.id)
     db_write(lambda: db.session.delete(course))
 
 
@@ -180,6 +193,10 @@ def save_page(
 
     `rev` 的推进规则：从没成功过就是 1，否则 +1。这样「第几次改的」一眼可见，
     而 P1-A7 的「重写后 rev+1」也就是这里自然的结果。
+
+    写完顺手把这页的语音标 `stale`（P2-A6）：这里是**所有**写页路径的唯一出口
+    （生成、重写、人工编辑、灌种子），所以挂在这儿才能保证「讲稿改了声音就重来」
+    没有例外。挂到 rewrite 那几个入口上，人工编辑就漏了。
     """
     # 写库前先拦一道：CHECK 约束会拦得住，但它报的是「表 course_page_versions
     # 的第 N 行违反约束」，而这里报的是「你传了个什么」。手滑写错一个枚举值，
@@ -212,7 +229,40 @@ def save_page(
         db.session.flush()
         return version
 
-    return db_write(_work)
+    version = db_write(_work)
+    invalidate_audio(page.course_id, page.page_no, reason=reason)
+    return version
+
+
+#: 写页的来源里，哪些是**用户改的**。只有这两种要顺手重排一次合成（P2-A6）。
+#: 生成与灌种子不在此列：那时课程还在拼（页面正一页页写出来），管线的 `tts`
+#: 那一步会整课合成一次 —— 每个中间状态都去排一次合成，合的是半成品
+#: （这一页还没写完的那几个 beat），既白花钱又多出几行很快就没人认领的资产。
+USER_EDITS = ("rewrite", "manual")
+
+
+def invalidate_audio(course_id: str, page_no: int, *, reason: str = "generate") -> None:
+    """这一页的语音资产作废；用户改的那两条路顺带排队重新合成（P2-A6）。失败只记日志。
+
+    语音是课程的**下游**：改一页讲稿不该因为「标记音频失效」这一步出错而失败。
+    真出错时最坏的结果是这一页留着旧音频，而它会在下一次预合成时按哈希判出来。
+
+    **作废之后要重排一次合成**：只标记不重合成的话，学生听到的还是改之前那句
+    讲稿，而屏幕上已经是新句子 —— 这种「声音与字幕不一致」不会报错，也没有
+    哪个界面会提示，只有人守着听才发得现。重排只带这一页（`page_no`），
+    别的页按哈希命中缓存，一句都不会白合。
+
+    合成在后台线程里跑（一页也是十几秒的活），所以这里立即返回；没配音色、
+    关了语音开关时那一步自己跳过，不是错误（P2-G3）。
+    """
+    from app.services.voice import assets, jobs
+
+    try:
+        assets.mark_stale(course_id, page_no=page_no)
+        if reason in USER_EDITS:
+            jobs.submit(course_id, page_no=page_no)
+    except Exception:  # 兜底：见 docstring
+        logger.exception("标记语音失效失败 course=%s page=%s", course_id, page_no)
 
 
 def mark_page_failed(page: CoursePage, error: str) -> None:
@@ -221,6 +271,82 @@ def mark_page_failed(page: CoursePage, error: str) -> None:
         page.dsl = {**(page.dsl or {}), "error": error[:500]}
 
     db_write(_work)
+
+
+def insert_page(
+    course: Course,
+    *,
+    chapter_no: int,
+    after_page_no: int = 0,
+    kind: str = "concept",
+    title: str = "",
+    status: str = "pending",
+) -> CoursePage:
+    """在 `after_page_no` 之后插一页，后面的页号顺延（P4 F4-12 的 `add_page`）。
+
+    页号是 `(course_id, page_no)` 上的唯一键，所以**从后往前**改：先把最后一页
+    挪到空位上，再挪倒数第二页 …… 反过来的话，改第一页时就会撞上第二页还在占着的号。
+    **每挪一页都要 flush 一次**：不 flush 的话 SQLAlchemy 会把这几条 UPDATE 攒起来
+    按主键排序后一次发出去（unit of work 的顺序与这里改的顺序无关），
+    于是「从后往前」就白写了 —— 撞唯一键的报错会出现在插入新页那一步。
+
+    `after_page_no=0` 表示插在这一章的最后一页之后（新章、章末补页都用它）。
+    新页是 `pending`：它还没有内容，工作台上该显示成一个可以点「生成」的空位。
+    """
+    rows = pages_of(course)
+    if after_page_no <= 0:
+        after_page_no = max(
+            (row.page_no for row in rows if int(row.chapter_no or 0) == int(chapter_no)),
+            default=0,
+        )
+
+    def _work() -> CoursePage:
+        for row in sorted(rows, key=lambda item: item.page_no, reverse=True):
+            if row.page_no > after_page_no:
+                row.page_no += 1
+                db.session.flush()
+        page = CoursePage(
+            course_id=course.id,
+            page_no=after_page_no + 1,
+            chapter_no=int(chapter_no),
+            kind=kind,
+            title=str(title)[:255],
+            status=status,
+        )
+        db.session.add(page)
+        db.session.flush()
+        return page
+
+    page = db_write(_work)
+    rebuild_dsl(course)
+    return page
+
+
+def delete_page(course: Course, page_no: int) -> dict[str, Any]:
+    """删一页并把后面的页号前移（P4 F4-12 的 `remove_page`）。
+
+    版本链与溯源行随外键一起走（`ondelete=CASCADE`）—— 「这一页曾经长什么样」
+    跟着页面本身一起消失，而不是留下一串指向不存在页面的版本。删错了要靠
+    `course_page_versions` 找回来是不可能的，所以接口层要求调用方先确认。
+    """
+    page = page_by_no(course, page_no)
+    if page is None:
+        raise NotFoundError(f"第 {page_no} 页不存在")
+    removed = {"pageNo": page_no, "kind": page.kind, "title": page.title or ""}
+
+    def _work() -> None:
+        db.session.delete(page)
+        db.session.flush()
+        # 从前往后：删掉 3 之后，4→3、5→4 …… 每个号这时候都是空的。
+        # 同样每步 flush（理由见 `insert_page`：攒起来的 UPDATE 会被重排）。
+        for row in sorted(pages_of(course), key=lambda item: item.page_no):
+            if row.page_no > page_no:
+                row.page_no -= 1
+                db.session.flush()
+
+    db_write(_work)
+    rebuild_dsl(course)
+    return removed
 
 
 # --- dsl_json 的重建（P1-C1）---
@@ -420,7 +546,9 @@ __all__ = [
     "FRONT_MATTER",
     "allocate_pages",
     "create_course",
+    "delete_page",
     "get_course",
+    "insert_page",
     "mark_page_failed",
     "outline_tree",
     "page_by_no",

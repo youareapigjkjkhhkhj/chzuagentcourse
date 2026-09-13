@@ -135,10 +135,21 @@ export function useAgent() {
     pendingPermission.value = null;
     diffSignal.value = null;
     planTodos.value = [];
-    const res = await agent().session.get(id);
+    // 进行态复位：切到空闲会话不该残留上一会话的 busy / 流式光标（否则发送按钮被停止按钮顶掉、无法发消息）
+    busy.value = false;
+    streamingId.value = null;
+    // 并行拉历史消息与后端进行态；await 期间可能又切走，回来后校验 sessionId 未变再应用，避免过期结果串台
+    const [res, st] = await Promise.all([agent().session.get(id), agent().agent.state(id)]);
+    if (sessionId.value !== id) return;
     if (res.ok && res.data) {
       messages.value = res.data.messages;
       planTodos.value = res.data.todos ?? []; // P4：回放恢复 Checklist 勾选状态
+    }
+    // 与后端进行态对齐：仍在生成 → 恢复 busy（后续事件 sessionId 匹配即可正常复位）；
+    // 有挂起权限询问 → 重画权限卡（permission_request 是一次性事件，切走即丢且不重发，只能主动查回）
+    if (st.ok && st.data) {
+      busy.value = st.data.busy;
+      if (st.data.pending) pendingPermission.value = st.data.pending;
     }
   }
 

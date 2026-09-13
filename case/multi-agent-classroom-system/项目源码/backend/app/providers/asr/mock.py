@@ -13,6 +13,20 @@ from app.providers.base import ASRProvider, ASRResult, ASRSegment
 #: 默认的假识别结果：一句典型的课堂提问。
 DEFAULT_TRANSCRIPT = "老师，光合作用为什么需要光？"
 
+#: 16bit 单声道的采样字节数。时长按它估出来。
+BYTES_PER_FRAME = 2
+
+
+def estimate_duration_ms(audio: bytes, sample_rate: int = 16000) -> int:
+    """按字节数估这段音频有多长。
+
+    **不为精确**（真上游会回传精确时长）—— 为的是让「识别多久 → 记一笔账」
+    这条链路在没有网络、没有凭据时也能走通。返回 0 的话，下游的用量看板
+    在离线演示里永远显示 0 秒，而那条路恰恰是要演示给人看的东西。
+    """
+    rate = sample_rate if sample_rate and sample_rate > 0 else 16000
+    return int(len(audio or b"") / BYTES_PER_FRAME * 1000 / rate)
+
 
 class MockASR(ASRProvider):
     """确定性离线识别。"""
@@ -37,11 +51,14 @@ class MockASR(ASRProvider):
         sample_rate: int = 16000,
         **options: Any,
     ) -> ASRResult:
+        duration = estimate_duration_ms(audio, sample_rate)
         self.calls.append({"bytes": len(audio or b""), "fmt": fmt, "sampleRate": sample_rate})
         return ASRResult(
             text=self.transcript,
-            segments=(ASRSegment(text=self.transcript, start_ms=0, end_ms=0, final=True),),
-            duration_ms=0,
+            segments=(
+                ASRSegment(text=self.transcript, start_ms=0, end_ms=duration, final=True),
+            ),
+            duration_ms=duration,
             provider=self.name,
         )
 
@@ -66,4 +83,4 @@ class MockASR(ASRProvider):
         return info
 
 
-__all__ = ["DEFAULT_TRANSCRIPT", "MockASR"]
+__all__ = ["BYTES_PER_FRAME", "DEFAULT_TRANSCRIPT", "MockASR", "estimate_duration_ms"]

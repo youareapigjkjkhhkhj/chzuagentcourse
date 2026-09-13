@@ -13,6 +13,15 @@
 2. **不联网。** 后端以 `LLM_PROVIDER=mock` 启动：每一页都出自
    `app/providers/llm/fixture.py` 的固定产出，且同一输入永远同一输出。
    这台机器断网、没 Key，照样跑得完（P1-G2）。
+
+   `LLM_PROVIDER=mock` 只钉住了大模型那一路。生成流水线从 P2 起还有
+   `tts` 步骤，而**Flask CLI 自己会读 `backend/.env`** —— 环境变量里
+   给的值它会照用，但没给的（火山那三组 Key 与接入地址）它会从 `.env`
+   补上。于是这台机器上一跑验收，`tts` 步骤就真去合成音频、真花钱了，
+   而「不联网」这四个字是这份脚本对使用者的承诺。所以下面除了
+   `LLM_PROVIDER=mock`，还会把 `LLM_*`/`VOLC_*` 全部显式清空，并给子进程
+   `FLASK_SKIP_DOTENV=1`（连 Flask CLI 那一层也堵上）。谁要是在这里
+   「顺手」删掉几行，请先想一遍这句承诺。
 3. **说得出为什么。** 每条不通过都打印实际收到的响应；跑不到的条目
    （要真模型的性能项、要人打分的质量项）明确跳过并说明原因，
    而不是假装通过。
@@ -295,8 +304,23 @@ def child_env(env: dict[str, str] | None = None) -> dict[str, str]:
     Python 就按**本地编码**（中文 Windows 上是 GBK）写字节，而我们按 UTF-8 读 ——
     一门课的主题、每一句讲稿都会变成乱码，断言「清洗后的主题还是不是原来那句」
     于是永远为假。这类失败看着像业务 bug，其实是编码。
+
+    两个 `*_DOTENV` 是「不联网」那条承诺的守卫，别删：
+
+    * `EDUAGENTX_DISABLE_DOTENV=1` 关掉应用自己那一次 `load_dotenv`；
+    * `FLASK_SKIP_DOTENV=1` 关掉 **Flask CLI 自己**那一次 —— 后端是用
+      `python -m flask run` 起的（还有 `db upgrade`），CLI 在建 app 之前
+      就会把 `backend/.env` 读进环境。这个坑实测踩过一次：三个验收实例
+      全被 `.env` 喂成了「真配」，本该报 40201 的半配实例发起了一次真的
+      上游连接（详见 accept_p2.py 的 `OFFLINE_ENV`）。
     """
-    return {**os.environ, "PYTHONIOENCODING": "utf-8", **(env or {})}
+    return {
+        **os.environ,
+        "PYTHONIOENCODING": "utf-8",
+        "FLASK_SKIP_DOTENV": "1",
+        "EDUAGENTX_DISABLE_DOTENV": "1",
+        **(env or {}),
+    }
 
 
 def start(process_args: list[str], cwd: Path, log_path: Path, env: dict[str, str] | None = None):
@@ -1474,7 +1498,7 @@ def prepare_database(ctx: Ctx) -> tuple[bool, str]:
     """在临时库上跑迁移与种子。返回 (是否成功, 失败原因)。"""
     upgrade = subprocess.run(
         [str(venv_python()), "-m", "flask", "--app", "app:create_app()", "db", "upgrade"],
-        cwd=str(BACKEND), env={**os.environ, **ctx.env},
+        cwd=str(BACKEND), env=child_env(ctx.env),
         capture_output=True, check=False, text=True, encoding="utf-8", errors="replace",
     )
     if upgrade.returncode != 0:
@@ -1572,6 +1596,23 @@ def main() -> int:
             "DATABASE_URL": f"sqlite:///{(work_dir / 'accept.db').as_posix()}",
             # 离线桩：不联网、不读 Key、同一输入永远同一输出（P1-G2）
             "LLM_PROVIDER": "mock",
+            "LLM_API_KEY": "",
+            "LLM_BASE_URL": "",
+            # 音频也不许落进 backend/data/：万一哪天有人把 VOICE_ENABLED 打开，
+            # 合成的 mp3 也该跟着临时库一起被删掉（原则 1）
+            "AUDIO_DIR": (work_dir / "audio").as_posix(),
+            # 语音那三组是 P2 之后才进来的：生成流水线有 `tts` 步骤了，
+            # 不清空就会真去调火山（见文件头第 2 条）。
+            "VOICE_ENABLED": "false",
+            "VOLC_TTS_API_KEY": "",
+            "VOLC_TTS_ENDPOINT": "",
+            "VOLC_TTS_RESOURCE_ID": "",
+            "VOLC_ASR_API_KEY": "",
+            "VOLC_ASR_ENDPOINT": "",
+            "VOLC_ASR_RESOURCE_ID": "",
+            "VOLC_REALTIME_API_KEY": "",
+            "VOLC_REALTIME_ENDPOINT": "",
+            "VOLC_REALTIME_MODEL": "",
         },
         work_dir=work_dir,
     )

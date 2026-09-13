@@ -130,6 +130,78 @@ def test_env_example_exists_and_lists_all_required_keys():
     assert not re.search(r"sk-[A-Za-z0-9]{16,}", text)
 
 
+#: 「配置里没有也读得出东西」的键。写在这里而不是放宽规则：每加一个都该有人
+#: 看一眼，而不是让它悄悄溜过去。
+#:   VERSION —— 没配就用包版本（provider_registry._app_version）
+OPTIONAL_CONFIG_KEYS = {"VERSION"}
+
+#: `cfg.get("XXX")` / `current_app.config.get("XXX")` 的取值点
+_CONFIG_KEY = re.compile(r"""(?:config|cfg)\.get\(\s*["']([A-Z][A-Z0-9_]{2,})["']""")
+
+
+def _declared_config_keys() -> set[str]:
+    """read_env_config 产出的 + BaseConfig 上的大写属性，都算「已声明」。"""
+    from app.config import BaseConfig, read_env_config
+
+    return set(read_env_config("testing")) | {
+        name for name in vars(BaseConfig) if name.isupper()
+    }
+
+
+def test_every_voice_env_key_is_declared_in_config(app):
+    """种子引用的 env_key 必须在 config 里真有一条。
+
+    P2 就踩过这个坑：`VOLC_REALTIME_VOICE_*` 被种子的 `realtime_env_key` 引用，
+    但 `read_env_config` 从没读过它们 —— 于是它永远读成空串，而提示语还让用户
+    去 .env 里改（改了也没用）。这类「引用了不存在的配置键」不会报错，
+    只会安静地退化成默认行为，所以值得有个哨兵。
+    """
+    from app.config import read_env_config
+    from app.seeds.voices import BUILTIN_VOICES
+
+    declared = set(read_env_config("testing"))
+    missing = [
+        key
+        for item in BUILTIN_VOICES
+        for key in (item["env_key"], item["realtime_env_key"])
+        if key not in declared
+    ]
+    assert not missing, f"种子引用了 config 里不存在的键：{missing}"
+
+
+def test_every_config_key_read_anywhere_is_declared():
+    """反向也查一遍：读的键必须有人声明（否则拿到的永远是 None）。
+
+    `cfg.get("VOLC_TTS_TIMEOUT")` 就是这样躺了好一阵：调用方写了、配置层没接，
+    结果「配了也不生效」，而且不报错。这个扫描把它变成一条会红的断言。
+    """
+    offenders: list[str] = []
+    for py in sorted((BACKEND_DIR / "app").rglob("*.py")):
+        for lineno, line in enumerate(py.read_text(encoding="utf-8").splitlines(), 1):
+            for key in _CONFIG_KEY.findall(line):
+                if key in OPTIONAL_CONFIG_KEYS:
+                    continue
+                if key not in _declared_config_keys():
+                    offenders.append(f"{py.relative_to(BACKEND_DIR)}:{lineno} → {key}")
+
+    assert not offenders, "读了没人声明的配置键：\n  " + "\n  ".join(offenders)
+
+
+def test_config_key_scanner_self_test():
+    """上面两条扫描的自测：正则要真能扫出键、声明集合要真认得出已声明的键。
+
+    否则「扫描没报错」可能只是因为正则根本没匹配上任何东西。
+    """
+    assert _CONFIG_KEY.findall('x = cfg.get("VOLC_TTS_TIMEOUT")') == ["VOLC_TTS_TIMEOUT"]
+    assert _CONFIG_KEY.findall('y = current_app.config.get("VOICE_ENABLED")') == ["VOICE_ENABLED"]
+
+    declared = _declared_config_keys()
+    assert "VOLC_TTS_TIMEOUT" in declared
+    assert "VOICE_ENABLED" in declared
+    assert "SSE_HEARTBEAT" in declared  # BaseConfig / read_env_config 两条来源都算
+    assert "NOT_A_REAL_CONFIG_KEY" not in declared
+
+
 def test_database_uri_defaults_to_sqlite(app):
     assert app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite:")
 

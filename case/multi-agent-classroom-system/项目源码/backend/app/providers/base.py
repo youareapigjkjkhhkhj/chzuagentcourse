@@ -141,6 +141,10 @@ class TTSResult:
     duration_ms: int = 0
     provider: str = ""
     subtitles: Sequence[Subtitle] = field(default_factory=tuple)
+    #: 上游回传的计量口径（火山是 `text_words`，含标点）。P5 的成本看板与
+    #: P2-A11 的「用量可查」都以它为准 —— 让 Provider 直接给出，而不是
+    #: 上层拿文本长度估一个数：估的那个和账单对不上。
+    usage: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -173,6 +177,27 @@ class ASRResult:
     segments: Sequence[ASRSegment] = field(default_factory=tuple)
     duration_ms: int = 0
     provider: str = ""
+    #: 上游回传的计量口径（识别时长/字符数）。同 `TTSResult.usage`。
+    usage: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RealtimeEvent:
+    """一次实时对话里，上游给我们的**语义事件**（已把厂商字段名翻译掉）。
+
+    上层（WS 的语义层 / 课堂运行时）只认这里的 `type`，不认上游的
+    `response.xxx.delta`。放在 base 而不是某个厂商模块里：它是两条实时链路
+    （真实的火山适配器与离线 Mock）**共同的产出类型**，Mock 用到它时不该
+    去 import 另一个厂商的实现模块。
+    """
+
+    type: str
+    text: str = ""
+    #: 已从 Base64 解出来的 PCM 片段（`type == "audio"` 时）
+    audio: bytes = b""
+    final: bool = False
+    #: 上游原始字段（排障用；不含凭据）
+    raw: Mapping[str, Any] = field(default_factory=dict)
 
 
 # --- 基类 ---
@@ -325,17 +350,23 @@ class TTSProvider(BaseProvider, ABC):
         default_voice: str = "",
         audio_format: str = "mp3",
         sample_rate: int = 24000,
+        version: str = "",
         **options: Any,
     ) -> None:
         super().__init__(name, configured=configured, **options)
         self.default_voice = default_voice
         self.audio_format = audio_format
         self.sample_rate = sample_rate
+        #: 上游版本标识（火山是资源 ID `seed-tts-2.0` 一类）。**它是音频缓存键的
+        #: 一部分**：上游换了一代模型，同一段文字合成出的音频就该重来一次，
+        #: 而不是继续吃上一代的缓存。
+        self.version = version
 
     def describe(self) -> dict:
         info = super().describe()
         info["format"] = self.audio_format
         info["sampleRate"] = self.sample_rate
+        info["version"] = self.version
         return info
 
     @abstractmethod
@@ -393,6 +424,18 @@ class ASRProvider(BaseProvider, ABC):
         """流式识别：边收音频边出中间结果。"""
 
 
+#: 会话的输入模式（`RealtimeProvider.start_session(mode=...)`）。
+#:
+#: 它属于**这一层**而不是某个适配器：业务层（`services/voice/realtime.py`）
+#: 要能说「这一轮是按住说话、还是研讨模式」，但它不该去认厂商的协议字段 ——
+#: 上游收到的是 `input_mod` 还是别的名字，由适配器自己翻译（AGENTS §14.2）。
+#:
+#: - `push_to_talk`：按住说话。屏蔽服务端 VAD，判停交给客户端（本项目默认，P2-A18）
+#: - `keep_alive`：麦克风静音期间不上传音频也不会被判超时（研讨模式的常开麦）
+MODE_PUSH_TO_TALK = "push_to_talk"
+MODE_KEEP_ALIVE = "keep_alive"
+
+
 class RealtimeProvider(BaseProvider, ABC):
     """端到端实时语音（全双工）。
 
@@ -442,6 +485,7 @@ __all__ = [
     "ProviderError",
     "ProviderNotConfiguredError",
     "ProviderTimeoutError",
+    "RealtimeEvent",
     "RealtimeProvider",
     "Secret",
     "Subtitle",

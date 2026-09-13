@@ -33,8 +33,10 @@ from app.common.identity import current_owner_id, owned_by
 from app.common.response import ok
 from app.extensions import db
 from app.models import GenJob
+from app.services import audit
 from app.services.courses import library, store
-from app.services.generation import events, intake, pipeline
+from app.services.generation import events, intake, pipeline, timeline
+from app.services.usage import budget
 
 bp = Blueprint("generation", __name__, url_prefix="/api")
 
@@ -87,17 +89,31 @@ def create_generation():
     这里只做两件快事：建课程行 + 建任务行（都是本地写库），然后交给后台线程。
     模型调用一步都不在这里发生 —— 12 页生成要一两分钟，同步做就是让用户
     对着一个转圈的页面等两分钟，还会把请求超时算在生成头上。
+
+    唯一一件**会慢**的事是预算检查，但它花的是本地库的一次聚合查询
+    （不像模型调用要等上游），并且必须在建课之前做：超了预算还先把课建出来，
+    用户的课程列表里就会多出一门永远停在 `generating` 的课 —— 那门课的
+    每一次生成都会再被拒一次，而它自己不会消失。
     """
     body = json_body()
     topic = intake.clean_topic(body.get("topic"))
     options = intake.parse_options(body)
     owner_id = current_owner_id()
+    budget.ensure_allowed(course_id="", owner_id=owner_id)
 
     # 课程先落库（状态 generating）：生成过程中刷新页面要能看到它，
     # 而不是「任务在跑，但课程列表里什么都没有」。
     course = store.create_course(title=topic, topic=topic, options=options, owner_id=owner_id)
     job = pipeline.start_job(course, options=options, owner_id=owner_id)
     tasks.submit_job(job.id)
+    # 建课是这一阶段最要紧的一次写：它同时决定了「花了多少钱」（预算是按课程算的）
+    # 与「库里多了什么」。记 id、标题与页数 —— 后两个是用户自己填的参数，
+    # 不是提示词正文（§19 拦的是后者）。
+    audit.record(
+        audit.ACTION_COURSE_CREATE,
+        target=f"course:{course.id}",
+        detail={"title": topic, "jobId": job.id, "pageCount": options.get("pageCount")},
+    )
     return ok(
         {
             "courseId": course.id,
@@ -122,6 +138,24 @@ def get_job(job_id: str):
     """
     job = _job_or_404(job_id)
     return ok(library.step_payload(job))
+
+
+@bp.get("/jobs/<job_id>/timeline")
+def get_job_timeline(job_id: str):
+    """任务时间线：每步耗时 / 重试次数 / token / 失败原因与上游错误码（P5-F5-10）。
+
+    请求示例：
+        GET /api/jobs/j_01H…/timeline
+
+    与上面那条（`GET /api/jobs/{jobId}`）是一对：那条答「现在到哪了」，是轮询用的、
+    要短；这条答「它是怎么走到这儿的」，是工作台任务卡**展开**时用的，要全。
+
+    每一步都带着账本那份（`calls`：几次调用、几次失败、多少 token、多少钱），
+    按 `step_id` 归到步骤上 —— 于是「钱花在哪一步」不必再猜。
+    金额只算 LLM（`model_calls`），语音按量计费、不进这张表，见响应里的 `note`。
+    """
+    job = _job_or_404(job_id)
+    return ok(timeline.build(job))
 
 
 @bp.post("/jobs/<job_id>/cancel")
@@ -173,6 +207,40 @@ def retry_job_step(job_id: str, step_id: str):
     if not tasks.submit_retry(job.id, step.id):
         raise StateError("这个任务正在运行中，等它停下来再重试")
     return ok({"jobId": job.id, "stepId": step.id, "status": "queued"})
+
+
+@bp.post("/jobs/<job_id>/resume")
+def resume_job(job_id: str):
+    """断点续跑：从第一个没做完的步骤接着跑（P5-F5-9 / P5-A9）。
+
+    请求示例：
+        POST /api/jobs/j_01H…/resume
+
+    「服务重启过」与「用户自己取消过」是同一个形状：页面有的写好了、有的没有，
+    而**没有任何线程在跑**。两者都从这里接着来，已经写好的页面一页都不会重写
+    （页级幂等，见 `pipeline.resume_job`）。
+
+    只有这两种任务能续：跑完的没什么可续，停在大纲确认等的也不是这个按钮
+    （那是用户自己的一步审查，走 `POST /api/courses/{id}/outline`），
+    正在跑的再点一次则是 40902 —— 两个线程抢同一批页面会把页码与版本号写乱。
+    """
+    _job_or_404(job_id)
+    # 「正在跑」要**排在改状态前面**判：状态一旦被摆成 queued，而任务又已经在跑了，
+    # 那两次改的是同一批步骤行（一个在收尾、一个在放回 wait），页码与版本号会乱。
+    # 这一判与下面 `submit_resume` 的返回值是两个不同的时窗，两道都留着。
+    if job_id in tasks.active_jobs():
+        raise StateError("这个任务正在运行中，等它停下来再继续")
+
+    # 状态在**请求线程**里改（见 `pipeline.prepare_resume`）：此前它在后台线程里改，
+    # 于是接口返回的、以及紧接着查到的那一份，都还是旧的终态
+    # （`status: failed, resumable: true`）—— 用户点了「继续生成」，界面看起来没反应。
+    job = pipeline.prepare_resume(job_id)
+    if not tasks.submit_resume(job_id):
+        raise StateError("这个任务正在运行中，等它停下来再继续")
+    # 后台线程可能已经把状态推走了（它一提交就可能开始跑），重新读一次再回 ——
+    # 前端据此渲染任务卡，读一份比刚写进去的那份更新的，总不会错。
+    db.session.refresh(job)
+    return ok(library.step_payload(job))
 
 
 # --- 帧 ---

@@ -1,6 +1,8 @@
 """种子数据：内置音色、课堂角色与两门**官方示例课**（P1-7）。
 
-设计原则：**只补缺，不覆盖**。
+设计原则：**只补缺，不覆盖** —— 一个例外：内置音色行的**配置派生字段**
+（`voice_type` 等，`_VOICE_REFRESH_FIELDS`）以当前 `.env` 为准刷新，
+因为它们的唯一事实来源就是配置，不是「用户改过的值」。
 - 反复执行不产生重复行（幂等，P0-C5）
 - 用户改过的字段不会被下次 seed 冲掉
 - 音色 ID 等环境相关值从配置读取，不写死在代码里
@@ -14,14 +16,22 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 from flask import current_app
 
 from app.common.dbw import db_write
 from app.common.logging import get_logger
 from app.extensions import db
-from app.models import AgentRole, Course, CoursePage, Provider, User, VoiceProfile
+from app.models import (
+    AgentRole,
+    Course,
+    CoursePage,
+    CoursePageVersion,
+    Provider,
+    User,
+    VoiceProfile,
+)
 from app.models.provider import BUILTIN_PROVIDERS
 from app.seeds.courses import (
     OWNER_ID,
@@ -31,7 +41,7 @@ from app.seeds.courses import (
     page_specs_of,
 )
 from app.seeds.roles import role_specs
-from app.seeds.voices import voice_specs
+from app.seeds.voices import missing_voice_ids, voice_specs
 from app.services.courses import store
 
 _logger = get_logger("app.seeds")
@@ -81,11 +91,31 @@ def _seed_providers() -> int:
     return created
 
 
+#: 内置音色行里按当前配置刷新的字段。**只对 builtin 行生效**：它们的
+#: 唯一事实来源就是 `.env`（seeds/voices.py 的模块注释），而用户自建的
+#: 行不在这条路上（`voice_specs()` 只展开内置三个）。
+_VOICE_REFRESH_FIELDS = ("name", "provider", "voice_type", "gender", "style", "speech_rate")
+
+
 def _seed_voices() -> int:
+    """内置音色**按当前配置刷新**，不是只补缺。
+
+    踩过的坑：先跑 seed（那时 `.env` 还没填音色 ID）再补 `.env`，只补缺的
+    写法会让库里三行永远留着空 `voice_type` —— 设置页三张卡片全「未配声音
+    ID」，合成一路降级，而 `.env` 看起来哪儿都对。音色 ID 是环境相关值，
+    必须以配置为准。
+    """
     created = 0
     for spec in voice_specs():
-        _, is_new = _ensure(VoiceProfile, spec["id"], **spec)
+        row, is_new = _ensure(VoiceProfile, spec["id"], **spec)
         created += int(is_new)
+        if is_new:
+            continue
+        stale = [key for key in _VOICE_REFRESH_FIELDS if getattr(row, key) != spec[key]]
+        for key in stale:
+            setattr(row, key, spec[key])
+        if stale:
+            _logger.info("内置音色 %s 按当前配置刷新了：%s", spec["id"], "、".join(stale))
     return created
 
 
@@ -132,26 +162,48 @@ def _seed_courses() -> tuple[int, int]:
 
 
 def _seed_pages(course: Course, specs: list[dict]) -> int:
-    """把缺的页面补齐。已存在的页号一律跳过（用户可能已经改过它）。"""
+    """把缺的页面补齐；**作者稿更新过的、用户没碰过的**页就地刷新。"""
     existing = {
-        page.page_no for page in CoursePage.query.filter_by(course_id=course.id).all()
+        page.page_no: page for page in CoursePage.query.filter_by(course_id=course.id).all()
     }
     created = 0
     for spec in specs:
-        if spec["page_no"] in existing:
-            continue
-        row = CoursePage(
-            course_id=course.id,
-            chapter_no=spec["chapter_no"],
-            page_no=spec["page_no"],
-            kind=spec["kind"],
-            title=spec["title"],
-        )
-        db.session.add(row)
-        db.session.flush()  # 版本行要 page.id
-        store.save_page(row, spec["dsl"], reason="seed", meta={"source": "seed"})
-        created += 1
+        row = existing.get(spec["page_no"])
+        if row is None:
+            row = CoursePage(
+                course_id=course.id,
+                chapter_no=spec["chapter_no"],
+                page_no=spec["page_no"],
+                kind=spec["kind"],
+                title=spec["title"],
+            )
+            db.session.add(row)
+            db.session.flush()  # 版本行要 page.id
+            store.save_page(row, spec["dsl"], reason="seed", meta={"source": "seed"})
+            created += 1
+        elif _is_pristine_seed_page(row) and dict(row.dsl or {}) != spec["dsl"]:
+            _refresh_seed_page(row, spec["dsl"])
     return created
+
+
+def _is_pristine_seed_page(page: CoursePage) -> bool:
+    """这一页还是种子当初写的那一版吗（用户从没改过）？
+
+    「只补缺，不覆盖」保护的是**用户改过的内容**：一页只有 V1、来源是 seed，
+    说明作者稿就是它现在的样子。作者稿后来变了（比如给图示补了 spec），
+    库里的示例课就该跟上 —— 否则示例课永远停在旧版，用户点开看到的还是
+    「图示占位」。
+    """
+    versions = CoursePageVersion.query.filter_by(page_id=page.id).all()
+    return len(versions) == 1 and versions[0].rev == 1 and versions[0].reason == "seed"
+
+
+def _refresh_seed_page(page: CoursePage, dsl: Mapping[str, Any]) -> None:
+    """就地改 V1，不追加 V2：没人改过的示例页不该凭空多出一个版本。"""
+    page.dsl = dict(dsl)
+    page.title = str(dsl.get("title") or page.title or "")[:255]
+    row = CoursePageVersion.query.filter_by(page_id=page.id, rev=1).one()
+    row.dsl = dict(dsl)
 
 
 def _summarize() -> dict:
@@ -203,11 +255,20 @@ def register_cli(app) -> None:
             f"角色 {summary['agentRoles']} / 音色 {summary['voiceProfiles']} / "
             f"课程 {summary['courses']} / 页面 {summary['coursePages']}"
         )
-        unconfigured = VoiceProfile.query.filter_by(voice_type="").count()
-        if unconfigured:
+        # 两条链路分开报：缺 TTS ID 是讲稿没人念，缺实时 ID 只是不能语音对话。
+        # 混成一句「有音色未配置」会让人以为整个语音都不能用。
+        missing = missing_voice_ids()
+        if missing["tts"]:
             click.echo(
-                f"提示：{unconfigured} 个音色尚未配置厂商音色 ID，"
-                "请在 .env 中填写 VOLC_TTS_VOICE_* 后重新执行本命令。"
+                f"提示：{len(missing['tts'])} 个音色缺 TTS 音色 ID"
+                f"（{'、'.join(missing['tts'])}），课件旁白会退回离线替身；"
+                "请在 .env 填 VOLC_TTS_VOICE_* 后重新执行本命令。"
+            )
+        if missing["realtime"]:
+            click.echo(
+                f"提示：{len(missing['realtime'])} 个音色缺实时语音 ID"
+                f"（{'、'.join(missing['realtime'])}），语音问答会降级为文字；"
+                "请在 .env 填 VOLC_REALTIME_VOICE_* 后重新执行本命令。"
             )
 
 

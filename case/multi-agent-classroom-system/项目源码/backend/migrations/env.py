@@ -10,7 +10,13 @@ config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
-fileConfig(config.config_file_name)
+#
+# `disable_existing_loggers=False`：模板默认那一版会把**已经建好的** logger 全部
+# 关掉（`logger.disabled = True`，而且是永久生效、不随进程状态回滚）。生产的
+# `flask db upgrade` 是独立进程，关掉无所谓；但在同一进程里跑迁移就会把应用的
+# 日志一起掐了 —— 测试里尤其明显：跑过迁移的用例之后再有人打日志，什么都不会留下
+# （P4-A7 那条 `source_mismatch` 告警就是这么消失的）。这是 Alembic 新版模板的做法。
+fileConfig(config.config_file_name, disable_existing_loggers=False)
 logger = logging.getLogger('alembic.env')
 
 

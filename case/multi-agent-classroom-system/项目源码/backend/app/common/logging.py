@@ -14,11 +14,15 @@ import traceback
 _LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s [%(process)d] %(message)s"
 _DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
-# 关键词后的取值：key=xxx / "api_key": "xxx" / token: xxx
+# 关键词后的取值：key=xxx / "api_key": "xxx" / token: xxx / ticket=xxx
+#
+# `ticket` 在这里是因为课堂的接入票据走 **URL 查询串**（§4.2）：WSGI 服务器的
+# 访问日志会原样记下请求行，而那张票就是这堂课的钥匙。它一次性的、只活 60 秒，
+# 但「有效期短」不该成为「可以进日志」的理由 —— 看日志的人不该顺手拿到它。
 _KEYWORD_VALUE = re.compile(
     r"(?ix)"
     r"\b(api[_-]?key|access[_-]?token|secret[_-]?key|app[_-]?secret"
-    r"|secret|password|passwd|token|key)"
+    r"|secret|password|passwd|token|key|ticket)"
     r"(\s*[\"']?\s*[:=]\s*[\"']?)"  # 分隔符，允许引号
     r"([^\s\"',;}\]\[]{6,})"  # 取值
     r"([\"']?)"  # 收尾引号
@@ -127,20 +131,50 @@ def get_logger(name: str = "eduagentx") -> logging.Logger:
 
 
 def configure_logging(app) -> None:
-    """给 root logger 装一个控制台 handler。可重复调用（幂等）。"""
+    """给 root logger 装控制台 handler，配了 `LOG_FILE` 再装一个轮转文件 handler。
+
+    可重复调用（幂等）。
+    """
     if app.extensions.get("eduagentx_logging_configured"):
         return
     app.extensions["eduagentx_logging_configured"] = True
 
     level_name = str(app.config.get("LOG_LEVEL", "INFO")).upper()
     level = getattr(logging, level_name, logging.INFO)
+    formatter = logging.Formatter(_LOG_FORMAT, datefmt=_DATE_FORMAT)
 
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter(_LOG_FORMAT, datefmt=_DATE_FORMAT))
+    handler.setFormatter(formatter)
     handler.addFilter(RedactingFilter())
 
     root = logging.getLogger()
     root.addHandler(handler)
+
+    # 轮转文件（P5-F4：单文件 ≤ 50MB）。**同样挂脱敏 Filter** ——
+    # 少挂一个，落盘的日志里就会出现控制台上看不到的明文 Key，
+    # 而那正好是最容易被拷走的那一份（文件躺在盘上，控制台的内容不落地）。
+    # 目录不存在先建：`LOG_FILE=/var/log/eduagentx/app.log` 这种路径，
+    # 用户只会建 /var/log/eduagentx，不该让他再猜一次要建到哪一层。
+    log_file = str(app.config.get("LOG_FILE") or "").strip()
+    if log_file:
+        from logging.handlers import RotatingFileHandler
+        from pathlib import Path
+
+        try:
+            Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+            file_handler = RotatingFileHandler(
+                log_file,
+                maxBytes=int(app.config.get("LOG_MAX_BYTES") or 50 * 1024 * 1024),
+                backupCount=int(app.config.get("LOG_BACKUP_COUNT") or 5),
+                encoding="utf-8",
+            )
+            file_handler.setFormatter(formatter)
+            file_handler.addFilter(RedactingFilter())
+            root.addHandler(file_handler)
+        except OSError as exc:
+            # 写不了文件不该让服务起不来：控制台那条路还在，日志不会丢干净。
+            app.logger.warning("日志文件不可用（%s），只写控制台", type(exc).__name__)
+
     if root.level == logging.NOTSET or root.level > level:
         root.setLevel(level)
 

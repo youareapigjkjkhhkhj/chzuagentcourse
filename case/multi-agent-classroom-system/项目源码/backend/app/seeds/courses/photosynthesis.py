@@ -160,7 +160,25 @@ PAGES = (
                 "第二步，电子沿传递链往下走，能量用来把质子泵进腔内。",
                 "第三步，质子回流时合成 ATP，电子最后交给 NADP+ 生成 NADPH。",
             ],
-            "visual": {"type": "figure", "desc": "类囊体薄膜剖面：光系统 II、传递链、ATP 合成酶"},
+            "visual": {
+                "type": "figure",
+                "desc": "类囊体薄膜剖面：光系统 II、传递链、ATP 合成酶",
+                "spec": {
+                    "rows": [
+                        [{"text": "光子", "shape": "ellipse"}, {"text": "光系统 II", "shape": "box", "accent": True}, {"text": "水的光解", "shape": "box"}],
+                        [{"text": "氧气", "shape": "ellipse"}, {"text": "电子传递链", "shape": "box"}, {"text": "质子泵入腔内", "shape": "box"}],
+                        [{"text": "ATP 合成酶", "shape": "box"}, {"text": "ATP + NADPH", "shape": "ellipse", "accent": True}, {"text": ""}],
+                    ],
+                    "edges": [
+                        {"from": [0, 0], "to": [0, 1]},
+                        {"from": [0, 1], "to": [1, 1]},
+                        {"from": [0, 2], "to": [1, 0], "label": "放出"},
+                        {"from": [1, 1], "to": [1, 2]},
+                        {"from": [1, 2], "to": [2, 0], "label": "回流"},
+                        {"from": [2, 0], "to": [2, 1], "label": "合成"},
+                    ],
+                },
+            },
         },
     },
     {

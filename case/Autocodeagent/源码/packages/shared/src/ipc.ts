@@ -21,6 +21,8 @@ export const IpcChannels = {
   sessionRollback: 'session:rollback',
   agentAsk: 'agent:ask',
   agentAbort: 'agent:abort',
+  /** 会话进行态查询：切换会话时前端对齐 busy / 恢复挂起权限卡（复用 SessionIdPayload） */
+  agentState: 'agent:state',
   permissionResolve: 'permission:resolve',
   modelConfigGet: 'config:model:get',
   modelConfigSet: 'config:model:set',

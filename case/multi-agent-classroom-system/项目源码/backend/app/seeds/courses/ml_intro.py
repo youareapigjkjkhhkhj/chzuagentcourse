@@ -139,7 +139,22 @@ PAGES = (
                 "机器学习反过来：我们给数据和目标，让机器自己把规则找出来。",
                 "找出来的这套规则就叫模型。注意，它必须能用在没见过的新数据上。",
             ],
-            "visual": {"type": "diagram", "desc": "左右对照：规则 → 结果，与 数据 → 模型"},
+            "visual": {
+                "type": "diagram",
+                "desc": "左右对照：规则 → 结果，与 数据 → 模型",
+                "spec": {
+                    "rows": [
+                        [{"text": "传统程序", "shape": "box"}, {"text": "人写规则", "shape": "box"}, {"text": "结果", "shape": "box"}],
+                        [{"text": "机器学习", "shape": "box", "accent": True}, {"text": "数据 + 目标", "shape": "box"}, {"text": "模型", "shape": "box"}],
+                    ],
+                    "edges": [
+                        {"from": [0, 0], "to": [0, 1]},
+                        {"from": [0, 1], "to": [0, 2]},
+                        {"from": [1, 0], "to": [1, 1]},
+                        {"from": [1, 1], "to": [1, 2], "label": "找出"},
+                    ],
+                },
+            },
             "interaction": {"askAtEnd": True, "allowFreeChat": True},
         },
     },
@@ -166,7 +181,21 @@ PAGES = (
                 "用历史上标注过的邮件训练模型，让它学会哪些特征更要紧",
                 "给新邮件打分，超过阈值就丢进垃圾箱，同时保留一次人工纠正的机会",
             ],
-            "visual": {"type": "flow", "desc": "邮件 → 特征 → 模型 → 判定 的流程箭头"},
+            "visual": {
+                "type": "flow",
+                "desc": "邮件 → 特征 → 模型 → 判定 的流程箭头",
+                "spec": {
+                    "rows": [
+                        [{"text": "邮件", "shape": "box"}, {"text": "特征", "shape": "box"}, {"text": "模型打分", "shape": "box", "accent": True}],
+                        [{"text": ""}, {"text": ""}, {"text": "垃圾箱？", "shape": "diamond"}],
+                    ],
+                    "edges": [
+                        {"from": [0, 0], "to": [0, 1]},
+                        {"from": [0, 1], "to": [0, 2]},
+                        {"from": [0, 2], "to": [1, 2], "label": "打分"},
+                    ],
+                },
+            },
         },
     },
     {

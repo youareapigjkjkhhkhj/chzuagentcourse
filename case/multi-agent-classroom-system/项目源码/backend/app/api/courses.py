@@ -18,6 +18,7 @@ from app.common import tasks
 from app.common.errors import ValidationError
 from app.common.identity import current_owner_id
 from app.common.response import ok
+from app.services import audit
 from app.services.courses import library
 from app.services.generation import intake
 
@@ -66,7 +67,16 @@ def delete_course(course_id: str):
     用户点错了还能捞回来，复盘那次生成也还有依据。
     """
     course = library.course_or_404(course_id, current_owner_id())
-    return ok(library.delete_course(course))
+    result = library.delete_course(course)
+    # 标题是课程的名字（用户自己填在第一栏的那个词），不是提示词也不是材料原文
+    # —— 记它是为了让审计能回答「删掉的是哪一门」，而不是只有一串 id。
+    # （§19 拦的是提示词正文 / 材料正文 / 凭据，不含用户自己起的标题。）
+    audit.record(
+        audit.ACTION_COURSE_DELETE,
+        target=f"course:{course.id}",
+        detail={"title": course.title},
+    )
+    return ok(result)
 
 
 # --- 大纲 ---

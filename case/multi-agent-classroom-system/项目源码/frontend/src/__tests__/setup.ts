@@ -36,6 +36,29 @@ if (!('ResizeObserver' in window)) {
   })
 }
 
+/**
+ * jsdom 的媒体元素一个都没实现：`play()` / `pause()` 会往控制台丢一行
+ * 「Not implemented」再返回 undefined。课堂页的播放器**本来就允许注入假的音频元素**
+ * （见 `useNarrationPlayer` 的注释），但组件内部造的这个实例注入不进去 ——
+ * 在这里补一个空实现，让那些用例的失败原因落在断言上，而不是落在一堆 stderr 上。
+ *
+ * 补的是**浏览器缺的东西**，不是替被测代码做事：`play()` 依旧不发声、不推进时间。
+ */
+const MEDIA_STUBS: [string, () => void][] = [
+  ['play', () => {}],
+  ['pause', () => {}],
+  ['load', () => {}],
+]
+
+for (const [name, stub] of MEDIA_STUBS) {
+  if (!window.HTMLMediaElement?.prototype) continue
+  Object.defineProperty(window.HTMLMediaElement.prototype, name, {
+    configurable: true,
+    writable: true,
+    value: stub,
+  })
+}
+
 afterEach(() => {
   vi.clearAllMocks()
 })

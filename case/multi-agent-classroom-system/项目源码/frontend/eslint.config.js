@@ -19,7 +19,17 @@ export default tseslint.config(
   },
   {
     languageOptions: {
-      globals: { window: 'readonly', document: 'readonly', crypto: 'readonly' },
+      globals: {
+        window: 'readonly',
+        document: 'readonly',
+        crypto: 'readonly',
+        // AudioWorklet 那条线程自带的全局量（src/composables/pcm-worklet.js）：
+        // 那里没有 window，采样率也不是我们能传进去的参数
+        sampleRate: 'readonly',
+        currentTime: 'readonly',
+        AudioWorkletProcessor: 'readonly',
+        registerProcessor: 'readonly',
+      },
     },
     rules: {
       // 显式 any 是坏味道，但 TDesign 的部分回调签名只有 any，允许带注释的例外

@@ -6,6 +6,7 @@ export { Workspace, resolveWithinWorkspace, resolveWithinRoots, isWithin } from 
 export { workspaceTree, readWorkspaceFile, readWorkspaceFileBase64, gitInfo, WORKSPACE_VIEW_LIMITS, type WorkspacePreview } from './workspace/info';
 export { ToolBus, createBuiltinBus, buildSessionBus } from './tools/bus';
 export { createSkillTool, SKILL_TOOL_NAME } from './tools/skillTool';
+export { createTaskTool, TASK_TOOL_NAME, type SpawnSubagent } from './tools/taskTool';
 export { ReadState, type Tool, type ToolContext, type ToolResult } from './tools/types';
 export { PermissionGate, primaryTarget, MATRIX, type PermissionMode, type PermissionQuery, type PermissionAnswer, type PermissionDecision, type AskFn } from './permission';
 export { compileWhitelist, DEFAULT_EXEC_WHITELIST } from './execWhitelist';

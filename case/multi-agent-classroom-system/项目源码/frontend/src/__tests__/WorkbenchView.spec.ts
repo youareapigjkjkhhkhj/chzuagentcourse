@@ -26,10 +26,35 @@ vi.mock('@/api', () => ({
   startGeneration: vi.fn(),
   fetchCourses: vi.fn(),
   streamUrl: (jobId: string) => `/api/courses/generate/${jobId}/stream`,
+  // 工作台三栏里的另外两栏（左：对话；右：材料抽屉）各有自己的接口 ——
+  // 这门 spec 断言的是 P1 那一批，它们只需要「打桩了、返回空」不干扰主断言。
+  chatStreamUrl: (courseId: string) => `/api/courses/${courseId}/chat/stream`,
+  fetchChatMessages: vi.fn(),
+  sendChatMessage: vi.fn(),
+  rollbackChat: vi.fn(),
+  fetchSkills: vi.fn(),
+  uploadMaterial: vi.fn(),
+  fetchMaterials: vi.fn(),
+  fetchMaterial: vi.fn(),
+  fetchMaterialChunks: vi.fn(),
+  fetchMaterialChunk: vi.fn(),
+  searchMaterials: vi.fn(),
+  deleteMaterial: vi.fn(),
+  fetchCourseMaterials: vi.fn(),
+  attachMaterials: vi.fn(),
+  detachMaterial: vi.fn(),
+  fetchCapabilities: vi.fn(),
 }))
 
 import * as api from '@/api'
-import type { CourseDetail, CoursePageItem, GenJobView, OutlineTree } from '@/types/api'
+import type {
+  Capabilities,
+  CourseDetail,
+  CoursePageItem,
+  GenJobView,
+  OutlineTree,
+} from '@/types/api'
+import MaterialDrawer from '@/components/workbench/MaterialDrawer.vue'
 import OutlineAddDialog from '@/components/workbench/OutlineAddDialog.vue'
 import WorkbenchView from '@/views/WorkbenchView.vue'
 
@@ -178,12 +203,15 @@ const JOB: GenJobView = {
     durationMs: status === 'done' ? 6000 : 0,
     tokens: 0,
     error: '',
+    attempts: 0,
+    errorCode: '',
     startedAt: null,
     finishedAt: null,
   })),
   currentStep: null,
   failedSteps: [],
   retryable: false,
+  resumable: false,
 }
 
 async function mountWorkbench(query: Record<string, string> = { course: 'c1', job: 'j1' }) {
@@ -229,6 +257,31 @@ function headButton(wrapper: Wrapper, label: string) {
   return node
 }
 
+/** 能力清单：这门 spec 只关心 `materials.enabled`（右侧那一栏在不在）。 */
+const CAPS: Capabilities = {
+  env: 'testing',
+  version: '0.1.0',
+  capabilities: {
+    llm: { available: true, offline: true, provider: 'mock', reason: '' },
+    tts: { available: false, offline: false, provider: 'mock', reason: '还没接通' },
+    asr: { available: false, offline: false, provider: 'mock', reason: '还没接通' },
+    realtime: { available: false, offline: false, provider: 'mock', reason: '还没接通' },
+  },
+  providers: {},
+  generation: {
+    minPageCount: 8,
+    maxPageCount: 20,
+    minClassmateCount: 0,
+    maxClassmateCount: 5,
+    minSpeed: 0.5,
+    maxSpeed: 2,
+    intonations: ['flat', 'natural', 'expressive'],
+    intensities: ['low', 'medium', 'high'],
+    scriptDetails: ['concise', 'normal', 'detailed'],
+  },
+  materials: { enabled: true, maxBytes: 52428800 },
+}
+
 beforeEach(() => {
   setActivePinia(createPinia())
   FakeEventSource.instances = []
@@ -250,6 +303,52 @@ beforeEach(() => {
   })
   vi.mocked(api.cancelJob).mockResolvedValue({ ...JOB })
   vi.mocked(api.retryStep).mockResolvedValue({ jobId: 'j1', stepId: 's3', status: 'queued' })
+
+  // 会话与材料这两侧的空响应：它们挂在同一棵树上，不铺好会看到一堆 rejection。
+  vi.mocked(api.fetchChatMessages).mockResolvedValue({
+    sessionId: 's1',
+    items: [],
+    lastSeq: 0,
+    running: false,
+  })
+  vi.mocked(api.fetchSkills).mockResolvedValue({ items: [], maxActions: 4 })
+  vi.mocked(api.fetchMaterials).mockResolvedValue({
+    enabled: true,
+    items: [],
+    page: 1,
+    size: 200,
+    hasMore: false,
+  })
+  vi.mocked(api.fetchCourseMaterials).mockResolvedValue({ items: [] })
+  vi.mocked(api.fetchCapabilities).mockResolvedValue(CAPS)
+})
+
+describe('材料总开关（P4-G3）', () => {
+  it('开着的时候，右侧材料那一栏在', async () => {
+    const { wrapper } = await mountWorkbench()
+
+    expect(wrapper.findComponent(MaterialDrawer).exists()).toBe(true)
+  })
+
+  it('关着的时候整栏不出现 —— 依据是 /capabilities 的 materials.enabled', async () => {
+    vi.mocked(api.fetchCapabilities).mockResolvedValue({
+      ...CAPS,
+      materials: { enabled: false, maxBytes: 52428800 },
+    })
+
+    const { wrapper } = await mountWorkbench()
+
+    expect(api.fetchCapabilities).toHaveBeenCalled()
+    expect(wrapper.findComponent(MaterialDrawer).exists()).toBe(false)
+  })
+
+  it('清单拉不到时按开着算：一次网络抖动不该变成「这个功能没了」', async () => {
+    vi.mocked(api.fetchCapabilities).mockRejectedValue(new Error('连不上'))
+
+    const { wrapper } = await mountWorkbench()
+
+    expect(wrapper.findComponent(MaterialDrawer).exists()).toBe(true)
+  })
 })
 
 describe('打开工作台', () => {
@@ -483,8 +582,8 @@ describe('大纲树：折叠、拖序、增删（A3）', () => {
       '第二章 · 随堂测验',
       '课程小结',
     ])
-    // 改了还没交这件事得写在屏幕上
-    expect(wrapper.find('.wb-outline__draft').text()).toContain('未提交')
+    // 改了还没交这件事得写在屏幕上（大纲栏顶头那枚标签）
+    expect(wrapper.find('.wb-outline__title').text()).toContain('未提交')
 
     await wrapper.find('.wb-confirm').trigger('click')
     await flushPromises()
@@ -574,14 +673,22 @@ describe('大纲树：折叠、拖序、增删（A3）', () => {
     await findPage(wrapper, '线性回归').find('.tree-page__del').trigger('click')
     await flushPromises()
     expect(pageTitles(wrapper)).not.toContain('线性回归')
-    expect(wrapper.find('.wb-outline__draft').exists()).toBe(true)
+    // 有没提交的改动 → 大纲栏顶头的「未提交」和工具条上的「还原」都在
+    expect(wrapper.find('.wb-outline__title').text()).toContain('未提交')
+    expect(headButton(wrapper, '还原').exists()).toBe(true)
 
-    await wrapper.find('.wb-outline__draft .t-button').trigger('click')
+    await headButton(wrapper, '还原').trigger('click')
     await flushPromises()
 
     expect(api.fetchOutline).toHaveBeenCalledWith('c1')
     expect(pageTitles(wrapper)).toContain('线性回归')
-    expect(wrapper.find('.wb-outline__draft').exists()).toBe(false)
+    // 还原之后就没有「本地那一版」了，两个记号一起撤
+    // （这里不用 headButton：找不到就报错是那个 helper 的规矩，而这一条要的正是「没有」）
+    const revert = wrapper
+      .findAll('.wb-outline__head button')
+      .find((row) => row.text().includes('还原'))
+    expect(revert).toBeUndefined()
+    expect(wrapper.find('.wb-outline__title').text()).not.toContain('未提交')
   })
 })
 

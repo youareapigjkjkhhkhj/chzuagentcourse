@@ -164,6 +164,30 @@ def test_chat_json_schema_requests_structured_output(app):
     assert "required" in dumped
 
 
+def test_json_schema_rule_rides_in_the_first_system_message(app):
+    """这段要求必须并进 0 号位那条 system 消息里。
+
+    它原先是**追加在末尾**的一条 system：OpenAI、DeepSeek 都收，但按 Qwen 模板
+    校验的服务商（vLLM）直接 400 `System message must be at the beginning`。
+    """
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json=CHAT_OK)
+
+    schema = {"type": "object", "properties": {"title": {"type": "string"}}}
+    talk = [{"role": "system", "content": "你是老师"}, {"role": "user", "content": "出个大纲"}]
+
+    with app.app_context():
+        make_provider(handler).chat(talk, json_schema=schema)
+
+    messages = seen["body"]["messages"]
+    assert [row["role"] for row in messages] == ["system", "user"]
+    assert "你是老师" in messages[0]["content"]
+    assert "JSON Schema" in messages[0]["content"]
+
+
 def test_chat_without_messages_raises_validation_error(app):
     from app.common.errors import ValidationError
 

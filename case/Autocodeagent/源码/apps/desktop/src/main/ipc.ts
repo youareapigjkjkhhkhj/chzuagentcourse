@@ -105,6 +105,7 @@ export function registerIpc(ctx: IpcContext): void {
   handle(IpcChannels.sessionDelete, (raw) => {
     const v = validatePayload(SessionIdPayload, raw, IpcChannels.sessionDelete);
     if (!v.ok) throw new Error(v.error);
+    chat.abort(v.value.id); // 删除前先中断该会话可能仍在跑的 runTurn：省 token + 清挂起权限卡，避免后台任务继续写已删会话
     chat.resetDiscovered(v.value.id); // Phase 2：删除会话即丢弃其按需发现集
     return sessions.delete(v.value.id);
   });
@@ -158,6 +159,13 @@ export function registerIpc(ctx: IpcContext): void {
     const v = validatePayload(SessionIdPayload, raw, IpcChannels.agentAbort);
     if (!v.ok) throw new Error(v.error);
     return chat.abort(v.value.id);
+  });
+
+  // 会话进行态查询：切换会话时前端对齐 busy / 恢复挂起权限卡（runTurn 可能仍挂在 gate.decide，permission_request 事件不重发）
+  handle(IpcChannels.agentState, (raw) => {
+    const v = validatePayload(SessionIdPayload, raw, IpcChannels.agentState);
+    if (!v.ok) throw new Error(v.error);
+    return chat.runState(v.value.id);
   });
 
   handle(IpcChannels.permissionResolve, (raw) => {

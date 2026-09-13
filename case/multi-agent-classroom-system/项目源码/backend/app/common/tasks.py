@@ -175,6 +175,18 @@ def submit_retry(job_id: str, step_id: str, *, llm: Any = None) -> bool:
     return get_runner().submit(job_id, lambda: pipeline.retry_step(job_id, step_id, llm=llm))
 
 
+def submit_resume(job_id: str, *, llm: Any = None) -> bool:
+    """断点续跑也走后台（P5-F5-9）：它要接着写完没写完的那几页，同样是分钟级的事。
+
+    与另两个入口共用同一个 key（就是 job_id），所以「续跑的时候又点了一次重试」
+    会返回 False 而不是两个线程抢同一批页面 —— 单飞是这一层的职责，
+    三个入口各自去判重只会判出三种结果。
+    """
+    from app.services.generation import pipeline
+
+    return get_runner().submit(job_id, lambda: pipeline.resume_job(job_id, llm=llm))
+
+
 def wait_for(job_id: str, timeout: float | None = None) -> bool:
     """等这个任务跑完（测试与脚本用）。"""
     return get_runner().wait(job_id, timeout)
@@ -193,6 +205,7 @@ __all__ = [
     "get_runner",
     "shutdown_runner",
     "submit_job",
+    "submit_resume",
     "submit_retry",
     "thread_count",
     "wait_for",

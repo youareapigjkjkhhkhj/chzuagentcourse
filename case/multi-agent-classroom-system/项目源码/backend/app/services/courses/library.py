@@ -23,9 +23,10 @@ from app.common.timeutil import utcnow_iso
 from app.extensions import db
 from app.models import COURSE_STATUSES, AgentRole, Course, CoursePage, CoursePageVersion, GenJob
 from app.services.courses import store
-from app.services.generation import events, prompts
-from app.services.generation.llm import call_page
+from app.services.generation import events, prompts, sourcing
+from app.services.generation.llm import call_page, clip_feedback
 from app.services.generation.schema import EDITABLE_FIELDS, SchemaInvalid, validate_page
+from app.services.materials import citations
 
 #: 列表默认一页 12 张卡片（首页「最近课堂」一屏正好三行）。
 DEFAULT_PAGE_SIZE = 12
@@ -187,6 +188,12 @@ def step_payload(job: GenJob) -> dict[str, Any]:
     failed = [step for step in payload.get("steps", []) if step["status"] == "failed"]
     payload["failedSteps"] = [step["id"] for step in failed]
     payload["retryable"] = bool(failed) and job.status in {"failed", "done"}
+    # 能不能「继续生成」（P5-F5-9）：任务停下了、而且还有没做完的步骤。
+    # 判据放在服务端而不是前端去数 steps：前面那两条（failed / canceled）
+    # 各自的条件以后会变（比如多一种终态），散在 JS 里的判断不会跟着变。
+    payload["resumable"] = job.status in {"failed", "canceled"} and any(
+        step["status"] not in {"done", "skipped"} for step in payload.get("steps", [])
+    )
     return payload
 
 
@@ -282,11 +289,20 @@ def rewrite_page(
         raise StateError("这一页还没有内容，不能重写")
 
     dsl = course.dsl or {}
+    # 材料注入（F4-7）：重写沿用这一页现在的标题与要点去检索 ——
+    # 用户给的那句改写要求是「换个说法」，不是「换个知识点」，
+    # 拿它当检索词会让这一页的出处跟着漂（P4-A5）。
+    injected = sourcing.inject(
+        course.id,
+        sourcing.page_query(page.dsl or {}),
+        limit=citations.config_int("MATERIAL_PAGE_TOP_K", 8),
+    )
     messages = prompts.rewrite_messages(
         page.dsl,
         instruction,
         profile=dict((dsl.get("meta") or {}).get("audienceProfile") or {}),
         outline={"title": course.title, "chapters": list(dsl.get("chapters") or [])},
+        materials=list(injected.values()),
     )
     call = call_page_for_rewrite(
         llm,
@@ -296,15 +312,30 @@ def rewrite_page(
         chapter_no=page.chapter_no,
         owner_id=course.owner_id or "",
     )
+
+    def _regenerate(feedback: str) -> tuple[dict, int]:
+        again = call_page_for_rewrite(
+            llm,
+            [*messages, {"role": "assistant", "content": clip_feedback(call.text)},
+             {"role": "user", "content": feedback}],
+            kind=page.kind,
+            page_no=page.page_no,
+            chapter_no=page.chapter_no,
+            owner_id=course.owner_id or "",
+        )
+        return again.data, again.tokens
+
+    dsl_out, summary = sourcing.settle(call.data, injected, regenerate=_regenerate)
     store.save_page(
         page,
-        call.data,
+        dsl_out,
         reason="rewrite",
         model=call.model,
-        tokens=call.tokens,
+        tokens=call.tokens + int(summary.get("retryTokens") or 0),
         instruction=instruction,
-        meta={"rewrittenAt": utcnow_iso(), "attempts": call.attempts},
+        meta={"rewrittenAt": utcnow_iso(), "attempts": call.attempts, "sources": summary},
     )
+    sourcing.persist(page, dsl_out)
     store.rebuild_dsl(course)
 
     job = live_job_of(course)

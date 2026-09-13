@@ -91,6 +91,7 @@ beforeEach(() => {
       intensities: ['low', 'medium', 'high'],
       scriptDetails: ['concise', 'normal', 'detailed'],
     },
+    materials: { enabled: true, maxBytes: 52428800 },
   })
   vi.mocked(api.fetchHealth).mockResolvedValue({
     status: 'ok',

@@ -8,7 +8,7 @@
 
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { Slider } from 'tdesign-vue-next'
+import { Select, Slider } from 'tdesign-vue-next'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import SettingsView from '@/views/SettingsView.vue'
@@ -26,9 +26,15 @@ vi.mock('@/api', () => ({
   enableProvider: vi.fn(),
   saveVoice: vi.fn(),
   saveGeneration: vi.fn(),
+  // 语音这一屏（P2）：音色试听与用量
+  fetchVoices: vi.fn(),
+  previewVoice: vi.fn(),
+  fetchVoiceUsage: vi.fn(),
+  fetchCourses: vi.fn(),
 }))
 
 import * as api from '@/api'
+import type { UsageReport, VoiceList } from '@/types/api'
 
 const PROVIDER_NAMES: [string, string][] = [
   ['deepseek', 'DeepSeek'],
@@ -73,6 +79,34 @@ const VOICE: VoiceSettings = {
   intonation: 'natural',
   asrEnabled: true,
   asrBrowserLocal: true,
+}
+
+/** `/api/voice/voices` 那份视图：比设置页的音色表多一个 `usable`。 */
+const VOICE_LIST: VoiceList = {
+  items: VOICE.voices.map((voice, index) => ({
+    ...voice,
+    // 只有第一把「配置齐了且服务商可用」：试听按钮只该在它上面亮
+    configured: index === 0,
+    usable: index === 0,
+  })),
+  total: 3,
+  current: 'vp_teacher_0',
+  provider: 'volc_tts',
+  enabled: true,
+  usable: true,
+}
+
+const USAGE: UsageReport = {
+  kinds: [
+    { kind: 'tts', units: 1234, unitName: 'chars', estCost: 0.02, calls: 3 },
+    { kind: 'realtime', units: 0, unitName: 'seconds', estCost: 0, calls: 0 },
+    { kind: 'asr', units: 0, unitName: 'seconds', estCost: 0, calls: 0 },
+  ],
+  totalCost: 0.02,
+  priced: false,
+  refType: '',
+  refId: '',
+  enabled: true,
 }
 
 function mountView() {
@@ -121,6 +155,7 @@ beforeEach(() => {
       intensities: ['low', 'medium', 'high'],
       scriptDetails: ['concise', 'normal', 'detailed'],
     },
+    materials: { enabled: true, maxBytes: 52428800 },
   })
   vi.mocked(api.fetchHealth).mockResolvedValue({
     status: 'ok',
@@ -129,6 +164,17 @@ beforeEach(() => {
     providers: { llm: 'ready', tts: 'unconfigured', asr: 'unconfigured', realtime: 'unconfigured' },
     llm: { provider: 'deepseek', model: 'deepseek-chat' },
     issues: [],
+  })
+  vi.mocked(api.fetchVoices).mockResolvedValue(VOICE_LIST)
+  vi.mocked(api.fetchVoiceUsage).mockResolvedValue(USAGE)
+  vi.mocked(api.fetchCourses).mockResolvedValue({ items: [], total: 0, page: 1, size: 20 })
+  vi.mocked(api.previewVoice).mockResolvedValue({
+    voiceId: 'vp_teacher_0',
+    url: '/api/voice/voices/vp_teacher_0/preview?v=abc',
+    cached: true,
+    durationMs: 3200,
+    text: '同学们好，我是这门课的老师。',
+    provider: 'volc_tts',
   })
 })
 
@@ -148,6 +194,25 @@ describe('模型服务', () => {
 
     expect(wrapper.text()).toContain('延迟 320ms')
     expect(wrapper.text()).not.toContain('sk-****4321') // 掩码只在抽屉里显示
+  })
+
+  it('明说材料发给哪一家（P4-F5 的「设置页明示」那半句）', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    // PROVIDERS 里只有 DeepSeek 是 enabled —— 说出的名字必须是当前启用的那家
+    expect(wrapper.text()).toContain('只把这些分块发给当前启用的「DeepSeek」')
+  })
+
+  it('一家都没启用时改说「不会被发往任何服务商」，不留白', async () => {
+    vi.mocked(api.fetchProviders).mockResolvedValue({
+      items: PROVIDERS.map((card) => ({ ...card, enabled: false })),
+      total: 5,
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('材料不会被发往任何服务商')
   })
 })
 
@@ -225,6 +290,122 @@ describe('生成参数', () => {
     await flushPromises()
 
     expect(api.saveGeneration).toHaveBeenCalledWith(expect.objectContaining({ pageCount: 16 }))
+  })
+})
+
+describe('音色试听与用量（P2-A5 / P2-A11）', () => {
+  it('只有「配置齐了且服务商可用」的音色能试听，点一下真的去合成', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await switchPane(wrapper, '语音服务')
+
+    const buttons = wrapper.findAll('.voice-card .v-audio')
+    expect(buttons).toHaveLength(3)
+    // 后两把没配声音 ID：按钮置灰，并把「去哪儿修」写在 title 上
+    expect(buttons[0].attributes('disabled')).toBeUndefined()
+    expect(buttons[1].attributes('disabled')).toBeDefined()
+    expect(buttons[1].attributes('title')).toContain('声音 ID')
+
+    await buttons[0].trigger('click')
+    await flushPromises()
+
+    // 没填试听文本 = 用服务端的示例句
+    expect(api.previewVoice).toHaveBeenCalledWith('vp_teacher_0', { text: '' })
+  })
+
+  it('试听不改变当前选中的音色（听与选是两件事）', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await switchPane(wrapper, '语音服务')
+
+    // 当前选中的是第 1 把；对第 1 把点试听不该把它自己取消掉
+    const cards = wrapper.findAll('.voice-card')
+    expect(cards[0].classes()).toContain('is-checked')
+
+    await wrapper.findAll('.voice-card .v-audio')[0].trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('.voice-card')[0].classes()).toContain('is-checked')
+    expect(wrapper.find('.save-bar button[disabled]').exists()).toBe(true)
+  })
+
+  it('试听读不到状态时退到「配没配声音 ID」，并把原因说出来', async () => {
+    vi.mocked(api.fetchVoices).mockRejectedValue(new Error('服务没起来'))
+
+    const wrapper = mountView()
+    await flushPromises()
+    await switchPane(wrapper, '语音服务')
+
+    expect(wrapper.find('.pane-hint').text()).toContain('读不到语音服务状态')
+    // 退到设置页自己那份 `configured`：这里三把都没配，所以全灰
+    const buttons = wrapper.findAll('.voice-card .v-audio')
+    expect(buttons.every((button) => button.attributes('disabled') !== undefined)).toBe(true)
+  })
+
+  it('用量按链路分开显示，金额与合计来自服务端', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await switchPane(wrapper, '语音服务')
+
+    const table = wrapper.find('.usage-table').text()
+    expect(table).toContain('语音合成（讲稿、试听）')
+    expect(table).toContain('1234 字符')
+    expect(table).toContain('¥0.0200')
+    expect(table).toContain('合计')
+    // 没有用量的那两类不摆一行 0 出来
+    expect(table).not.toContain('实时语音（课堂问答）')
+  })
+
+  it('没配单价时说清合计是少报的，而不是显示 ¥0.00', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await switchPane(wrapper, '语音服务')
+
+    expect(wrapper.find('.usage-note').text()).toContain('少报')
+  })
+
+  it('可以只看某门课的用量', async () => {
+    vi.mocked(api.fetchCourses).mockResolvedValue({
+      items: [
+        {
+          id: 'c1',
+          title: '机器学习入门',
+          topic: '机器学习入门',
+          status: 'ready',
+          pageCount: 12,
+          readyPages: 12,
+          durationMin: 25,
+          roleCount: 4,
+          cover: {},
+          progress: 100,
+          jobId: 'j1',
+          createdAt: 'x',
+          updatedAt: 'x',
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 20,
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+    await switchPane(wrapper, '语音服务')
+
+    // 进这一屏先看的是「全部课堂」
+    expect(api.fetchVoiceUsage).toHaveBeenLastCalledWith({})
+
+    const select = wrapper.findComponent(Select)
+    expect(select.props('options')).toEqual([
+      { label: '全部课堂', value: '' },
+      { label: '机器学习入门', value: 'c1' },
+    ])
+
+    // 选一门课：传给服务端的是 refType/refId，筛选不在前端做
+    select.vm.$emit('change', 'c1')
+    await flushPromises()
+
+    expect(api.fetchVoiceUsage).toHaveBeenLastCalledWith({ refType: 'course', refId: 'c1' })
   })
 })
 

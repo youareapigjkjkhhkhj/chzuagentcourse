@@ -1,0 +1,287 @@
+.cls {
+  height: calc(100vh - 60px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 顶栏（原型 .cls-header） */
+.cls-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 56px;
+  padding: 0 20px;
+  background: var(--td-bg-container);
+  border-bottom: 1px solid var(--td-component-stroke);
+  flex-shrink: 0;
+}
+
+.cls-header .back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--td-radius-default);
+  cursor: pointer;
+  color: var(--td-text-secondary);
+}
+
+.cls-header .back:hover {
+  background: var(--td-bg-container-hover);
+  color: var(--td-text-primary);
+}
+
+/* 课程标题可能很长：让它先省略，别把右边的按钮挤出屏幕 */
+.cls-header__info {
+  min-width: 0;
+}
+
+.cls-header__title {
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cls-header__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+}
+
+.cls-header .spacer {
+  flex: 1;
+}
+
+.cls-notice {
+  padding: 12px 20px 0;
+}
+
+.cls-notice__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cls-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/*
+ * 随堂测验的侧边弹框：占舞台左边的一栏，从左边滑进来。
+ *
+ * **是「占一栏」不是「盖一层」**：幻灯片是本页的主角，压在上面会正好盖住
+ * 图（两栏版式里图在左）。占一栏，舞台自己让位、字号跟着缩放，图和字都还在。
+ * 宽度 420 够放下四个选项；窄屏按 40% 兜一下，别把舞台挤没。
+ */
+.cls-quiz {
+  /* 关闭按钮锚在这一栏的右上角（原来锚 `.cls-body`，改成占一栏后就不是一回事了） */
+  position: relative;
+  flex: 0 0 auto;
+  width: min(420px, 40%);
+  margin: 12px 0 12px 12px;
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  background: var(--td-bg-container);
+  border-radius: var(--td-radius-large);
+  box-shadow: var(--td-shadow-3);
+  overflow-y: auto;
+}
+
+.cls-quiz__card {
+  flex-shrink: 0;
+  /* 面板右边留着，别让选项贴到关闭按钮底下 */
+  padding-right: 26px;
+}
+
+.cls-quiz__close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  border-radius: var(--td-radius-default);
+  color: var(--td-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cls-quiz__close:hover:not(:disabled) {
+  background: var(--td-bg-container-hover);
+  color: var(--td-text-primary);
+}
+
+/* 没答之前关不掉：课堂停在这一题上等作答，收了就成了「看着卡住」（见模板那段） */
+.cls-quiz__close:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.cls-quiz__close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.cls-quiz__skip {
+  margin-top: 10px;
+  align-self: flex-start;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--td-text-secondary);
+  font-size: 12.5px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.cls-quiz__skip:hover {
+  color: var(--td-brand-color);
+}
+
+/* 滑进滑出：从左边来，往左边走 */
+.quiz-panel-enter-active,
+.quiz-panel-leave-active {
+  transition:
+    transform 0.22s ease,
+    opacity 0.22s ease;
+}
+
+.quiz-panel-enter-from,
+.quiz-panel-leave-to {
+  transform: translateX(-20px);
+  opacity: 0;
+}
+
+/* 「正在上的课」那张单子（P3-F5）：一行一堂，右边一个「结束」 */
+.cls-sessions__hint {
+  margin-bottom: 12px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--td-text-secondary);
+}
+
+.cls-sessions__empty {
+  padding: 16px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--td-text-placeholder);
+}
+
+.cls-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.cls-sessions__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: var(--td-radius-medium);
+}
+
+.cls-sessions__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cls-sessions__title {
+  font-size: 14px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cls-sessions__meta {
+  font-size: 12px;
+  color: var(--td-text-placeholder);
+}
+
+/* 沉浸模式：面板收起来，舞台铺满（Esc 退出） */
+.cls.is-immersive .cls-header {
+  opacity: 0.9;
+}
+
+/* 选课（没带 course 参数时） */
+.cls-picker {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(560px, calc(100vw - 80px));
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--td-bg-container);
+  border-radius: var(--td-radius-large);
+  box-shadow: var(--td-shadow-3);
+  padding: 24px;
+}
+
+.cls-picker h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.cls-picker__hint {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--td-text-secondary);
+}
+
+.cls-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pick {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: var(--td-radius-medium);
+  border: 1px solid var(--td-component-stroke);
+  background: var(--td-bg-container);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.pick:hover {
+  border-color: var(--td-brand-color);
+  background: var(--td-brand-color-light);
+}
+
+.pick__title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-primary);
+}
+
+.pick__meta {
+  font-size: 12px;
+  color: var(--td-text-secondary);
+}

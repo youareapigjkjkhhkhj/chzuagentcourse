@@ -38,6 +38,8 @@ const api = {
   agent: {
     ask: (payload: AskInput) => invoke('agent:ask', payload),
     abort: (sessionId: string) => invoke('agent:abort', { id: sessionId }),
+    /** 会话进行态：切换会话时对齐 busy / 恢复挂起权限卡 */
+    state: (sessionId: string) => invoke('agent:state', { id: sessionId }),
   },
   permission: {
     resolve: (payload: { requestId: string; allow: boolean; remember: boolean }) => invoke('permission:resolve', payload),

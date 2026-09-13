@@ -183,6 +183,16 @@ export type StreamEvent =
   /** 应用菜单导航广播（无 sessionId）：view = 目标视图名，或 new-session / pick-workspace 动作 */
   | { type: 'nav'; view: string };
 
+/**
+ * 会话进行态快照（切换会话时前端据此对齐 busy / 恢复权限卡）：
+ * busy = 后端是否仍在为该会话跑 runTurn；pending = 挂起中的权限询问——
+ * permission_request 是一次性事件，切走会话即被 sessionId 过滤丢弃且不重发，故须主动查回才能重画权限卡。
+ */
+export interface SessionRunState {
+  busy: boolean;
+  pending: { requestId: string; callId: string; name: string; risk: Risk; detail: string } | null;
+}
+
 /* ── P2 审阅 / Diff 视图类型（三层共用，无 Node 依赖） ── */
 
 export type ReviewStatus = 'pending' | 'accepted' | 'reverted';

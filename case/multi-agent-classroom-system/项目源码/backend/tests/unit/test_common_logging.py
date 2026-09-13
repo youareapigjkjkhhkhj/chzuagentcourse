@@ -94,6 +94,37 @@ def test_redact_preserves_ordinary_text():
     assert redact(text) == text
 
 
+def test_classroom_ticket_in_a_request_line_is_redacted():
+    """课堂票据走 URL 查询串（§4.2），WSGI 服务器的访问日志会把请求行原样记下来。
+
+    它一次性的、只活 60 秒 —— 但「有效期短」不该变成「可以进日志」：看日志的人
+    不该顺手拿到这堂课的钥匙。这条走的是**根 handler 上的 Filter**（werkzeug 的
+    logger 不经过 `get_logger`，`configure_logging` 装的就是这一份），所以这里
+    照那个形状把记录喂进去。
+    """
+    from app.common.logging import RedactingFilter
+
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.addFilter(RedactingFilter())
+
+    logger = logging.getLogger("werkzeug")
+    logger.addHandler(handler)
+    try:
+        logger.warning(
+            '%s - - "GET /ws/classroom/4e85e815?ticket=0yMCkLzZFKXyxObZTW9Gl7W5KnNJpUS0K0fvriPt0mo HTTP/1.1" 101 -',
+            "127.0.0.1",
+        )
+    finally:
+        logger.removeHandler(handler)
+
+    out = stream.getvalue()
+    assert "0yMCkLzZFKXyxObZTW9Gl7W5KnNJpUS0K0fvriPt0mo" not in out
+    assert "ticket=****" in out
+    # 同一行里的课号不是凭据，留着（不然排查时看不出是哪堂课）
+    assert "4e85e815" in out
+
+
 def test_logger_carries_request_id(app, captured_logs):
     """日志要带 requestId，便于把一次请求的日志串起来。"""
     from app.common.logging import get_logger

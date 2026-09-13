@@ -143,15 +143,20 @@ def test_health_points_at_the_configured_llm(app_factory):
     assert data["llm"]["model"] == "deepseek-chat"
 
 
-def test_health_is_not_ready_for_a_stub_adapter_even_with_real_credentials(app_factory):
-    """P0 的语音适配器只有骨架：凭据齐了也必须报 unconfigured。
+def test_health_is_not_ready_for_a_stub_adapter_even_with_real_credentials(
+    app_factory, stub_speech
+):
+    """语音适配器只有骨架时：凭据齐了也必须报 unconfigured。
 
-    这是本阶段最容易被真实 .env 骗过去的一格 —— 里面放的是真 Key，
+    这是最容易被真实 .env 骗过去的一格 —— 里面放的是真 Key，
     卡片会显示「已配置」，可调用时抛的是 50201（还没实现），不是 40201（没配）。
-    报 ready 就等于把「P2 才交付」伪装成「已经好了」，
-    而 P0 的验收要求恰好是这三个能力为 unconfigured。
+    报 ready 就等于把「还没交付」伪装成「已经好了」。
+
+    P2 之后三个适配器都真能用了，所以这里自带桩把实现拿掉 ——
+    验的是**机制**（谁没实现就不给绿灯），不是「火山那三个类现在是不是空壳」。
     """
     app = app_factory(seed=True, env=SPEECH_ENV)
+    stub_speech()
 
     data = data_of(app.test_client().get("/api/health"))
 
@@ -163,13 +168,30 @@ def test_health_is_not_ready_for_a_stub_adapter_even_with_real_credentials(app_f
     assert {"tts_pending", "asr_pending", "realtime_pending"} <= codes
 
 
-def test_capabilities_keep_a_stub_adapter_off(app_factory):
+def test_health_says_ready_once_the_speech_adapters_are_implemented(app_factory):
+    """反向（P2 之后的事实）：凭据齐 + 实现齐 → 三件套都报 ready。
+
+    与上一条成对。只留「永远报 unconfigured」的那一半，
+    这个接口就退化成了一个恒定的红灯，谁都不会再看它。
+    """
+    app = app_factory(seed=True, env=SPEECH_ENV)
+
+    data = data_of(app.test_client().get("/api/health"))
+
+    assert data["providers"]["tts"] == "ready"
+    assert data["providers"]["asr"] == "ready"
+    assert data["providers"]["realtime"] == "ready"
+    assert [i for i in data["issues"] if i["code"].endswith("_pending")] == []
+
+
+def test_capabilities_keep_a_stub_adapter_off(app_factory, stub_speech):
     """前端据此置灰入口：不能点开一个点了必然报错的按钮。
 
     与 mock 的区别（§4.1：available 与 offline 是两个问题）：
     这里 offline 也是 False —— 它不是「离线替身顶着」，而是「谁都没顶」。
     """
     app = app_factory(seed=True, env=SPEECH_ENV)
+    stub_speech()
 
     caps = data_of(app.test_client().get("/api/capabilities"))["capabilities"]
 
@@ -297,17 +319,18 @@ def test_card_distinguishes_credentials_from_a_missing_adapter(app_factory):
     assert card["available"] is False, "没有适配器就不该说「能用」"
 
 
-def test_card_says_configured_but_not_available_for_a_stub_adapter(app_factory):
+def test_card_says_configured_but_not_available_for_a_stub_adapter(app_factory, stub_speech):
     """适配器在、凭据也在，但实现还没写 —— 卡片要同时说出这两件事。
 
     与上一条的区别：那条是「根本没有适配器」（查表就找不到），
-    这条是「适配器是 P0 的骨架」。前端两种都要能显示成「还用不了」，
+    这条是「适配器接上了但没实现」。前端两种都要能显示成「还用不了」，
     但原因文案不同：一个是等实现，一个是等接上。
     """
     from app.extensions import db
     from app.models import Provider
 
     app = app_factory(seed=True, env=SPEECH_ENV)
+    stub_speech()
     with app.app_context():
         row = Provider(id="volc_asr", name="火山语音识别", kind="asr")
         row.api_key = "volc-secret-value"
@@ -896,19 +919,21 @@ def test_generation_fills_in_defaults_for_keys_that_are_missing(app_factory):
 # --- 内置角色（§4.2）---
 
 
-def test_roles_list_has_a_teacher_and_three_students(app_factory):
-    """§4.2 的角色表：沈老师(teacher) + 林晓 / 陈默 / 苏雨。
+def test_roles_list_has_a_teacher_and_five_students(app_factory):
+    """§4.2 的角色表：沈老师(teacher) + 林晓 / 陈默 / 苏雨 / 周野 / 顾棠。
 
-    P0-A8 说的「3 个角色」指 3 位 AI 同学 —— 两种读法在这里同时钉住。
+    P0-A8 说的「3 个角色」是**默认**的 3 位同学（设置页「AI 同学数量」的默认值），
+    不是角色库的容量：库里给满 5 位，课堂按设置取前 N 位（`classroom/roster.py`）。
+    取不满（设置 5、库里 3）时宁可少 —— 凭空造两张没名字没音色的嘴更难查。
     """
     app = app_factory(seed=True)
 
     data = data_of(app.test_client().get("/api/agents/roles"))
 
     codes = [item["code"] for item in data["items"]]
-    assert codes == ["shen", "xiaoxiao", "chenmo", "suyu"]
+    assert codes == ["shen", "xiaoxiao", "chenmo", "suyu", "zhouye", "gutang"]
     assert [i for i in data["items"] if i["role"] == "teacher"] == [data["items"][0]]
-    assert len([i for i in data["items"] if i["role"] == "student"]) == 3
+    assert len([i for i in data["items"] if i["role"] == "student"]) == 5
 
 
 def test_role_carries_persona_and_voice(app_factory):

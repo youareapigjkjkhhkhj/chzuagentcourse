@@ -42,6 +42,13 @@ def create_app(config_name: str | None = None) -> Flask:
     _init_extensions(app)
     _install_error_handlers(app)
     _register_blueprints(app)
+    # 门禁装在蓝图上（P5-A13）：before_request 对所有请求生效，
+    # 包括 WS 的握手请求 —— 那是最容易被漏掉的一条路。
+    _install_access_gate(app)
+    # 前端产物放在**最后**：它注册的是 `/<path:path>` 通配路由，
+    # 虽然 Flask 按规则的特异性匹配（静态路由永远优先），
+    # 但把通配放在最后注册，读路由表时不用先跳过它才能找到别的。
+    _install_frontend(app)
     _register_cli(app)
 
     from app.common.logging import configure_logging, get_logger
@@ -114,8 +121,12 @@ def _log_provider_self_check(app: Flask, logger) -> None:
 
 
 def _ensure_directories(app: Flask) -> None:
-    """上传目录 / 数据库目录必须在启动时存在，否则第一次写入才炸。"""
-    for key in ("UPLOAD_DIR",):
+    """上传目录 / 音频目录 / 导出目录 / 数据库目录必须在启动时存在，否则第一次写入才炸。
+
+    音频与导出目录只建根：`{AUDIO_DIR}/{course_id}/`、`{EXPORT_DIR}/{course_id}/`
+    都由写的时候按需建 —— 启动时给每门课都建一个空目录，删课之后就会剩下一堆空壳。
+    """
+    for key in ("UPLOAD_DIR", "AUDIO_DIR", "EXPORT_DIR"):
         raw = app.config.get(key)
         if raw:
             Path(raw).mkdir(parents=True, exist_ok=True)
@@ -167,12 +178,32 @@ def _register_blueprints(app: Flask) -> None:
     register_api(app)
 
 
+def _install_access_gate(app: Flask) -> None:
+    """站点访问码（P5-A13）。没配 `SITE_ACCESS_CODE` 时它是一个空操作。"""
+    from app.common.access import install_access_gate
+
+    install_access_gate(app)
+
+
+def _install_frontend(app: Flask) -> None:
+    """生产由后端托管前端产物（P5 §6）。目录不在时什么都不做。"""
+    from app.common.site import install_frontend
+
+    install_frontend(app)
+
+
 def _register_cli(app: Flask) -> None:
     from app.seeds import register_cli
+    from app.services.backup import register_cli as register_backup_cli
+    from app.services.exports.queue import register_cli as register_exports_cli
     from app.services.provider_registry import register_cli as register_provider_cli
+    from app.services.usage.aggregate import register_cli as register_usage_cli
 
     register_cli(app)
     register_provider_cli(app)
+    register_exports_cli(app)
+    register_usage_cli(app)
+    register_backup_cli(app)
 
 
 def _warn_missing_credentials(app: Flask, logger) -> None:

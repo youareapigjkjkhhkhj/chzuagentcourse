@@ -57,6 +57,8 @@ export function useGenerationStream(jobId: Ref<string>) {
   const batches = ref<WriteBatch[]>([])
   const readyPages = ref<number[]>([])
   const error = ref('')
+  /** 能不能续跑（P5-F5-9）。只有 REST 那份有，所以终态之后要回问一次。 */
+  const resumable = ref(false)
   /** 任务还在跑（或等在确认点）。终态之后流就收了。 */
   const active = ref(true)
   /** 有没有从服务端拿到过任何一份数据。界面上「—」与「0%」的区别就在这里。 */
@@ -84,6 +86,19 @@ export function useGenerationStream(jobId: Ref<string>) {
     close()
   }
 
+  /**
+   * 终态之后回问一次 REST。三个终态事件里都没有 `resumable`（它由服务端
+   * 按「停下来了 + 还有没跑完的步骤」判），而任务卡上的「继续生成」按钮
+   * 正是靠它亮的 —— 只信那一帧的话，刚失败的任务要等下一次刷新才有按钮。
+   *
+   * 不放进 `finish()`：`applyJob` 自己也会调 `finish()`，那样就成了一个
+   * 请求套请求的环。只有 SSE 的终态事件需要走这一趟。
+   */
+  function settle(): void {
+    finish()
+    syncJob()
+  }
+
   function reset(): void {
     connected.value = false
     mode.value = 'stream'
@@ -94,6 +109,7 @@ export function useGenerationStream(jobId: Ref<string>) {
     batches.value = []
     readyPages.value = []
     error.value = ''
+    resumable.value = false
     hasData.value = false
     failures = 0
     active.value = true
@@ -111,7 +127,7 @@ export function useGenerationStream(jobId: Ref<string>) {
       return found
     }
     const kind = clean.type ?? 'write'
-    const created: LiveStep = {
+    const base: LiveStep = {
       id,
       jobId: jobId.value,
       seq: steps.value.length + 1,
@@ -122,13 +138,18 @@ export function useGenerationStream(jobId: Ref<string>) {
       durationMs: 0,
       tokens: 0,
       error: '',
+      // 帧里没有这两个数（重试次数与归类码只有 REST 那份有）：给 0 与空串，
+      // 等 `step.done` 之后那次回问把它们补上 —— 编一个数是另一回事。
+      attempts: 0,
+      errorCode: '',
       startedAt: null,
       finishedAt: null,
       percent: 0,
-      ...clean,
     }
-    steps.value = [...steps.value, created]
-    return created
+    // 用 assign 而不是再展开一次 `clean`：展开会让上面那两个默认值在类型上
+    // 变成 `number | undefined`（Partial 的每个键都是可选的），而它们不是可选的。
+    steps.value = [...steps.value, Object.assign(base, clean)]
+    return base
   }
 
   /**
@@ -141,6 +162,7 @@ export function useGenerationStream(jobId: Ref<string>) {
     hasData.value = true
     status.value = job.status
     progress.value = typeof job.progress === 'number' ? job.progress : progress.value
+    resumable.value = job.resumable === true
     const known = new Map(steps.value.map((row) => [row.id, row.percent]))
     steps.value = (job.steps ?? []).map((step: GenStep) => ({
       ...step,
@@ -199,6 +221,8 @@ export function useGenerationStream(jobId: Ref<string>) {
         durationMs: 0,
         tokens: 0,
         error: '',
+        attempts: 0,
+        errorCode: '',
         startedAt: null,
         finishedAt: null,
         percent: 0,
@@ -266,19 +290,19 @@ export function useGenerationStream(jobId: Ref<string>) {
     'job.done': () => {
       status.value = 'done'
       error.value = ''
-      finish()
+      settle()
     },
 
     'job.failed': (payload) => {
       status.value = 'failed'
       error.value = payload.error ?? ''
-      finish()
+      settle()
     },
 
     'job.canceled': () => {
       status.value = 'canceled'
       error.value = ''
-      finish()
+      settle()
     },
   }
 
@@ -330,6 +354,7 @@ export function useGenerationStream(jobId: Ref<string>) {
     batches,
     readyPages,
     error,
+    resumable,
     active,
     hasData,
     /** 立刻回问一次 REST。重试一步之后用它把「那一步现在什么状态」问出来，

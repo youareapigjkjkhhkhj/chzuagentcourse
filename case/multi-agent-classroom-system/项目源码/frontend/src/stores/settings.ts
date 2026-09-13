@@ -54,6 +54,14 @@ export const useSettingsStore = defineStore('settings', () => {
   const teacher = computed(() => roles.value.find((item) => item.role === 'teacher') ?? null)
   const students = computed(() => roles.value.filter((item) => item.role === 'student'))
 
+  /**
+   * 材料功能开没开（P4-G3）：开关关着的部署里，工作台右侧那一栏整块不出现。
+   *
+   * **清单还没拉到时按「开着」算**：`/api/capabilities` 挂了不该让用户白白少
+   * 一栏材料（那是把一次网络抖动变成功能缺失）；反过来最多是抽屉闪一下。
+   */
+  const materialEnabled = computed(() => capabilities.value?.materials?.enabled !== false)
+
   // --- 读 ---
 
   async function loadProviders(): Promise<void> {
@@ -155,6 +163,7 @@ export const useSettingsStore = defineStore('settings', () => {
     teacherVoice,
     teacher,
     students,
+    materialEnabled,
     // actions
     loadAll,
     loadProviders,

@@ -76,6 +76,29 @@ class UnauthorizedError(AppError):
     http_status = 401
 
 
+class PayloadTooLargeError(AppError):
+    """请求体（上传的文件）超过上限（P4-B3 的 413）。
+
+    单独一个类是因为它必须与「参数不合法」分开：材料 50MB 的上限是按端点
+    放开的（`MATERIAL_MAX_BYTES`），前端要据此提示「换个小的/拆开来传」，
+    而不是提示「文件名不合法」。
+    """
+
+    code = 40002
+    http_status = 413
+
+
+class UnsupportedMediaError(AppError):
+    """文件类型不在白名单里、或内容与扩展名不符（P4-B3 的 415）。
+
+    「内容与扩展名不符」（改了后缀的伪装文件，P4-F1）也走这个码：
+    对用户来说这两件事是同一件 —— 这个文件我们不吃。
+    """
+
+    code = 40003
+    http_status = 415
+
+
 class ForbiddenError(AppError):
     code = 40301
     http_status = 403

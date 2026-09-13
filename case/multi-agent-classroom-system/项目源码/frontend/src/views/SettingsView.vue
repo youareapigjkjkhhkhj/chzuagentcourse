@@ -9,29 +9,40 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 
+import * as api from '@/api'
+import BudgetEditor from '@/components/BudgetEditor.vue'
+import CostBoard from '@/components/CostBoard.vue'
+import PricingEditor from '@/components/PricingEditor.vue'
 import ProviderCardPanel from '@/components/ProviderCard.vue'
 import ProviderFormDrawer from '@/components/ProviderFormDrawer.vue'
 import { describeError, useSettingsStore } from '@/stores/settings'
+import { formatCost, formatUnits } from '@/utils/voice'
 import type {
   GenerationSettings,
   Intonation,
   Intensity,
   ProviderCard,
   ScriptDetail,
+  UsageKind,
+  UsageReport,
+  VoiceList,
+  VoiceProfile,
   VoiceSettings,
 } from '@/types/api'
 
 const settings = useSettingsStore()
 
-type PaneKey = 'model' | 'voice' | 'gen' | 'about'
+type PaneKey = 'model' | 'voice' | 'gen' | 'cost' | 'about'
 
-/** 菜单项与图标名对应原型 settings.html 的四个 .set-menu__item。 */
-const PANES: { key: PaneKey; label: string; icon: 'chip' | 'mic' | 'sliders' | 'info' }[] = [
-  { key: 'model', label: '模型服务', icon: 'chip' },
-  { key: 'voice', label: '语音服务', icon: 'mic' },
-  { key: 'gen', label: '生成参数', icon: 'sliders' },
-  { key: 'about', label: '关于', icon: 'info' },
-]
+/** 菜单项与图标名对应原型 settings.html 的四个 .set-menu__item（「成本」是 P5 新增的第五个）。 */
+const PANES: { key: PaneKey; label: string; icon: 'chip' | 'mic' | 'sliders' | 'chart' | 'info' }[] =
+  [
+    { key: 'model', label: '模型服务', icon: 'chip' },
+    { key: 'voice', label: '语音服务', icon: 'mic' },
+    { key: 'gen', label: '生成参数', icon: 'sliders' },
+    { key: 'cost', label: '成本与预算', icon: 'chart' },
+    { key: 'about', label: '关于', icon: 'info' },
+  ]
 
 /** 音色卡头像的渐变，按顺序取自原型的三个声音（蓝 / 绿 / 橙，多出来的走紫）。 */
 const VOICE_AVATARS = [
@@ -92,6 +103,19 @@ watch(
 const limits = computed(() => settings.limits)
 const speedText = computed(() => `${voiceDraft.speed.toFixed(1)}x`)
 
+/**
+ * 当前启用的文本模型（P4-F5 那半句「材料将发送给 XX 服务商处理」）。
+ *
+ * 材料分块只拼进 `registry.current_llm()` 那一次的 messages 里，所以「发给谁」
+ * 就是这里显示的这一家；一家都没启用时材料发不出去，得如实说，不能留白。
+ */
+const activeLlm = computed(() => settings.llmProviders.find((card) => card.enabled) ?? null)
+const materialNotice = computed(() =>
+  activeLlm.value
+    ? `上传的讲义会被解析成分块存下来；生成课程时，只把这些分块发给当前启用的「${activeLlm.value.name}」。`
+    : '上传的讲义会被解析成分块存下来；当前没有启用任何文本模型，生成课程时材料不会被发往任何服务商。',
+)
+
 const INTONATION_LABELS: Record<Intonation, string> = {
   flat: '平稳',
   natural: '自然',
@@ -132,6 +156,116 @@ const scriptOptions = computed(() =>
 )
 
 const teacherVoices = computed(() => voiceDraft.voices)
+
+// --- 试听与用量（P2-A5 / P2-A11 / F2-10 / F2-11）---
+
+/** `/api/voice/voices` 那份视图：比设置页的音色表多一个 `usable`。读不到就是 null。 */
+const voiceList = ref<VoiceList | null>(null)
+const voiceListError = ref('')
+const previewingId = ref('')
+/** 试听的文本。留空就用服务端的示例句（P2-A5 的「固定示例句」）。 */
+const previewText = ref('')
+
+const usage = ref<UsageReport | null>(null)
+const usageError = ref('')
+/** 空串 = 全部；否则是一门课的 id。P2-A11 要看的是「本次课堂」。 */
+const usageScope = ref('')
+const courseOptions = ref<{ label: string; value: string }[]>([])
+
+/** 同一时刻只留一段试听在响：再点一次就把上一段停掉。 */
+let previewAudio: HTMLAudioElement | null = null
+
+const USAGE_LABELS: Record<UsageKind, string> = {
+  tts: '语音合成（讲稿、试听）',
+  realtime: '实时语音（课堂问答）',
+  asr: '语音识别（上传识别）',
+}
+
+/** 用量行里有数字才值得显示 —— 三类全零时给一句话，不给三行 0。 */
+const usageRows = computed(() => (usage.value?.kinds ?? []).filter((row) => row.calls > 0))
+const usageEmpty = computed(() => Boolean(usage.value) && usageRows.value.length === 0)
+
+/**
+ * 音色卡的「试听」亮不亮。
+ *
+ * 先看语音功能那份视图（`usable` = 声音 ID 配了**且**服务商可用）；那份还没读回来
+ * （或读失败）时退到设置里已有的 `configured` —— 这是**少说一句「能用」**的方向，
+ * 不会把一个点下去只会报错的按钮说成能点。
+ */
+function usableOf(voice: VoiceProfile): boolean {
+  const row = voiceList.value?.items.find((item) => item.id === voice.id)
+  return row ? row.usable : voice.configured
+}
+
+function usableReasonOf(voice: VoiceProfile): string {
+  if (usableOf(voice)) return `试听「${voice.name}」`
+  if (!voice.configured) return '这把音色还没配厂商声音 ID，配好才能出声'
+  return '语音服务商目前不可用，去「模型服务」里检查凭据'
+}
+
+/** 播放一小段音频。**合成成功**与**浏览器拦下播放**是两件事，不混成一个错。 */
+function playClip(url: string): void {
+  previewAudio?.pause()
+  previewAudio = new Audio(url)
+  void previewAudio.play().catch(() => {
+    MessagePlugin.info('浏览器拦下了播放：点一下页面再试')
+  })
+}
+
+async function onPreview(voice: VoiceProfile): Promise<void> {
+  previewingId.value = voice.id
+  try {
+    const result = await api.previewVoice(voice.id, { text: previewText.value.trim() })
+    playClip(result.url)
+    MessagePlugin.success(
+      result.cached
+        ? `${voice.name}：这一段是上次合成的，没有重复计费`
+        : `${voice.name} 试听中 · ${(result.durationMs / 1000).toFixed(1)} 秒`,
+    )
+  } catch (error) {
+    // 没配声音 ID / 服务商不可用都会落到这里，原因原样给出来 ——
+    // 设置页正是修这个的地方，别只说一句「试听失败」
+    MessagePlugin.error(describeError(error))
+  } finally {
+    previewingId.value = ''
+  }
+}
+
+async function refreshUsage(): Promise<void> {
+  try {
+    usage.value = await api.fetchVoiceUsage(
+      usageScope.value ? { refType: 'course', refId: usageScope.value } : {},
+    )
+    usageError.value = ''
+  } catch (error) {
+    usage.value = null
+    usageError.value = describeError(error)
+  }
+}
+
+async function onUsageScope(value: string): Promise<void> {
+  usageScope.value = value
+  await refreshUsage()
+}
+
+/** 语音这一屏要的三份数据一起读：音色视图、用量、课程下拉（失败了也不必挡住别的）。 */
+async function loadVoiceExtras(): Promise<void> {
+  try {
+    voiceList.value = await api.fetchVoices()
+    voiceListError.value = ''
+  } catch (error) {
+    voiceList.value = null
+    voiceListError.value = describeError(error)
+  }
+  try {
+    const list = await api.fetchCourses({ size: 50 })
+    courseOptions.value = list.items.map((item) => ({ label: item.title, value: item.id }))
+  } catch {
+    // 课程读不到只是少了「按课程看用量」这一档：选择器退回「全部」，不报错
+    courseOptions.value = []
+  }
+  await refreshUsage()
+}
 
 /** 当前草稿与已保存值有没有差别 —— 决定「保存设置」按钮是否可点。 */
 const voiceDirty = computed(() => {
@@ -240,6 +374,20 @@ function onReset() {
   MessagePlugin.info('已还原为上次保存的值')
 }
 
+/**
+ * 切到「语音服务」就去拉试听与用量那两份数据。
+ *
+ * 每次进这一屏都重拉：用量是会变的（刚在课堂里说了几句话），
+ * 而这一屏本来就是「看一眼现在什么情况」的地方，缓存只会给一个过期的数字。
+ */
+watch(
+  activePane,
+  (pane) => {
+    if (pane === 'voice') void loadVoiceExtras()
+  },
+  { immediate: true },
+)
+
 onMounted(() => {
   void settings.loadAll()
 })
@@ -268,6 +416,10 @@ onMounted(() => {
             <path d="M4 8h10M18 8h2M4 16h2M10 16h10" />
             <circle cx="16" cy="8" r="2" />
             <circle cx="8" cy="16" r="2" />
+          </template>
+          <!-- 成本：一根有涨有落的柱子 -->
+          <template v-else-if="pane.icon === 'chart'">
+            <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
           </template>
           <template v-else>
             <circle cx="12" cy="12" r="9" />
@@ -301,6 +453,11 @@ onMounted(() => {
           />
 
           <p class="tip">
+            {{ materialNotice }}
+            想先确认这一点再上传材料，就在这儿看：换一家启用的服务商，材料也就跟着换一家收。
+          </p>
+
+          <p class="tip">
             语音合成 / 语音识别 / 实时语音的设置在同页的「语音服务」里 ——
             它们与文本模型是三套独立的能力，混在一起会让人以为换了文本模型就换了声音。
           </p>
@@ -328,7 +485,7 @@ onMounted(() => {
               <t-avatar :style="{ background: voiceAvatar(index) }" shape="circle">
                 {{ voice.name.slice(0, 1) }}
               </t-avatar>
-              <div>
+              <div class="v-body">
                 <div class="v-name">
                   {{ voice.name }}
                   <t-tag
@@ -343,8 +500,36 @@ onMounted(() => {
                 </div>
                 <div class="v-desc">{{ voice.style }}</div>
               </div>
+              <!-- 试听是卡片上的一个独立动作：点卡片是「选它」，点这里是「听它」，
+                   两件事不能共用一次点击（选音色和听音色常常不是同一刻想做的） -->
+              <t-button
+                class="v-audio"
+                size="small"
+                variant="outline"
+                :disabled="!usableOf(voice)"
+                :loading="previewingId === voice.id"
+                :title="usableReasonOf(voice)"
+                @click.stop="onPreview(voice)"
+              >
+                试听
+              </t-button>
             </div>
           </div>
+
+          <div class="preview-row">
+            <t-input
+              v-model="previewText"
+              placeholder="留空就用默认示例句（试听同一句话会命中缓存、不重复计费）"
+              :maxlength="60"
+            />
+          </div>
+
+          <t-alert v-if="voiceListError" theme="warning" class="pane-hint">
+            <template #message>
+              读不到语音服务状态（{{ voiceListError }}）——「试听」按钮暂时按
+              「这把音色配没配声音 ID」显示。
+            </template>
+          </t-alert>
 
           <div class="slider-row">
             <span class="sl-label">语速</span>
@@ -384,6 +569,54 @@ onMounted(() => {
             <span>浏览器本地识别（Web Speech API，无需密钥）</span>
             <t-switch v-model="voiceDraft.asrBrowserLocal" />
           </div>
+        </section>
+
+        <!-- 用量与费用（P2-A11 / F2-10）：数字全部来自 usage_records 求和 -->
+        <section class="panel">
+          <div class="panel__head">
+            <h3 class="panel__title">用量与费用</h3>
+            <t-select
+              v-model="usageScope"
+              class="usage-scope"
+              :options="[{ label: '全部课堂', value: '' }, ...courseOptions]"
+              size="small"
+              @change="onUsageScope($event as string)"
+            />
+          </div>
+          <p class="panel__desc">
+            按调用上游的真实计量口径记账：合成记字符数、实时语音与识别记秒数。
+            金额是按配置里的价目表**估算**的，与账单可能有出入。
+          </p>
+
+          <t-alert v-if="usageError" theme="error">
+            <template #message>读不到用量：{{ usageError }}</template>
+          </t-alert>
+
+          <template v-else-if="usage">
+            <div v-if="usageEmpty" class="usage-empty">
+              还没有产生用量：合成一次讲稿、或在课堂里说几句话，这里就有数字了。
+            </div>
+            <div v-else class="usage-table">
+              <div class="usage-head">
+                <span>链路</span><span>计量</span><span>次数</span><span>估算费用</span>
+              </div>
+              <div v-for="row in usageRows" :key="row.kind" class="usage-row">
+                <span>{{ USAGE_LABELS[row.kind] }}</span>
+                <span class="mono">{{ formatUnits(row.unitName, row.units) }}</span>
+                <span class="mono">{{ row.calls }}</span>
+                <span class="mono">{{ formatCost(row.estCost) }}</span>
+              </div>
+              <div class="usage-total">
+                <span>合计</span>
+                <span class="mono">{{ formatCost(usage.totalCost) }}</span>
+              </div>
+            </div>
+            <p v-if="!usage.priced" class="usage-note">
+              有链路还没配单价（VOICE_*_PRICE_*），上面的合计是
+              <b>少报</b>
+              的 —— 所以这里说的是「未配置单价」，而不是一个看起来不花钱的 ¥0.00。
+            </p>
+          </template>
         </section>
       </template>
 
@@ -461,6 +694,14 @@ onMounted(() => {
         </section>
       </template>
 
+      <!-- 成本与预算（P5 §4.2 / F5-7 / F5-8）：看板 → 预算 → 价目表，
+           从上到下就是「花了多少 → 花到哪条线为止 → 按什么价算的」 -->
+      <template v-else-if="activePane === 'cost'">
+        <CostBoard />
+        <BudgetEditor />
+        <PricingEditor />
+      </template>
+
       <!-- 关于 -->
       <template v-else>
         <section class="panel about">
@@ -508,223 +749,4 @@ onMounted(() => {
     <ProviderFormDrawer v-model:visible="drawerVisible" :card="editing" />
   </div>
 </template>
-
-<style scoped>
-/* 版式取自 产品原型/settings.html（.set-wrap / .set-menu / .set-card / .provider / .voice-card / .save-bar） */
-
-.set-wrap {
-  display: flex;
-  max-width: 1080px;
-  margin: 32px auto;
-  padding: 0 32px;
-  gap: 24px;
-  align-items: flex-start;
-}
-
-.set-menu {
-  width: 220px;
-  flex-shrink: 0;
-  padding: 8px;
-  position: sticky;
-  top: 92px;
-}
-
-.set-menu__item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  font-size: 14px;
-  color: var(--td-text-secondary);
-  border-radius: var(--td-radius-default);
-  cursor: pointer;
-  transition: all 0.15s;
-  margin-bottom: 2px;
-}
-
-.set-menu__item:hover {
-  background: var(--td-bg-container-hover);
-  color: var(--td-text-primary);
-}
-
-.set-menu__item.is-active {
-  background: var(--td-brand-color-light);
-  color: var(--td-brand-color);
-  font-weight: 600;
-}
-
-.set-menu__item svg {
-  width: 17px;
-  height: 17px;
-  flex-shrink: 0;
-}
-
-.set-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.full {
-  width: 100%;
-}
-
-.field-label {
-  display: block;
-  font-size: 13px;
-  color: var(--td-text-secondary);
-  margin-bottom: 10px;
-}
-
-.voice-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-@media (max-width: 900px) {
-  .voice-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.voice-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--td-component-border);
-  border-radius: var(--td-radius-medium);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.voice-card:hover {
-  border-color: var(--td-brand-color);
-}
-
-.voice-card.is-checked {
-  border-color: var(--td-brand-color);
-  background: var(--td-brand-color-light);
-}
-
-.voice-card :deep(.t-avatar) {
-  width: 38px;
-  height: 38px;
-}
-
-.v-name {
-  font-size: 13.5px;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.v-desc {
-  font-size: 12px;
-  color: var(--td-text-placeholder);
-  margin-top: 2px;
-}
-
-.slider-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 10px 0;
-}
-
-.sl-label {
-  width: 130px;
-  flex-shrink: 0;
-  font-size: 13.5px;
-}
-
-.slider-row :deep(.t-slider__container) {
-  flex: 1;
-}
-
-.sl-val {
-  width: 44px;
-  text-align: right;
-  font-family: var(--td-font-mono);
-  font-size: 13px;
-  color: var(--td-brand-color);
-}
-
-.switches {
-  border-top: 1px solid var(--td-component-stroke);
-  margin-top: 12px;
-  padding-top: 8px;
-}
-
-.switch-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 0;
-  font-size: 14px;
-}
-
-.tip {
-  font-size: 12px;
-  color: var(--td-text-secondary);
-  line-height: 1.7;
-  margin: 4px 0 0;
-}
-
-.save-bar {
-  position: sticky;
-  bottom: 24px;
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 14px 20px;
-  background: var(--td-bg-container);
-  border-radius: var(--td-radius-medium);
-  box-shadow: var(--td-shadow-2);
-}
-
-.about {
-  text-align: center;
-  padding: 56px 28px;
-}
-
-.about__mark {
-  width: 56px;
-  height: 56px;
-  border-radius: 14px;
-  background: var(--td-brand-color);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 16px;
-}
-
-.about h3 {
-  font-size: 20px;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.about .muted {
-  margin-bottom: 4px;
-}
-
-.about__tags {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  margin-top: 20px;
-}
-
-.about__note {
-  font-size: 12px;
-  color: var(--td-text-secondary);
-  margin-top: 16px;
-}
-</style>
+<style scoped src="../styles/views/SettingsView.css"></style>

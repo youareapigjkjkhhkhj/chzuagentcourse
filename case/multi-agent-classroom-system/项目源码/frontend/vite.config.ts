@@ -32,6 +32,14 @@ export default defineConfig({
         target: BACKEND,
         changeOrigin: true,
       },
+      // 实时语音是一条**原生 WebSocket**（`/ws/voice/realtime`），不是
+      // Socket.IO —— 不代理它，开发态下浏览器会直接连到 Vite 自己身上，
+      // 表现为「握手 200 然后什么都不发生」。
+      '/ws': {
+        target: BACKEND,
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
   // vitest 与 dev server 默认共用 node_modules/.vite 依赖缓存：dev server

@@ -1,0 +1,302 @@
+.stage-wrap {
+  /*
+   * 舞台之外那些**固定要占的高度**，幻灯片得先给它们让出来（按 100vh 算）：
+   *   壳顶栏 60 + 课堂顶栏 56 + 本区上留白 18 + 字幕约 60 + 教具条约 46
+   *   + 播放条约 92
+   * 另外还留了一条通知条的位置（没有声音 / 正在合成，开课时几乎总在）。
+   * 随堂测验不在这一列里 —— 它是左边另起的一栏，不占这里的高度。
+   */
+  --stage-chrome: 386px;
+  /*
+   * 舞台这一列的宽度。**幻灯片是 16:9 的定屏，高度是它自己算不出来的** ——
+   * 只给 `max-width` 的话，矮屏上它照样把播放条顶到屏幕外（原来的毛病）。
+   * 所以这里从「剩下的高度」反推宽度：视口有多高，幻灯片就长多大。
+   *
+   * 上限从 960 放到 1280：960 是**设计尺寸**，不是能显示到多大 —— 屏幕装得下
+   * 就该让它长（内容跟着一起放大，见 `stageZoom`），顶到 1280（1.33 倍）为止，
+   * 再大就把旁边那圈字幕、播放条衬得太小了。
+   */
+  --slide-w: min(1280px, calc((100vh - var(--stage-chrome)) * 16 / 9));
+
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  /* 幻灯片、字幕、题卡、播放条都按同一条中轴对齐 —— 四块东西四种宽度最显挤 */
+  align-items: center;
+  padding: 18px 20px 0;
+  min-width: 0;
+  background: var(--td-bg-page);
+  overflow-y: auto;
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  /* 舞台这一格就是幻灯片那一格：教具条锚在它右缘，才不会在宽屏上飘到幻灯片外 */
+  width: 100%;
+  max-width: var(--slide-w);
+}
+
+/* 舞台那一格：幻灯片缩放后多宽它就多宽，教具层按它铺满 */
+.stage-screen {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  max-width: 100%;
+}
+
+/*
+ * 幻灯片那一框：**定死设计尺寸再整体缩放**（`--stage-zoom` 由 `stageZoom` 量出来）。
+ * 缩过的框才是它真实的占位，所以 `toInk` 量到的框与它严丝合缝，笔迹不会偏。
+ */
+.stage-screen :deep(.page-slide.is-stage) {
+  flex: none;
+  width: 960px;
+  height: 540px;
+  max-width: none;
+  zoom: var(--stage-zoom, 1);
+}
+
+/*
+ * 教具层。没选工具时 `pointer-events: none` —— 鼠标该穿过去落在幻灯片上，
+ * 而不是被一层看不见的东西挡住。
+ */
+.stage-ink {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--td-radius-medium);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.stage-ink.is-laser,
+.stage-ink.is-spotlight,
+.stage-ink.is-pen,
+.stage-ink.is-eraser {
+  pointer-events: auto;
+}
+
+/* 激光笔/聚光灯自带光标，系统的那个收起来免得两个点打架 */
+.stage-ink.is-laser,
+.stage-ink.is-spotlight {
+  cursor: none;
+}
+
+.stage-ink.is-pen,
+.stage-ink.is-eraser {
+  cursor: crosshair;
+  /* 画笔那一拖是画画，别让它顺带把整页滚起来 */
+  touch-action: none;
+}
+
+.stage-ink.is-eraser {
+  cursor: cell;
+}
+
+.ink-svg {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* 激光点：一个小红点加一圈光晕，跟着鼠标走 */
+.ink-laser {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ff4d4f 0 45%, rgba(255, 77, 79, 0.55) 70%, transparent 100%);
+  box-shadow: 0 0 12px 4px rgba(255, 77, 79, 0.45);
+  pointer-events: none;
+}
+
+.slide {
+  position: relative;
+  width: 100%;
+  max-width: 960px;
+  aspect-ratio: 16 / 9;
+  background: var(--td-bg-container);
+  border-radius: var(--td-radius-medium);
+  box-shadow: var(--td-shadow-2);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+/*
+ * 教具工具条：在幻灯片**外面**，右对齐到幻灯片那一条轴。
+ *
+ * 这几个按钮是给讲台上指着幻灯片用的，但**不能压在幻灯片上** —— 原来它是浮在
+ * 右缘的一条竖栏，正好切掉图左文右版式里右边那栏的字。做成一条横排、摆在字幕与
+ * 播放条之间（三条同宽同边），窗口再窄也只挤自己不挤内容。
+ */
+.stage-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 12px;
+  width: 100%;
+  max-width: var(--slide-w);
+  flex-shrink: 0;
+}
+
+.stage-tools .tool {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--td-component-stroke);
+  background: var(--td-bg-container);
+  border-radius: var(--td-radius-default);
+  cursor: pointer;
+  color: var(--td-text-secondary);
+  transition: all 0.2s;
+}
+
+.stage-tools .tool:hover {
+  background: var(--td-bg-container-hover);
+  color: var(--td-text-primary);
+}
+
+.stage-tools .tool.is-active {
+  background: var(--td-brand-color-light);
+  color: var(--td-brand-color);
+}
+
+/* 没什么可清的时候「清除标注」暗着：点一下没反应比灰的更像坏了 */
+.stage-tools .tool.is-dim {
+  color: var(--td-text-color-disabled, #c6c6c6);
+  cursor: default;
+}
+
+.stage-tools .tool svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* 字幕条：与幻灯片同宽（不是各center各的 —— 错着边看就是挤） */
+.subtitle {
+  margin: 16px auto 0;
+  max-width: var(--slide-w);
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--td-bg-container);
+  border: 1px solid var(--td-component-stroke);
+  border-radius: var(--td-radius-medium);
+  padding: 10px 16px;
+  font-size: 14px;
+  line-height: 1.7;
+  box-shadow: var(--td-shadow-1);
+  flex-shrink: 0;
+}
+
+/* 正在说的那一条描个边：与「上一句还挂在这儿」区分得开 */
+.subtitle.is-live {
+  border-color: var(--td-brand-color);
+}
+
+.subtitle .who {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--td-brand-color);
+}
+
+.subtitle .text {
+  color: var(--td-text-secondary);
+}
+
+/* 正在念的那一小段（P2-A3 的字级高亮）。不用动画：高亮块每 60ms 挪一次位置，
+   transition 反而会让它看起来在飘。 */
+.subtitle .now {
+  color: var(--td-brand-color);
+  font-weight: 600;
+  background: var(--td-brand-color-light);
+  border-radius: 3px;
+}
+
+/* 题卡：比幻灯片窄一点，居中当一张卡看（跟幻灯片一样宽就成了通栏） */
+/* 播放控制条 */
+.player-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 16px 0 18px;
+  width: 100%;
+  /* 这一条原来是通栏的：宽屏上拉到一千多像素，而幻灯片只有 960 —— 收到同一条边上 */
+  max-width: var(--slide-w);
+  padding: 10px 18px;
+  background: var(--td-bg-container);
+  border-radius: var(--td-radius-medium);
+  box-shadow: var(--td-shadow-1);
+  flex-shrink: 0;
+}
+
+.page-indicator {
+  font-size: 13px;
+  color: var(--td-text-secondary);
+  min-width: 86px;
+  text-align: center;
+}
+
+.page-indicator b {
+  color: var(--td-text-placeholder);
+  font-family: var(--td-font-mono);
+  font-size: 15px;
+}
+
+.play-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  background: var(--td-brand-color);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.play-btn:hover:not(:disabled) {
+  background: var(--td-brand-color-hover);
+}
+
+/* 不能按的时候置灰并说明原因：一个点了没反应的播放键比灰的更容易让人以为是坏了 */
+.play-btn:disabled {
+  background: var(--td-bg-color-component-disabled, #dcdcdc);
+  color: var(--td-text-color-disabled, #999);
+  cursor: not-allowed;
+}
+
+.play-btn svg {
+  width: 17px;
+  height: 17px;
+}
+
+.player-progress {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--td-text-placeholder);
+}
+
+.player-progress :deep(.t-progress) {
+  flex: 1;
+}
