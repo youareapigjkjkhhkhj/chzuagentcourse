@@ -106,16 +106,22 @@ function onStart(): void {
           />
         </t-select>
       </label>
-      <span class="text-placeholder est">
-        预计生成 {{ estimatePages }} 页 · 约 {{ estimateMinutes }} 分钟课时
-      </span>
-      <t-button theme="primary" size="large" :loading="submitting" @click="onStart">
+      <t-button
+        theme="primary"
+        size="large"
+        class="gen-start"
+        :loading="submitting"
+        @click="onStart"
+      >
         开始生成
         <svg class="btn-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M5 12h14M13 6l6 6-6 6" />
         </svg>
       </t-button>
     </div>
+    <p class="generator__est">
+      预计生成 {{ estimatePages }} 页 · 约 {{ estimateMinutes }} 分钟课时
+    </p>
     <p v-if="hint" class="generator__hint">{{ hint }}</p>
   </div>
 
@@ -207,6 +213,8 @@ function onStart(): void {
 .generator__bar {
   display: flex;
   align-items: center;
+  /* 宽度不够时整块换行，而不是把「上传资料/标准课堂」这些标签从中间截断 */
+  flex-wrap: wrap;
   gap: 10px;
   padding: 12px 16px;
   border-top: 1px dashed var(--td-component-border);
@@ -222,8 +230,22 @@ function onStart(): void {
   color: var(--td-error-color);
 }
 
-.est {
+/* 预计页数/时长挪到工具栏下方单独一行，不给单行工具栏添宽度 */
+.generator__est {
+  padding: 0 16px 12px;
+  text-align: right;
   font-size: 12px;
+  color: var(--td-text-secondary);
+}
+
+/* 开始生成按钮：不缩不换行，比默认 large 再高一圈、宽一点 */
+.generator__bar .gen-start {
+  flex-shrink: 0;
+  white-space: nowrap;
+  height: 44px;
+  min-width: 148px;
+  padding: 0 28px;
+  font-size: 16px;
 }
 
 .btn-arrow {
@@ -244,6 +266,9 @@ function onStart(): void {
   color: var(--td-text-secondary);
   cursor: pointer;
   transition: all 0.2s;
+  /* 标签不允许被截断换行 */
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .gen-tool:hover {
@@ -265,11 +290,13 @@ function onStart(): void {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .gen-tpl__label {
   font-size: 13px;
   color: var(--td-text-secondary);
+  white-space: nowrap;
 }
 
 .gen-tpl__select {
