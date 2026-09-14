@@ -4,7 +4,7 @@
  *
  * **只读**：这一页不建连接、不发上行、不碰 `classroomStore`。它只问一次
  * `GET /sessions/{id}/record`，把这一堂课留下来的东西摊开给人看 ——
- * 字幕全文、消息记录、板书快照、测验作答。
+ * 字幕全文、消息记录、思辨轨迹、板书快照、测验作答。
  *
  * 两件事是刻意的：
  *
@@ -24,7 +24,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import ClassroomBoard from '@/components/classroom/ClassroomBoard.vue'
 import ExportPanel from '@/components/workbench/ExportPanel.vue'
-import { fetchRecord } from '@/api/classroom'
+import { fetchMastery, fetchRecord } from '@/api/classroom'
 import { describeError, useSettingsStore } from '@/stores/settings'
 import {
   CLASSROOM_STATUS_LABELS,
@@ -36,7 +36,7 @@ import {
   roleLookup,
 } from '@/utils/classroom'
 import { formatClock } from '@/utils/voice'
-import type { ClassroomRecord, RecordSubtitle } from '@/types/classroom'
+import type { ClassroomRecord, MasteryData, RecordSubtitle, RecordTrailRole } from '@/types/classroom'
 
 const route = useRoute()
 const router = useRouter()
@@ -44,6 +44,7 @@ const settings = useSettingsStore()
 
 const sessionId = computed(() => String(route.query.session ?? ''))
 const record = ref<ClassroomRecord | null>(null)
+const mastery = ref<MasteryData | null>(null)
 const loading = ref(false)
 const loadError = ref('')
 const tab = ref('subtitle')
@@ -58,7 +59,7 @@ const title = computed(() => record.value?.courseTitle || '课堂记录')
 const status = computed(() => summary.value?.status ?? 'ended')
 const running = computed(() => Boolean(summary.value) && status.value !== 'ended')
 
-/** 统计条：一堂课上成什么样，先给四个数。 */
+/** 统计条：一堂课上成什么样，先给几个数。 */
 const stats = computed(() => {
   const data = record.value?.stats
   if (!data) return []
@@ -73,8 +74,35 @@ const stats = computed(() => {
         ? `${data.quizAttempts} 次 · 对 ${data.quizCorrect}`
         : '未作答',
     },
+    // 思辨那一格**只报次数**：追问了几次是事实，学生说没说出来是另一件事。
+    // 打个「思辨分」看着更像成果，但那个数谁也解释不了它是怎么算出来的。
+    {
+      label: '引导',
+      value: data.thinkingTrails
+        ? `${data.thinkingTrails} 条 · 学生说 ${data.studentTurns} 句`
+        : '未引导',
+    },
   ]
 })
+
+/**
+ * 轨迹上每一环的徽标。**提问 / 追问 / 收束都是 AI 与流程的事，只有「自己想」
+ * 是学生自己产出的那一句** —— 三种 AI 的动作用冷色、学生的用绿色，扫一眼就能
+ * 数出这堂课学生到底开口想了几次。
+ */
+const TRAIL_ROLES: Record<
+  RecordTrailRole,
+  { text: string; theme: 'primary' | 'success' | 'warning' | 'default' }
+> = {
+  question: { text: '学生问', theme: 'primary' },
+  ask: { text: '追问', theme: 'warning' },
+  reply: { text: '自己想', theme: 'success' },
+  answer: { text: '收束', theme: 'primary' },
+}
+
+function trailRole(role: string) {
+  return TRAIL_ROLES[role as RecordTrailRole] ?? TRAIL_ROLES.question
+}
 
 /**
  * 字幕按页分组。
@@ -137,6 +165,10 @@ async function load(): Promise<void> {
   loadError.value = ''
   try {
     record.value = await fetchRecord(sessionId.value)
+    // 学情总览和记录一起加载（失败不阻塞主流程）
+    fetchMastery(sessionId.value)
+      .then((data) => { mastery.value = data })
+      .catch(() => { mastery.value = null })
   } catch (error) {
     record.value = null
     loadError.value = describeError(error)
@@ -294,6 +326,51 @@ onMounted(() => {
           <t-empty v-else size="small" description="这堂课没有留下消息。" />
         </t-tab-panel>
 
+        <!-- 思辨轨迹（N4）：一次引导一条。与「消息记录」是同一批数据，
+             区别只在分组 —— 那边是流水，这边是「学生问 → 追问 → 学生答 →
+             老师收束」的一条条链子。 -->
+        <t-tab-panel value="trail" :label="`思辨轨迹（${record.trails.length}）`">
+          <div v-if="record.trails.length" class="rec-scroll">
+            <section v-for="trail in record.trails" :key="trail.rootId" class="trail">
+              <div class="page-block__head">
+                <span class="page-block__no">第 {{ trail.pageNo }} 页</span>
+                <t-tag
+                  size="small"
+                  variant="light"
+                  :theme="trail.status === 'closed' ? 'success' : 'warning'"
+                >
+                  {{ trail.status === 'closed' ? '已收束' : '没收束' }}
+                </t-tag>
+                <span class="page-block__count">学生自己说了 {{ trail.studentTurns }} 句</span>
+                <span class="spacer" />
+                <span class="trail__time">{{ clockOf(trail.ts) }}</span>
+              </div>
+              <div class="trail__steps">
+                <div
+                  v-for="step in trail.steps"
+                  :key="step.id"
+                  class="step"
+                  :class="step.role === 'reply' ? 'step--mine' : 'step--ai'"
+                >
+                  <span class="step__who">
+                    {{ lookup.of(step.speaker, step.speakerKind).name }}
+                  </span>
+                  <t-tag size="small" variant="light" :theme="trailRole(step.role).theme">
+                    {{ trailRole(step.role).text }}
+                  </t-tag>
+                  <span class="step__text">{{ step.text }}</span>
+                  <span class="step__time">{{ clockOf(step.ts) }}</span>
+                </div>
+              </div>
+            </section>
+          </div>
+          <t-empty
+            v-else
+            size="small"
+            description="这堂课没有形成引导轨迹 —— 没有人提问，或者提问是被直接回答的。"
+          />
+        </t-tab-panel>
+
         <t-tab-panel value="board" :label="`板书快照（${record.stats.boardPages}）`">
           <div v-if="record.boards.length" class="rec-scroll">
             <section v-for="item in record.boards" :key="item.pageNo" class="board-block">
@@ -336,6 +413,87 @@ onMounted(() => {
             </div>
           </div>
           <t-empty v-else size="small" description="这堂课没有作答记录。" />
+        </t-tab-panel>
+
+        <!-- P6.1 学情总览：按章掌握度柱状图 + 错题列表 + 复习页记录 -->
+        <t-tab-panel value="mastery" label="学情总览">
+          <div v-if="mastery" class="rec-scroll mastery">
+            <!-- 掌握度柱状图（纯 SVG 自绘，不引入图表库） -->
+            <section v-if="mastery.chapters.length" class="mastery__chart">
+              <h4 class="mastery__title">按章掌握度</h4>
+              <svg
+                :viewBox="`0 0 ${Math.max(mastery.chapters.length * 60, 200)} 120`"
+                class="mastery__svg"
+              >
+                <g v-for="(ch, i) in mastery.chapters" :key="ch.chapterNo">
+                  <!-- 柱子 -->
+                  <rect
+                    :x="i * 60 + 10"
+                    :y="100 - ch.mastery * 80"
+                    width="40"
+                    :height="ch.mastery * 80"
+                    :fill="ch.mastery >= 0.8 ? '#52c41a' : ch.mastery >= 0.5 ? '#faad14' : '#ff4d4f'"
+                    rx="3"
+                  />
+                  <!-- 百分比 -->
+                  <text
+                    :x="i * 60 + 30"
+                    :y="96 - ch.mastery * 80"
+                    text-anchor="middle"
+                    font-size="10"
+                    fill="#333"
+                  >
+                    {{ Math.round(ch.mastery * 100) }}%
+                  </text>
+                  <!-- 章号 -->
+                  <text :x="i * 60 + 30" y="115" text-anchor="middle" font-size="10" fill="#666">
+                    第{{ ch.chapterNo }}章
+                  </text>
+                </g>
+                <!-- 基线 -->
+                <line x1="0" y1="100" :x2="mastery.chapters.length * 60" y2="100" stroke="#ddd" />
+              </svg>
+              <div class="mastery__legend">
+                <span class="legend legend--good">≥ 80% 掌握</span>
+                <span class="legend legend--mid">50~79% 一般</span>
+                <span class="legend legend--bad">< 50% 薄弱</span>
+              </div>
+            </section>
+
+            <!-- 错题列表 -->
+            <section v-if="mastery.wrongQuestions.length" class="mastery__wrong">
+              <h4 class="mastery__title">错题列表（{{ mastery.wrongQuestions.length }} 题）</h4>
+              <div v-for="(item, idx) in mastery.wrongQuestions" :key="idx" class="wrong-item">
+                <span class="wrong-item__page">第 {{ item.pageNo }} 页</span>
+                <t-tag size="small" variant="light" theme="warning">第{{ item.chapterNo }}章</t-tag>
+                <span class="wrong-item__concept">{{ item.conceptTag || '未标记概念' }}</span>
+                <span class="wrong-item__option">我选了：{{ item.option }}</span>
+                <span v-if="item.responseMs" class="wrong-item__ms">
+                  {{ (item.responseMs / 1000).toFixed(1) }}s
+                </span>
+              </div>
+            </section>
+
+            <!-- 复习页记录 -->
+            <section v-if="mastery.reviewPages.length" class="mastery__reviews">
+              <h4 class="mastery__title">动态复习页（{{ mastery.reviewPages.length }} 页）</h4>
+              <div v-for="page in mastery.reviewPages" :key="page.id" class="review-item">
+                <t-tag size="small" variant="light" theme="primary">第{{ page.sourcePageNo }}页触发</t-tag>
+                <span class="review-item__reason">
+                  {{ page.triggerReason === 'consecutive_errors' ? '同章连错' : page.triggerReason }}
+                </span>
+                <span class="review-item__concept">{{ page.conceptTag || '' }}</span>
+              </div>
+            </section>
+
+            <!-- 无数据时 -->
+            <t-empty
+              v-if="!mastery.chapters.length && !mastery.wrongQuestions.length"
+              size="small"
+              description="这堂课还没有测验作答数据。"
+            />
+          </div>
+          <t-empty v-else size="small" description="学情数据加载失败或暂无数据。" />
         </t-tab-panel>
       </t-tabs>
     </template>
@@ -603,6 +761,63 @@ onMounted(() => {
   white-space: pre-wrap;
 }
 
+/* --- 思辨轨迹 --- */
+
+.trail {
+  margin-bottom: 18px;
+}
+
+.trail__time {
+  font-size: 12px;
+  color: var(--td-text-placeholder);
+  font-family: var(--td-font-mono);
+}
+
+.trail__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 10px;
+  /* 左边那道竖线是这一栏唯一的排版权重：没有它，四条消息读起来与讨论区
+     的流水一模一样，而这里要说清的正是「这几句话是一起的」。 */
+  border-left: 2px solid var(--td-brand-color-light);
+}
+
+.step {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--td-radius-default);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+/* 学生自己说的那几句给底色 —— 链子上其余几环都是 AI 在推进，只有这几次
+   是学生真的动了脑子，回看的人该一眼看见它们。 */
+.step--mine {
+  background: var(--td-brand-color-light);
+}
+
+.step__who {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--td-brand-color);
+}
+
+.step__text {
+  flex: 1;
+  color: var(--td-text-secondary);
+}
+
+.step__time {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--td-text-placeholder);
+  font-family: var(--td-font-mono);
+}
+
 /* --- 板书 --- */
 
 .board-block {
@@ -656,5 +871,73 @@ onMounted(() => {
 
 .rec-empty {
   margin-top: 80px;
+}
+
+/* --- P6.1 学情总览 --- */
+.mastery {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.mastery__title {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--td-text-primary);
+}
+
+.mastery__svg {
+  width: 100%;
+  max-width: 480px;
+  height: auto;
+}
+
+.mastery__legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--td-text-secondary);
+}
+
+.legend--good::before { content: '\25CF'; color: #52c41a; margin-right: 4px; }
+.legend--mid::before { content: '\25CF'; color: #faad14; margin-right: 4px; }
+.legend--bad::before { content: '\25CF'; color: #ff4d4f; margin-right: 4px; }
+
+.wrong-item,
+.review-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--td-border-level-1);
+  font-size: 13px;
+}
+
+.wrong-item__page,
+.review-item__reason {
+  color: var(--td-text-secondary);
+  white-space: nowrap;
+}
+
+.wrong-item__concept,
+.review-item__concept {
+  color: var(--td-text-primary);
+  font-weight: 500;
+}
+
+.wrong-item__option {
+  color: var(--td-text-placeholder);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wrong-item__ms {
+  color: var(--td-text-placeholder);
+  font-size: 12px;
+  white-space: nowrap;
 }
 </style>

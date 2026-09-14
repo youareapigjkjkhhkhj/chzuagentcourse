@@ -38,13 +38,18 @@ const props = withDefaults(
 const emit = defineEmits<{ 'update:visible': [visible: boolean] }>()
 
 const fmt = ref<ExportFormat>('pptx')
-const options = ref<Required<ExportOptions>>({ watermark: true, withNotes: true, withQuiz: true })
+const options = ref<Required<ExportOptions>>({
+  watermark: true,
+  withNotes: true,
+  withQuiz: true,
+  template: 'default',
+})
 const creating = ref(false)
 /** 正在下载的那一行（按钮转圈用），一次只可能有一个。 */
 const downloading = ref('')
 
 const courseId = computed(() => props.courseId)
-const { items, supported, loading, error, load, create, retry, remove, download } =
+const { items, supported, templates, loading, error, load, create, retry, remove, download } =
   useExports(courseId)
 
 const isRecord = computed(() => props.scope === 'record')
@@ -170,6 +175,14 @@ const busy = (row: ExportItem) => row.status === 'queued' || row.status === 'run
         </t-radio-group>
       </div>
 
+      <!-- PPT 模板（配色+字体）：清单由后端下发，只对课件生效（课堂记录不套模板） -->
+      <div v-if="!isRecord && templates.length" class="ex-row">
+        <span class="ex-label">模板</span>
+        <t-select v-model="options.template" size="small" class="ex-select">
+          <t-option v-for="one in templates" :key="one.key" :value="one.key" :label="one.name" />
+        </t-select>
+      </div>
+
       <!-- 课堂记录是一份逐字稿，没有水印与备注页那回事（F5-5） -->
       <div v-if="!isRecord" class="ex-row">
         <span class="ex-label">选项</span>
@@ -271,6 +284,10 @@ const busy = (row: ExportItem) => row.status === 'queued' || row.status === 'run
   flex-wrap: wrap;
   gap: 6px 16px;
   font-size: 13px;
+}
+
+.ex-select {
+  flex: 1;
 }
 
 .ex-switches label {

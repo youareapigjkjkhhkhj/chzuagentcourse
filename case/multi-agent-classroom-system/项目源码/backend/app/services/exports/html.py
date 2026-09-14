@@ -25,7 +25,9 @@ import json
 from typing import Callable, Iterable, Sequence
 
 from app.services.exports import svg as svg_export
-from app.services.exports.ir import Block, Deck, Page, RenderOptions
+from app.services.exports import theme as themes
+from app.services.exports.ir import Block, Bullet, Deck, Page, RenderOptions
+from app.services.generation import formula
 
 __all__ = ["document", "esc", "print_pages", "render_body"]
 
@@ -60,6 +62,51 @@ def _marked(text: str, emphasis: Sequence[str]) -> str:
     return out
 
 
+def _bullet_html(item: Bullet, *, rasterize: bool) -> str:
+    """一条要点。带行内公式时按截来画，否则就是加粗强调那句话。
+
+    两种排法的差别只在「谁来画那个式子」：浏览器那份内联矢量（放大不糊，
+    单文件也不变大），MuPDF 那份先栅格化成 `data:` URI（它不认内联 `<svg>`，
+    与示意图同一个理由，见 `_image_html`）。图是同一张。
+    """
+    if not item.pieces:
+        return _marked(item.text, item.emphasis)
+    parts: list[str] = []
+    for piece in item.pieces:
+        if piece.kind != "math":
+            parts.append(_marked(piece.text, item.emphasis))
+            continue
+        parts.append(f'<span class="math">{_inline_math(piece.text, rasterize=rasterize)}</span>')
+    return "".join(parts)
+
+
+def _inline_math(tex: str, *, rasterize: bool) -> str:
+    """一条行内公式。排不出来时退回 `plain()` 的 Unicode 近似，**不留空洞**。
+
+    字号按正文给（`formula.INLINE_SIZE`）：行内公式比正文略大一点点才不显得缩着，
+    但太大了会把一条要点的行高撑开。这个数是排出来看过的，不是拍的。
+    **和生成侧共用同一个常量** —— 幻灯片上排多大、导出的 PDF 里就得多大，
+    两边各写一个数迟早会对不上。
+
+    栅格化那条路**必须把尺寸写死在 `<img>` 上**：MuPDF 按图片自己的像素摆，
+    2 倍栅格化出来的公式在 PDF 里就是正文的两倍大。位图按 2 倍出、框按 1 倍
+    给 —— 打印时是 2 倍的实际分辨率，屏幕上又是对的尺寸。
+    """
+    svg = formula.render(tex, size=formula.INLINE_SIZE)
+    if not svg:
+        return esc(formula.plain(tex))
+    if rasterize:
+        width, height, depth = formula.inline_metrics(tex, size=formula.INLINE_SIZE)
+        uri = svg_export.to_data_uri(svg)
+        if uri and width and height:
+            return (
+                f'<img class="math__img" src="{uri}" width="{width}" height="{height}" '
+                f'style="vertical-align:-{depth}px" alt="{esc(tex)}" />'
+            )
+        return esc(formula.plain(tex))
+    return svg
+
+
 # --------------------------------------------------------------------------
 # 块 → HTML
 # --------------------------------------------------------------------------
@@ -85,12 +132,16 @@ def _blocks_html(blocks: Iterable[Block], options: RenderOptions, *, rasterize: 
 
         elif block.kind == "bullets":
             caption = _caption(block.caption)
-            items = "".join(f"<li>{_marked(item.text, item.emphasis)}</li>" for item in block.items)
+            items = "".join(
+                f"<li>{_bullet_html(item, rasterize=rasterize)}</li>" for item in block.items
+            )
             parts.append(f"{caption}<ul>{items}</ul>")
 
         elif block.kind == "steps":
             caption = _caption(block.caption)
-            items = "".join(f"<li>{_marked(item.text, item.emphasis)}</li>" for item in block.items)
+            items = "".join(
+                f"<li>{_bullet_html(item, rasterize=rasterize)}</li>" for item in block.items
+            )
             parts.append(f"{caption}<ol>{items}</ol>")
 
         elif block.kind == "code":
@@ -248,8 +299,11 @@ def document(
         {"watermark": options.watermark, "generatedAt": generated_at},
         ensure_ascii=False,
     )
-    return _DOCUMENT_TEMPLATE.replace("<!--SLIDES-->", "\n".join(slides)).replace(
-        "<!--META-->", payload
+    theme = themes.get(options.template)
+    return (
+        _DOCUMENT_TEMPLATE.replace("<!--THEME_VARS-->", _theme_vars(theme))
+        .replace("<!--SLIDES-->", "\n".join(slides))
+        .replace("<!--META-->", payload)
     )
 
 
@@ -315,9 +369,23 @@ _KIND_LABELS = {
 _WATERMARK = "AI 生成 · EduAgentX"
 
 
-#: 单文件模板。样式只在**一处**定义（`_DOCUMENT_TEMPLATE`），配色抄
-#: `frontend/src/styles/tokens.css` 的品牌色 —— 三份产物与网页看起来像一套东西，
-#: 靠的是同一组色号，不是「都长得差不多」。
+def _theme_vars(theme: themes.Theme) -> str:
+    """一套主题 → `:root` 里的 CSS 变量声明（填进模板的 `<!--THEME_VARS-->`）。
+
+    颜色与字体都收敛在这里：模板里凡是 `var(--brand)` / `var(--font-sans)` 的地方，
+    换主题就跟着变，不必再去 CSS 里逐条改色号。
+    """
+    return (
+        f"--brand:{theme.css(theme.brand)}; --ink:{theme.css(theme.ink)}; "
+        f"--muted:{theme.css(theme.muted)}; --line:{theme.css(theme.line)}; "
+        f"--warn:{theme.css(theme.warn)}; "
+        f"--font-sans:{theme.font_sans}; --font-mono:{theme.font_mono};"
+    )
+
+
+#: 单文件模板。样式只在**一处**定义（`_DOCUMENT_TEMPLATE`），配色与字体走
+#: `<!--THEME_VARS-->` 这个占位注入 —— `document()` 按 `options.template` 从
+#: `exports/theme.py` 取一套令牌填进去，于是「换个模板」只是换一组 CSS 变量。
 _DOCUMENT_TEMPLATE = """<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -325,10 +393,10 @@ _DOCUMENT_TEMPLATE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>课程课件</title>
 <style>
-  :root { --brand:#0052d9; --ink:#181818; --muted:#6b7280; --line:#e7e7e7; }
+  :root { <!--THEME_VARS--> }
   * { box-sizing: border-box; }
   body { margin:0; background:#f5f6f8; color:var(--ink);
-         font-family:"PingFang SC","Microsoft YaHei","Source Han Sans SC",system-ui,sans-serif; }
+         font-family:var(--font-sans); }
   .deck { max-width:960px; margin:0 auto; padding:16px; }
   .slide { display:none; background:#fff; border-radius:12px; padding:32px 40px 56px;
            box-shadow:0 2px 12px rgba(0,0,0,.06); position:relative; min-height:540px; }
@@ -343,7 +411,7 @@ _DOCUMENT_TEMPLATE = """<!doctype html>
   ul.plain { list-style:none; padding-left:0; }
   strong { color:var(--brand); }
   pre { background:#0f172a; color:#e2e8f0; padding:14px; border-radius:8px; overflow:auto;
-        font-family:Consolas,"Courier New",monospace; font-size:13px; }
+        font-family:var(--font-mono); font-size:13px; }
   .lang { display:inline-block; font-size:12px; color:var(--muted); }
   blockquote { margin:12px 0; padding:8px 16px; border-left:3px solid var(--brand);
                background:#f8fafc; }
@@ -354,8 +422,19 @@ _DOCUMENT_TEMPLATE = """<!doctype html>
   .visual svg, .visual__img { display:block; width:100%; max-width:100%; height:auto;
                               margin:0 auto; border-radius:8px; }
   .visual figcaption { color:var(--muted); font-size:13px; margin-top:6px; }
+  /* 流程图「动起来」：边线做成流动虚线。HTML 是能跑 CSS 的产物，所以这里让它
+     动；PPTX / PDF 取静态帧、不带这段 —— 发出去的课件不该自己动。钩子是服务端
+     在 SVG 上打的 class="dg-edge"（generation.diagram）。 */
+  .visual .dg-edge path { stroke-dasharray:7 5; animation:dg-flow 1.1s linear infinite; }
+  @keyframes dg-flow { to { stroke-dashoffset:-12; } }
+  @media (prefers-reduced-motion: reduce) {
+    .visual .dg-edge path { animation:none; }
+  }
   .visual__ph { border:1px dashed var(--line); border-radius:8px; height:120px;
                 display:flex; align-items:center; justify-content:center; color:var(--muted); }
+  /* 行内公式（要点的 `$…$`）。内联 SVG 自带尺寸与 vertical-align，
+     这里只需要别让它换行、别让它被压扁。 */
+  .math svg, .math__img { display:inline-block; vertical-align:middle; max-width:none; }
   .quiz { border:1px solid var(--line); border-radius:10px; padding:16px; margin-top:12px; }
   .quiz__stem { font-weight:600; margin-bottom:8px; }
   .quiz__options li.correct { color:var(--brand); font-weight:600; }
@@ -364,7 +443,7 @@ _DOCUMENT_TEMPLATE = """<!doctype html>
   .tag { font-size:12px; color:var(--muted); border:1px solid var(--line);
          border-radius:8px; padding:0 6px; margin-right:6px; }
   .src, .gap, .board, .notes { margin-top:18px; font-size:14px; }
-  .note, .gap { color:#92400e; }
+  .note, .gap { color:var(--warn); }
   .notes p { margin:6px 0 0; color:#374151; line-height:1.8; }
   .slide__foot { position:absolute; left:40px; right:40px; bottom:16px; display:flex;
                  justify-content:space-between; color:var(--muted); font-size:12px; }

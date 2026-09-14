@@ -22,11 +22,14 @@ from __future__ import annotations
 import json
 from typing import Any, Mapping, Sequence
 
+from app.services.generation import icons
 from app.services.generation.schema import MAX_CHAPTERS
 
 #: 提示词版本。改提示词就改它（日期），版本表里跟着走（技术方案 §209）。
 #: 2026-09-13：材料注入带真实 chunkId，写页追加【引用要求】（P4-4）。
-PROMPT_VERSION = "2026-09-13"
+#: 2026-09-13：图示扩到三种（流程图/曲线图/公式）并教模型写可调参数与逐拍揭示。
+#: 2026-09-14：流程图节点可带 icon（语义图标），提示词文末列图标清单。
+PROMPT_VERSION = "2026-09-14"
 
 #: 主题的字数上限（P1-F1：≤200 字）。接口层会先判一次并报 40001，
 #: 这里再截一次 —— 提示词是最后一道，不能假设上游一定拦住了。
@@ -47,6 +50,54 @@ MATERIAL_DECLARATION = (
 )
 
 _JSON_ONLY = "只输出 JSON，不要解释、不要 Markdown 围栏、不要省略字段。"
+
+#: 流程图 icon 的可选值清单。拼在 visual 指南文末 —— 模型懂任何学科的语义，
+#: 让它为每个节点挑一枚最贴切的图标，比服务端靠关键词猜要准；清单直接由
+#: `icons.NAMES` 生成，加图标不用改提示词。
+_FLOW_ICON_LINE = (
+    "  流程图节点 icon 可选值（挑最贴切的一枚；拿不准就省略，服务端会按文字自动配）："
+    + " / ".join(icons.NAMES)
+    + "。\n"
+)
+
+#: 各类图示的写法。单独拎出来是因为它是**唯一一处给模型讲 spec 怎么写的地方** ——
+#: JSON Schema 只说得出字段名与类型，说不出「什么时候该用哪一种」。
+_VISUAL_SPEC_GUIDE = """\
+  一页只给一种，讲不出结构就省略 spec、只留 desc：
+  · 流程图（讲结构、关系、判定流程）——rows 是节点网格（最多 4 行 ×3 列，
+    节点 {text, shape, accent, icon}，text 不超过 8 个字，shape 取 box/ellipse/diamond，
+    判定用 diamond；icon 给节点配一枚语义小图标，可选值见文末清单）；
+    edges 是箭头（[{from: [行号,列号], to: [行号,列号], label}]，
+    行列都从 0 开始，label 不超过 6 个字）。
+  · 曲线图（讲一个量随另一个量怎么变）——curves 写 {expr, label}，
+    expr 是**关于 x 的表达式**，例如 "1/(1+exp(-x))"；只有这几种函数能用：
+    sin cos tan exp log log2 log10 sqrt abs floor ceil max min tanh，常数 pi e。
+    另给 xrange: [左, 右]（不给 x 范围就画不了）。想让学生看见参数的影响，
+    再加 params: [{name, label, values}]（values 最多 8 个取值）——页面上会出现
+    一个滑块，拖到哪个取值就是哪个样子，所以 values 要挑出**差别看得见**的几个。
+    expr 里可以直接写 params 的名字，比如 name 叫 k 就写 "k*x+1"。
+  · 公式（这一页的主角就是一个式子）——给 {tex, caption}，tex 用 LaTeX 写法
+    （\\frac{1}{1+e^{-z}}、\\sqrt{x}、\\alpha、x^2；
+    矩阵用 \\begin{pmatrix}...\\end{pmatrix}（圆括号）或 \\begin{bmatrix}...\\end{bmatrix}（方括号），
+    分段函数用 \\begin{cases}...\\end{cases}，多行对齐用 \\begin{aligned}...\\end{aligned}，
+    求和/积分的上下限会自动排在正上/正下方）。
+    要点正文里也可以直接写 $…$ 内联一条式子，会排成和主图一样的字体。
+  · 对比表格（讲多个对象的属性对比）——给 {headers, rows, caption, highlight}，
+    headers 是表头（字符串数组，最多 8 列），rows 是数据行（字符串数组的数组，
+    最多 11 行，每行的列数应与表头一致），highlight 是要强调的单元格坐标
+    （[[行,列], ...]，行从 0 开始算数据行，列从 0 开始），单元格内容不超过 40 字。
+    例如：headers=["算法", "时间复杂度", "空间复杂度"]，
+    rows=[["冒泡排序", "O(n²)", "O(1)"], ["快速排序", "O(n log n)", "O(log n)"]]，
+    highlight=[[1, 1]]（强调快速排序的时间复杂度）。
+  · 时间轴（讲**先后顺序**：朝代更替、历史阶段、版本演进、发展里程碑）——
+    给 {kind: "timeline", events: [{time, label, note, accent}]}，最多 10 个事件、
+    按时间先后排：time 是年代或阶段名（不超过 8 个字），label 是事件名
+    （不超过 10 个字），note 是一句补充说明（可省，不超过 18 个字），
+    accent=true 把关键节点标成实心点。例如朝代更替：events=[{time: "秦",
+    label: "统一六国", accent: true}, {time: "汉", label: "文景之治"}, ...]。
+    **内容有先后顺序就用时间轴，别塞进上面的流程图网格** —— 网格画出来
+    的时间轴歪歪扭扭、看不出先后。
+""" + _FLOW_ICON_LINE
 
 _SYSTEM = """你是一位资深的课程设计师，为中学与高校课堂设计课件与讲稿。
 
@@ -152,12 +203,11 @@ def page_messages(
             "- bullets 写 3~5 条，每条一句话，学生扫一眼就能记住",
             "- narration 按 beat 写：每句一个意思，**每句不超过 60 字**，"
             "这一页一共 3~8 句；它会被逐句合成为语音",
-            "- visual.desc 描述这一页该配什么图，让画图的人知道画什么",
-            "- 这一页讲的是流程、结构或对比时，同时给 visual.spec：rows 是节点网格"
-            "（最多 4 行 ×3 列，节点 {text, shape, accent}，text 不超过 8 个字，"
-            "shape 取 box/ellipse/diamond，判定用 diamond），edges 是箭头"
-            "（[{from: [行号, 列号], to: [行号, 列号], label}]，行列都从 0 开始，"
-            "label 不超过 6 个字）；服务端会按它出图。讲不出结构的页面省略 spec 即可",
+            "- visual.desc 描述这一页该配什么图，让画图的人知道画什么；"
+            "能给结构的再给 visual.spec（服务端按它出图）：",
+            _VISUAL_SPEC_GUIDE,
+            "- 图里分几步（几行、几条曲线），就让 narration 的前几句一步一句地对上："
+            "讲到第 N 句才亮出第 N 步。学生提前看见后面的内容，就不听你讲了",
             "- 不要重复前几页已经讲过的要点，需要用到时一句话带过即可",
             _JSON_ONLY,
         ]

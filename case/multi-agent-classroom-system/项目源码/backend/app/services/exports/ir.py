@@ -19,6 +19,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
+from app.services.generation import formula
+
 __all__ = [
     "Beat",
     "Block",
@@ -28,6 +30,7 @@ __all__ = [
     "Code",
     "Deck",
     "Page",
+    "Piece",
     "Quiz",
     "RenderOptions",
     "Source",
@@ -41,11 +44,35 @@ __all__ = [
 
 
 @dataclass(frozen=True)
+class Piece:
+    """要点里的一截。`text` 是普通文字，`math` 是行内公式（**LaTeX 原文**）。
+
+    IR 只切不画：给的是式子的写法，怎么画是渲染器的事 —— 网页与 PDF 排成
+    真的式子，PPTX 只能排成 `plain()` 那种 Unicode 近似（PPT 的文本框里放不进
+    矢量图）。同一句话在三种产物里**读出来**是一样的，长得不一样是有意的。
+    """
+
+    kind: str = "text"  # text | math
+    text: str = ""
+
+
+@dataclass(frozen=True)
 class Bullet:
-    """一条要点。`emphasis` 是要强调的词，渲染器自己决定怎么突出（加粗 / 变色）。"""
+    """一条要点。`emphasis` 是要强调的词，渲染器自己决定怎么突出（加粗 / 变色）。
+
+    `text` 是**原文**（可能带 `$…$`），`pieces` 是切好的那几截 —— 原文留着，
+    是因为不认识 `pieces` 的渲染器（以及将来加的那个）至少还能把整句话显示出来。
+    """
 
     text: str = ""
     emphasis: tuple[str, ...] = ()
+    pieces: tuple[Piece, ...] = ()
+
+    def __post_init__(self) -> None:
+        """切行内公式。在这里切一次，比让每个构造点自己切一遍可靠 ——
+        要点在 `_blocks_for` 里有七八个来路，漏一个就是「这页的公式没排出来」。"""
+        if not self.pieces and "$" in self.text:
+            object.__setattr__(self, "pieces", tuple(_pieces_of(self.text)))
 
 
 @dataclass(frozen=True)
@@ -202,11 +229,15 @@ class RenderOptions:
     - `watermark`：产物带「AI 生成」水印（P5 的合规项，默认开）。
     - `with_notes`：带讲稿。PPTX 落备注页、PDF 加右侧栏、HTML 显示字幕层。
     - `with_quiz`：带测验与答案解析。
+    - `template`：用哪套导出主题（`exports/theme.py` 的 key）。存的是**名字**
+      而不是 `Theme` 对象 —— 这一份要原样落进 `options_json` 留档，得是可序列化的
+      字符串；渲染器各自 `theme.get(options.template)` 取回那一套令牌。
     """
 
     watermark: bool = True
     with_notes: bool = True
     with_quiz: bool = True
+    template: str = "default"
 
 
 # --------------------------------------------------------------------------
@@ -431,6 +462,15 @@ def _sources_from_dsl(raw: Mapping[str, Any]) -> tuple[Source, ...]:
         Source(label=_text(_as_mapping(item).get("chunkId")), quote=_text(_as_mapping(item).get("quote")))
         for item in _as_list(raw.get("sources"))
     )
+
+
+def _pieces_of(text: str) -> list[Piece]:
+    """一句话切成「文字 / 公式」几截。切法只有一处（`formula.split`）——
+    这里只把它的结果换成 IR 的 `Piece`，不另立一份判据。"""
+    return [
+        Piece(kind="math" if chunk.math else "text", text=chunk.text)
+        for chunk in formula.split(text)
+    ]
 
 
 def _emphasis(raw: Any) -> tuple[str, ...]:

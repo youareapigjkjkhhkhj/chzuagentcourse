@@ -37,7 +37,7 @@ from app.extensions import db
 from app.models import Course, Export
 from app.services import audit
 from app.services.courses import library as courses
-from app.services.exports import queue, store
+from app.services.exports import queue, store, theme
 from app.services.voice import tickets
 
 bp = Blueprint("exports", __name__)
@@ -174,6 +174,9 @@ def list_exports(course_id: str):
                 scope: list(queue.supported_formats(scope))
                 for scope in ("course", "record")
             },
+            # 可选的 PPT 模板（配色+字体）。随列表一起下发 —— 导出面板打开时
+            # 本来就拉这个接口，模板清单搭个顺风车，不必再开一个端点。
+            "templates": theme.catalogue(),
         }
     )
 

@@ -266,6 +266,40 @@ def get_board(session_id: str, page_no: int):
     return ok({"pageNo": page_no, "strokes": board.strokes_of(session, page_no)})
 
 
+# --- P6.1 学情总览 ---
+
+
+@bp.get("/api/classroom/sessions/<session_id>/mastery")
+def get_mastery(session_id: str):
+    """学情总览（P6.1）：按章掌握度 + 错题列表 + 复习页记录。
+
+    请求示例：
+        GET /api/classroom/sessions/cs_01H…/mastery
+
+    返回 `{chapters, wrongQuestions, reviewPages}`：
+    - `chapters`：每章的总题数、正确数、掌握度百分比
+    - `wrongQuestions`：错题列表（含概念标签与响应时间）
+    - `reviewPages`：动态插入的复习页（同章连错触发）
+
+    还在上的课也能看，拿到的是「到此刻为止」。
+    """
+    from app.models.mastery import ReviewPage, get_chapter_mastery, get_wrong_questions
+
+    session = sessions.require_visible(sessions.require(session_id), current_owner_id())
+    chapters = get_chapter_mastery(session.course_id)
+    wrong = get_wrong_questions(session.course_id)
+    reviews = (
+        ReviewPage.query.filter_by(session_id=session.id)
+        .order_by(ReviewPage.created_at.asc())
+        .all()
+    )
+    return ok({
+        "chapters": chapters,
+        "wrongQuestions": wrong,
+        "reviewPages": [row.to_dict() for row in reviews],
+    })
+
+
 # --- §4.2 WebSocket ---
 
 

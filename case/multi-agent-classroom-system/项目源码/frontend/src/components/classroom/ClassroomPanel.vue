@@ -286,6 +286,16 @@ function colorOfMember(member: { userId: string; role: string }): string {
   return memberColor(member, store.ownerId, settings.roles)
 }
 
+/**
+ * 名单上写谁的名字。**用服务端给的名字，不是 `role`** ——
+ * 那个字段是权限（`owner` / `member`），写在头像下面就是「owner 在线了」。
+ * 名字现查（`recorder.names_of`），改昵称之后整块名单一起跟着变。
+ */
+function nameOfMember(member: { userId: string; name: string; role: string }): string {
+  if (member.userId === store.ownerId) return '我'
+  return member.name || member.role
+}
+
 /** AI 同学的色：服务端按角色给的 `color`，没配就按 code 现算一个（与消息头像同源）。 */
 function colorOfAi(member: { code: string; color: string }): string {
   return member.color || avatarColor(member.code)
@@ -351,9 +361,9 @@ const recorderHint = computed(() => {
       <div class="agents-strip">
         <div v-for="member in members" :key="member.userId" class="agent-chip">
           <t-avatar :style="{ background: colorOfMember(member) }" shape="circle" size="small">
-            {{ member.userId === store.ownerId ? '我' : member.role.slice(0, 1) }}
+            {{ nameOfMember(member).slice(0, 1) }}
           </t-avatar>
-          <span class="name">{{ member.userId === store.ownerId ? '我' : member.role }}</span>
+          <span class="name">{{ nameOfMember(member) }}</span>
         </div>
         <div v-if="members.length && aiMembers.length" class="agents-strip__sep" />
         <!-- AI 同学：讨论里真的会开口的几位，按设置页「AI 同学数量」取前 N 位 -->

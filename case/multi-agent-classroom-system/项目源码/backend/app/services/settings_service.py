@@ -48,6 +48,9 @@ DEFAULT_GENERATION: dict[str, Any] = {
     "autoIllustration": True,
     "quizPerChapter": True,
     "whiteboard": True,
+    # 苏格拉底式引导：学生提问时先追问一层、再收束给答案（关掉就是「问什么
+    # 答什么」）。判据与两条兜底在 `classroom/scaffold.py`，这里只存开关。
+    "socraticAnswer": True,
 }
 
 #: 语速：0.5x 慢速朗读 ~ 2.0x 快速复习。超出这个区间听着就不像人话了。
@@ -149,7 +152,7 @@ def _validate_generation_payload(payload: Any) -> dict:
         changes["intensity"] = _as_choice(payload["intensity"], "讨论激烈程度", INTENSITIES)
     if "scriptDetail" in payload:
         changes["scriptDetail"] = _as_choice(payload["scriptDetail"], "讲稿详细程度", SCRIPT_DETAILS)
-    for field in ("autoIllustration", "quizPerChapter", "whiteboard"):
+    for field in ("autoIllustration", "quizPerChapter", "whiteboard", "socraticAnswer"):
         if field in payload:
             changes[field] = _as_bool(payload[field], field)
     return changes

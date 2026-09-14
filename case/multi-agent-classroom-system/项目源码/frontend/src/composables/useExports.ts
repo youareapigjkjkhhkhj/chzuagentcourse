@@ -18,7 +18,13 @@ import { computed, ref, watch, type Ref } from 'vue'
 
 import * as api from '@/api'
 import { usePolling } from '@/composables/usePolling'
-import type { ExportCreatePayload, ExportFormat, ExportItem, ExportScope } from '@/types/api'
+import type {
+  ExportCreatePayload,
+  ExportFormat,
+  ExportItem,
+  ExportScope,
+  ExportTemplate,
+} from '@/types/api'
 
 /** 轮询间隔。渲染一份 12 页的课件是秒级的，这个节奏够跟上又不会把接口打满。 */
 const POLL_INTERVAL_MS = 1500
@@ -27,6 +33,8 @@ export function useExports(courseId: Ref<string>) {
   const items = ref<ExportItem[]>([])
   /** 每种范围支持哪些格式 —— 铺选项用它，前端不写死一份会过期的表。 */
   const supported = ref<Record<ExportScope, ExportFormat[]>>({ course: [], record: [] })
+  /** 可选的 PPT 模板（配色+字体），同样由后端下发。 */
+  const templates = ref<ExportTemplate[]>([])
   const loading = ref(false)
   const hasMore = ref(false)
   /** 读取失败时的一句话（历史列表读不出来，不等于导出不能用）。 */
@@ -49,6 +57,7 @@ export function useExports(courseId: Ref<string>) {
       const page = await api.fetchCourseExports(id)
       items.value = page.items
       supported.value = page.supported
+      templates.value = page.templates ?? []
       hasMore.value = page.hasMore
       error.value = ''
     } catch {
@@ -106,5 +115,18 @@ export function useExports(courseId: Ref<string>) {
     link.remove()
   }
 
-  return { items, supported, loading, hasMore, error, inFlight, load, create, retry, remove, download }
+  return {
+    items,
+    supported,
+    templates,
+    loading,
+    hasMore,
+    error,
+    inFlight,
+    load,
+    create,
+    retry,
+    remove,
+    download,
+  }
 }

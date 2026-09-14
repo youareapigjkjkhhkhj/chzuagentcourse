@@ -62,7 +62,16 @@ export const TYPE_LABELS: Record<
   system: { text: '系统', theme: 'default' },
 }
 
+/**
+ * 消息徽标。**老师发的「提问」显示成「追问」**：那是引导式答疑里的那一步
+ * （`scaffold.ASK_TYPE`，或者讨论里老师顺着学生的话往下问）。它与学生的提问
+ * 用的是同一个 `type`，但在课堂上是**相反方向的同一件事** —— 都写成「提问」，
+ * 回看的人分不清这一句是学生问的，还是老师接着学生的话问回去的。
+ */
 export function badgeOf(message: ClassroomMessage) {
+  if (message.speakerKind === 'teacher' && message.type === 'question') {
+    return { text: '追问', theme: 'warning' as const }
+  }
   return TYPE_LABELS[message.type] ?? TYPE_LABELS.comment
 }
 

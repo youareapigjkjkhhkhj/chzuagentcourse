@@ -51,6 +51,7 @@ from app.services.exports import pdf as pdf_renderer
 from app.services.exports import pptx as pptx_renderer
 from app.services.exports import record as record_renderer
 from app.services.exports import store
+from app.services.exports import theme as theme_registry
 from app.services.exports.ir import Deck, RenderOptions, Source, from_dsl
 
 logger = get_logger("app.exports.queue")
@@ -170,7 +171,28 @@ def _clean_options(options: Mapping[str, Any] | None) -> dict[str, Any]:
             raise ValidationError(
                 f"options.{key} 必须是布尔值", details={"option": key}
             )
+    _clean_template(merged)
     return merged
+
+
+def _clean_template(merged: dict[str, Any]) -> None:
+    """补上并校验 `template`（PPT 模板）。
+
+    与三个布尔开关分开处理：它是**字符串**，缺省补 `default`，给了但认不出就
+    当场 40001 —— 与其让渲染时 `theme.get` 悄悄退回默认（用户选了「瑞士」却拿到
+    「品牌蓝」，只有打开文件才看得出），不如在建任务时就把话说清楚。
+    """
+    raw = merged.get("template")
+    if raw is None or not str(raw).strip():
+        merged["template"] = theme_registry.DEFAULT_KEY
+        return
+    key = str(raw).strip()
+    if key not in theme_registry.THEMES:
+        raise ValidationError(
+            f"未知的模板 {key}",
+            details={"template": key, "allowed": list(theme_registry.THEMES)},
+        )
+    merged["template"] = key
 
 
 def _require_visible_session(session_id: str, owner_id: str) -> None:
@@ -419,6 +441,8 @@ def _render_options(row: Export) -> dict[str, Any]:
         "watermark": bool(raw.get("watermark", True)),
         "with_notes": bool(raw.get("withNotes", True)),
         "with_quiz": bool(raw.get("withQuiz", True)),
+        # 老记录没有这一项，退回缺省主题（`theme.get` 也会再兜一次底）。
+        "template": str(raw.get("template") or theme_registry.DEFAULT_KEY),
     }
 
 

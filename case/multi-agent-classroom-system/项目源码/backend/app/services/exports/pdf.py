@@ -38,6 +38,7 @@ from typing import Callable
 import pymupdf
 
 from app.services.exports import html as html_renderer
+from app.services.exports import theme as themes
 from app.services.exports.ir import Deck, RenderOptions
 
 __all__ = ["A4", "render"]
@@ -57,27 +58,37 @@ _WM_GRAY = (0.72, 0.74, 0.78)
 #: 镜像里没装中文字体时，系统字体这条路会安静地退化成方框。
 _CJK_FONT = "china-s"
 
-#: 排版样式：只用 Story 认的那几样（见 `html.print_pages` 的说明）。
-_PDF_CSS = """
-body { font-family: sans-serif; font-size: 10.5pt; line-height: 1.65; color: #181818; }
-h1 { font-size: 17pt; color: #0052d9; margin: 0 0 8pt 0; }
-h2 { font-size: 12.5pt; margin: 10pt 0 4pt 0; }
-p { margin: 4pt 0; }
-ul, ol { margin: 4pt 0 4pt 16pt; }
-li { margin: 2pt 0; }
-strong { color: #0052d9; }
-pre { font-family: monospace; font-size: 8.5pt; background-color: #f3f4f6; padding: 6pt; }
-blockquote { margin: 6pt 0; padding: 2pt 8pt; border-left: 2pt solid #0052d9; color: #374151; }
-figure { margin: 6pt 0; }
+
+def _pdf_css(theme: themes.Theme) -> str:
+    """按主题生成排版样式。颜色与 PPTX / HTML 同源（都从 `theme` 取）；
+    字体保持 `sans-serif` / `monospace` —— MuPDF 的排版器用自带的字库，
+    指定具体字体名未必能解析，而中文无论如何都走它内嵌的 CJK 字库
+    （`_stamp` 那一步同理），所以 PDF 这一份的主题差异体现在**配色**上，字体不强求。
+    """
+    brand = theme.css(theme.brand)
+    ink = theme.css(theme.ink)
+    muted = theme.css(theme.muted)
+    warn = theme.css(theme.warn)
+    return f"""
+body {{ font-family: sans-serif; font-size: 10.5pt; line-height: 1.65; color: {ink}; }}
+h1 {{ font-size: 17pt; color: {brand}; margin: 0 0 8pt 0; }}
+h2 {{ font-size: 12.5pt; margin: 10pt 0 4pt 0; }}
+p {{ margin: 4pt 0; }}
+ul, ol {{ margin: 4pt 0 4pt 16pt; }}
+li {{ margin: 2pt 0; }}
+strong {{ color: {brand}; }}
+pre {{ font-family: monospace; font-size: 8.5pt; background-color: #f3f4f6; padding: 6pt; }}
+blockquote {{ margin: 6pt 0; padding: 2pt 8pt; border-left: 2pt solid {brand}; color: #374151; }}
+figure {{ margin: 6pt 0; }}
 /* 示意图是栅格化后的位图（`html._image_html` 的 rasterize 那条路）。
    不给它限宽的话，一张 1920px 宽的图会顶出版心。 */
-img { max-width: 100%; }
-figcaption { color: #6b7280; font-size: 8.5pt; }
-.cap { color: #6b7280; font-size: 8.5pt; }
-.notes { color: #4b5563; font-size: 9pt; }
-.gap { color: #92400e; }
-.quiz__answer { color: #92400e; }
-.note { color: #92400e; }
+img {{ max-width: 100%; }}
+figcaption {{ color: {muted}; font-size: 8.5pt; }}
+.cap {{ color: {muted}; font-size: 8.5pt; }}
+.notes {{ color: #4b5563; font-size: 9pt; }}
+.gap {{ color: {warn}; }}
+.quiz__answer {{ color: {warn}; }}
+.note {{ color: {warn}; }}
 """
 
 
@@ -94,6 +105,7 @@ def render(
     时仍然只算走完一页，因为「还剩几页要排」问的是课程还剩几页。
     """
     fragments = html_renderer.print_pages(deck, options)
+    css = _pdf_css(themes.get(options.template))
     buffer = io.BytesIO()
     body = pymupdf.DocumentWriter(buffer)
     mediabox = pymupdf.paper_rect(A4)
@@ -103,7 +115,7 @@ def render(
     where = mediabox + (_MARGIN_X, _MARGIN_TOP, -_MARGIN_X, -_MARGIN_BOTTOM)  # noqa: RUF005
 
     for index, fragment in enumerate(fragments):
-        story = pymupdf.Story(html=f"<html><body>{fragment}</body></html>", user_css=_PDF_CSS)
+        story = pymupdf.Story(html=f"<html><body>{fragment}</body></html>", user_css=css)
         more = 1
         while more:
             device = body.begin_page(mediabox)

@@ -19,6 +19,8 @@ import math
 from typing import Any, Mapping, Sequence
 from xml.sax.saxutils import escape
 
+from app.services.generation import icons
+
 VIEW_W = 960
 VIEW_H = 540
 
@@ -38,6 +40,12 @@ _ACCENT_STROKE = "#2F6BE4"
 _INK = "#1F2430"
 _MUTED = "#5A6B87"
 
+#: 字体栈。**必须显式指定**，而且三张图（流程/公式/曲线）得是同一份：
+#: 不指定时浏览器与 MuPDF 各挑各的默认字体（MuPDF 挑的是 Times），同一个字
+#: 两边能差出三成宽 —— 一份课件在屏幕上是好的、导出到 PDF 就散了，正是
+#: 「同一门课两个样子」。`formula` 的宽度表也是按这一栈量出来的。
+FONT_STACK = "Helvetica, Arial, sans-serif"
+
 _SHAPES = ("box", "ellipse", "diamond")
 
 
@@ -56,13 +64,14 @@ def normalize(spec: Any) -> dict | None:
         row: list[dict] = []
         for cell in cells:
             if isinstance(cell, str):
-                row.append({"text": cell.strip(), "shape": "box", "accent": False})
+                row.append({"text": cell.strip(), "shape": "box", "accent": False, "icon": ""})
             elif isinstance(cell, Mapping):
                 row.append(
                     {
                         "text": str(cell.get("text") or "").strip(),
                         "shape": _shape_of(cell.get("shape")),
                         "accent": bool(cell.get("accent")),
+                        "icon": str(cell.get("icon") or "").strip(),
                     }
                 )
         # 空行也留着：行号是箭头指节点用的坐标，**不能因为一行没字就把它抽掉**
@@ -105,11 +114,18 @@ def render(spec: Any) -> str:
         f'<rect width="{VIEW_W}" height="{VIEW_H}" fill="#FFFFFF"/>',
     ]
 
+    # 一行一个 `data-beat`：课堂上讲到第几步就亮到第几行，导出栅格化整张图
+    # 时全部显示（属性对 MuPDF 与 PPTX 都是透明的）。
     for edge in drawing["edges"]:
-        parts.append(_edge_svg(edge, grid))
+        # 箭头跟着**它指向的那一行**出现 —— 目标还没讲，先冒出一根指过去的
+        # 箭头，看的人会以为那一格是空的
+        beat = max(edge["from"][0], edge["to"][0])
+        parts.append(f'<g data-beat="{beat}" class="dg-edge">{_edge_svg(edge, grid)}</g>')
     for row_index, row in enumerate(rows):
         for col_index, node in enumerate(row):
-            parts.append(_node_svg(node, grid[row_index][col_index]))
+            parts.append(
+                f'<g data-beat="{row_index}" class="dg-node">{_node_svg(node, grid[row_index][col_index])}</g>'
+            )
 
     parts.append("</svg>")
     return "".join(parts)
@@ -161,8 +177,24 @@ def _node_svg(node: Mapping[str, Any], box: tuple[float, float, float, float]) -
             f'<rect x="{cx - w / 2}" y="{cy - h / 2}" width="{w}" height="{h}" rx="12" '
             f'fill="{fill}" stroke="{stroke}" stroke-width="2"/>'
         )
-    text = _text_svg(str(node["text"]), cx, cy, w if shape != "diamond" else w * 0.6)
-    return body + text
+    text_width = w if shape != "diamond" else w * 0.6
+    # 图标：模型显式给的 `icon` 优先（它懂任何学科的语义），没给或认不得就按
+    # 文字关键词兜底。菱形（判定节点）空间太挤，不配图标，文字仍居中。
+    icon_key = None if shape == "diamond" else icons.pick(node.get("icon"), str(node["text"]))
+    if icon_key:
+        # 有图标：图标占格子上部，文字整体下移让位 —— 两者不叠在一起。
+        # 菱形（判定节点）空间太挤，不配图标，文字仍居中。
+        icon_size = min(34.0, h * 0.34)
+        icon_cy = cy - h / 2 + icon_size / 2 + 8
+        icon = icons.render(
+            icon_key, cx, icon_cy, icon_size, _ACCENT_STROKE if node["accent"] else _MUTED
+        )
+        text_cy = cy + icon_size / 2
+    else:
+        icon = ""
+        text_cy = cy
+    text = _text_svg(str(node["text"]), cx, text_cy, text_width)
+    return body + icon + text
 
 
 def _text_svg(text: str, cx: float, cy: float, width: float) -> str:
@@ -174,7 +206,10 @@ def _text_svg(text: str, cx: float, cy: float, width: float) -> str:
         f'<tspan x="{cx}" y="{round(start + index * LINE_H, 1)}">{escape(line)}</tspan>'
         for index, line in enumerate(lines)
     )
-    return f'<text font-size="{FONT}" fill="{_INK}" text-anchor="middle">{spans}</text>'
+    return (
+        f'<text font-size="{FONT}" fill="{_INK}" font-family="{FONT_STACK}" '
+        f'text-anchor="middle">{spans}</text>'
+    )
 
 
 def _edge_svg(edge: Mapping[str, Any], grid: Sequence[Sequence[tuple[float, float, float, float]]]) -> str:
@@ -198,7 +233,7 @@ def _edge_svg(edge: Mapping[str, Any], grid: Sequence[Sequence[tuple[float, floa
         + f'<rect x="{round(mid_x - width / 2, 1)}" y="{mid_y - 12}" width="{round(width, 1)}" '
         f'height="23" rx="11" fill="#FFFFFF" stroke="{_NODE_STROKE}"/>'
         + f'<text x="{mid_x}" y="{mid_y + 4}" font-size="{FONT - 4}" fill="{_MUTED}" '
-        + f'text-anchor="middle">{escape(label)}</text>'
+        + f'font-family="{FONT_STACK}" text-anchor="middle">{escape(label)}</text>'
     )
 
 

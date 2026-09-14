@@ -81,6 +81,7 @@ const genDraft = reactive<GenerationSettings>({
   autoIllustration: true,
   quizPerChapter: true,
   whiteboard: true,
+  socraticAnswer: true,
 })
 
 /** 后端返回后铺一次草稿。用户正在改的时候不覆盖（watch 的是数据本身，不是每次渲染）。 */
@@ -357,6 +358,7 @@ async function onSave() {
         autoIllustration: genDraft.autoIllustration,
         quizPerChapter: genDraft.quizPerChapter,
         whiteboard: genDraft.whiteboard,
+        socraticAnswer: genDraft.socraticAnswer,
       })
     }
     MessagePlugin.success('设置已保存')
@@ -689,6 +691,10 @@ onMounted(() => {
             <div class="switch-row">
               <span>允许课堂中使用白板</span>
               <t-switch v-model="genDraft.whiteboard" />
+            </div>
+            <div class="switch-row">
+              <span>学生提问时先引导思考，再给答案</span>
+              <t-switch v-model="genDraft.socraticAnswer" />
             </div>
           </div>
         </section>

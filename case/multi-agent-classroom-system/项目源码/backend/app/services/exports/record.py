@@ -111,7 +111,7 @@ def _page_label(page_no: Any) -> str:
 
 
 def to_deck(record: Mapping[str, Any]) -> Deck:
-    """课堂记录 → IR。六个栏目各一「页」，页内是那个栏目的全部内容。
+    """课堂记录 → IR。每个栏目各一「页」，页内是那个栏目的全部内容。
 
     空栏目**也出一页**，页里写一句「这堂课没有讨论」：一份记录里「没有」
     与「漏导了」是两件事，后者会让读的人以为材料丢了。
@@ -124,6 +124,7 @@ def to_deck(record: Mapping[str, Any]) -> Deck:
     messages = _as_list(record.get("messages"))
     boards = _as_list(record.get("boards"))
     quizzes = _as_list(record.get("quizzes"))
+    trails = _as_list(record.get("trails"))
 
     names = _names(
         [
@@ -133,12 +134,21 @@ def to_deck(record: Mapping[str, Any]) -> Deck:
             *(_text(item.get("speaker")) for item in messages),
             *(_text(_as_mapping(item).get("speaker")) for item in subtitles),
             *(_text(_as_mapping(item).get("userId")) for item in participants),
+            # 轨迹里的说话人本来就是从 messages 折出来的，理论上已经在上面的名单里。
+            # 仍然写一行：这样「哪个栏目读了 names」在这份文件里是看得全的，
+            # 哪天轨迹改成不来自 messages，也不会悄悄退化成显示 speaker_code。
+            *(
+                _text(_as_mapping(step).get("speaker"))
+                for item in trails
+                for step in _as_list(_as_mapping(item).get("steps"))
+            ),
         ]
     )
 
     pages = [
         _cover_page(course_title, session, names),
         _summary_page(stats, participants, names),
+        _trails_page(trails, names),
         _subtitles_page(subtitles, names),
         _messages_page(messages, names),
         _boards_page(boards),
@@ -204,6 +214,11 @@ def _summary_page(
             f"随堂作答 {int(stats.get('quizAttempts') or 0)} 次，"
             f"其中答对 {int(stats.get('quizCorrect') or 0)} 次"
         ),
+        Bullet(
+            f"思辨轨迹 {int(stats.get('thinkingTrails') or 0)} 条，"
+            f"学生自己说了 {int(stats.get('studentTurns') or 0)} 句，"
+            f"其中 {int(stats.get('openTrails') or 0)} 条没接住"
+        ),
         Bullet(f"用时 {_minutes(int(stats.get('durationMs') or 0))}"),
     ]
     roster = "、".join(
@@ -214,6 +229,51 @@ def _summary_page(
         blocks.append(Block(kind="heading", level=2, text="参与的人"))
         blocks.append(Block(kind="paragraph", text=roster))
     return Page(kind="summary", title="课堂概览", blocks=tuple(blocks))
+
+
+def _trails_page(trails: list, names: Mapping[str, str]) -> Page:
+    """思辨轨迹：一次引导一条，`学生问 → 追问 → 学生答 → 收束`。
+
+    它与下面「讨论区」那一栏的差别是**分了组**：讨论区是一整条流水，读的人得自己
+    认出「哪三句其实是一场引导」；这里一次引导一条，还标了收束没有 —— 那条没收束
+    的链子是最有信息量的一行，它指出**哪一页没讲清**。
+
+    顺带一句：这一栏**不看谁的问话漂亮**。链子上每个参与者都只因为「他说了那句
+    话」在这儿，`studentTurns` 数的也是学生自己说的那几句。
+    """
+    if not trails:
+        return _empty_page(
+            "思辨轨迹", "这堂课没有留下引导轨迹 —— 学生没有提问，或者答疑是直接给答案的。"
+        )
+
+    blocks: list[Block] = []
+    for item in trails:
+        row = _as_mapping(item)
+        steps = [_as_mapping(step) for step in _as_list(row.get("steps"))]
+        blocks.append(
+            Block(
+                kind="heading",
+                level=2,
+                text=f"{_page_label(row.get('pageNo'))}　"
+                f"{'已收束' if _text(row.get('status')) == 'closed' else '没收束'}　"
+                f"学生说了 {int(row.get('studentTurns') or 0)} 句",
+            )
+        )
+        blocks.append(
+            Block(kind="bullets", items=tuple(Bullet(_trail_line(step, names)) for step in steps))
+        )
+    return Page(kind="debate", title="思辨轨迹", blocks=tuple(blocks))
+
+
+def _trail_line(step: Mapping[str, Any], names: Mapping[str, str]) -> str:
+    """轨迹上的一环：`沈老师（追问）：你觉得这两步差在哪？`
+
+    「（追问）」与「（自己想）」这两个小标注是这一栏的全部用心：扫一眼就能分出
+    哪几句是 AI 说的、哪几句是学生产出的 —— 而只有后者算思辨的证据。
+    """
+    role = _text(step.get("role"))
+    mark = {"ask": "（追问）", "reply": "（自己想）"}.get(role, "")
+    return f"{_speaker(step.get('speaker'), names)}{mark}：{_text(step.get('text'))}"
 
 
 def _subtitles_page(subtitles: list, names: Mapping[str, str]) -> Page:

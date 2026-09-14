@@ -213,14 +213,21 @@ export interface ClassroomQuiz {
   conceptTag?: string
 }
 
-/** `quiz_result` 的载荷。`branch` 目前只有 `pass` / `remedial` 两种文案。 */
+/** `quiz_result` 的载荷。`branch` 有三种：pass（答对）/ remedial（AI同学补充）/ review（插入复习页）。 */
 export interface QuizResult {
   pageNo: number
   correct: boolean
   option: string
   answer: string
   explain: string
-  branch: 'pass' | 'remedial'
+  branch: 'pass' | 'remedial' | 'review'
+  /** P6.1：分支反馈事件的载荷（quiz_feedback 事件）。 */
+  feedback?: {
+    branch: string
+    message?: { speaker: string; text: string }
+    reviewPage?: Record<string, unknown>
+    [key: string]: unknown
+  }
 }
 
 // --- 课堂记录（`GET /record`）---
@@ -242,6 +249,44 @@ export interface RecordStats {
   quizAttempts: number
   quizCorrect: number
   durationMs: number
+  /** 思辨那一组（`scaffold.stats_of`）：只报次数、不打分。 */
+  thinkingTrails: number
+  studentTurns: number
+  openTrails: number
+}
+
+/** 轨迹上的一环演的是哪一出。`question` 是学生问的那句，`ask` 是老师的追问。 */
+export type RecordTrailRole = 'question' | 'ask' | 'reply' | 'answer'
+
+export interface RecordTrailStep {
+  id: string
+  speaker: string
+  speakerKind: SpeakerKind
+  type: MessageType
+  role: RecordTrailRole
+  text: string
+  ts: string
+  pageNo: number
+}
+
+/**
+ * 一条思辨轨迹（N4）：**一次引导**从头到尾的那几句话。
+ *
+ * 链子是 `messages.quote_msg_id` 折出来的（后端 `scaffold.build_trails`），
+ * 所以它和「消息记录」那一栏是同一批数据 —— 区别只在分组：这里一次引导一条。
+ *
+ * `status` 只有两种：`closed`（老师收束了）、`open`（没接住 / 还没收束）。
+ * 后者是这个功能真正想看的东西 —— 它指出**哪一页没讲清**。
+ */
+export interface RecordTrail {
+  rootId: string
+  pageNo: number
+  question: string
+  ts: string
+  status: 'closed' | 'open'
+  /** 这一条链上学生自己说了几句（含提问本身）。 */
+  studentTurns: number
+  steps: RecordTrailStep[]
 }
 
 export interface ClassroomRecord {
@@ -251,6 +296,7 @@ export interface ClassroomRecord {
   subtitles: RecordSubtitle[]
   messages: ClassroomMessage[]
   boards: { pageNo: number; strokes: BoardStroke[] }[]
+  trails: RecordTrail[]
   quizzes: {
     pageNo: number
     option: string
@@ -278,6 +324,7 @@ export type ClassroomEvent =
   // 没有外面再套一层 `quiz` 键
   | ({ type: 'quiz' } & ClassroomQuiz)
   | ({ type: 'quiz_result' } & QuizResult)
+  | { type: 'quiz_feedback'; pageNo: number; branch: string; message?: unknown; reviewPage?: unknown }
   | ({ type: 'presence' } & ClassroomPresence)
   | { type: 'error'; code: string; message: string; recoverable?: boolean }
   | { type: 'ping'; ts?: string }
@@ -315,4 +362,47 @@ export interface SpeakPayload {
   kind: string
   priority: number
   pageNo: number
+}
+
+// --- P6.1 学情总览 ---
+
+/** 每章掌握度（`GET /mastery` 返回的 `chapters` 里的一项）。 */
+export interface ChapterMastery {
+  chapterNo: number
+  total: number
+  correct: number
+  /** 0~1 之间的小数，前端乘 100 显示百分比 */
+  mastery: number
+}
+
+/** 错题列表里的一条。 */
+export interface WrongQuestion {
+  pageNo: number
+  nodeId: string
+  option: string
+  correct: boolean
+  responseMs: number
+  ts: string
+  chapterNo: number
+  conceptTag: string
+}
+
+/** 动态插入的复习页。 */
+export interface ReviewPageItem {
+  id: string
+  sessionId: string
+  courseId: string
+  sourcePageNo: number
+  insertedAfterPageNo: number
+  dslJson: string
+  triggerReason: string
+  conceptTag: string
+  createdAt: string
+}
+
+/** `GET /sessions/{id}/mastery` 的完整响应。 */
+export interface MasteryData {
+  chapters: ChapterMastery[]
+  wrongQuestions: WrongQuestion[]
+  reviewPages: ReviewPageItem[]
 }

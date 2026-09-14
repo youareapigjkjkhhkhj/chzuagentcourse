@@ -18,6 +18,9 @@
    与课上白板看到的是同一份数据（`board.strokes_of`）。
 3. **作答一次一行**：答错重答是第二行，记录页照原样展示（P6.1 要分开算第一次
    答对率与最终答对率，在这里合并掉就再也拆不开了）。
+4. **思辨轨迹也是投影**：`trails` 不查第四张表 —— 它是 `messages` 里那些引用
+   关系折出来的（`scaffold.build_trails`）。学生的产出（他自己说的那几句）本来
+   就在消息流里，这里只是把它按「一次引导」重新分组。
 """
 
 from __future__ import annotations
@@ -27,15 +30,16 @@ from typing import Any
 from app.common.timeutil import parse_iso
 from app.extensions import db
 from app.models import ClassroomSession, Course, SessionParticipant
-from app.services.classroom import board, recorder
+from app.services.classroom import board, recorder, scaffold
 
 
 def build(session: ClassroomSession) -> dict[str, Any]:
     """这堂课的完整记录（§4.1 `GET /sessions/{id}/record`）。
 
     返回 `{session, courseTitle, participants, subtitles, messages, boards,
-    quizzes, stats}`。已经结束的课给的是最终结果，还在上的课给的是「到此刻为止」
-    —— 同一个函数不为两种时刻写两遍，页面显示什么由 `session.status` 决定。
+    quizzes, trails, stats}`。已经结束的课给的是最终结果，还在上的课给的是
+    「到此刻为止」—— 同一个函数不为两种时刻写两遍，页面显示什么由
+    `session.status` 决定。
     """
     messages = recorder.all_messages(session.id)
     boards = [
@@ -44,6 +48,7 @@ def build(session: ClassroomSession) -> dict[str, Any]:
     ]
     quizzes = recorder.quiz_attempts(session.id)
     subtitles = subtitles_of(messages)
+    trails = scaffold.build_trails(messages)
     course = db.session.get(Course, session.course_id)
     return {
         "session": session.to_dict(),
@@ -53,7 +58,16 @@ def build(session: ClassroomSession) -> dict[str, Any]:
         "messages": messages,
         "boards": boards,
         "quizzes": quizzes,
-        "stats": _stats(session, messages, subtitles, boards, quizzes),
+        "trails": trails,
+        # 五个列表一个个点名传：都是 list[dict]，位置传错了 mypy 也看不出来
+        "stats": _stats(
+            session,
+            messages=messages,
+            subtitles=subtitles,
+            boards=boards,
+            quizzes=quizzes,
+            trails=trails,
+        ),
     }
 
 
@@ -102,13 +116,19 @@ def _participants(session_id: str) -> list[dict]:
 
 def _stats(
     session: ClassroomSession,
+    *,
     messages: list[dict],
     subtitles: list[dict],
     boards: list[dict],
     quizzes: list[dict],
+    trails: list[dict],
 ) -> dict[str, Any]:
     """记录页顶部那几条。`durationMs` 取实际下课时刻减上课时刻（拿不到就退回
-    会话行上的 `elapsedMs`）—— 一堂课上多久，是回看的人第一个想知道的事。"""
+    会话行上的 `elapsedMs`）—— 一堂课上多久，是回看的人第一个想知道的事。
+
+    末尾三个是**思辨**那一组（`scaffold.stats_of`）：追问了几次、学生自己说了
+    几句、几次没接住。只报次数、不打分 —— 任何「思辨分数」都是伪量化。
+    """
     return {
         "messages": len(messages),
         "subtitles": len(subtitles),
@@ -117,6 +137,7 @@ def _stats(
         "quizAttempts": len(quizzes),
         "quizCorrect": len([item for item in quizzes if item.get("correct")]),
         "durationMs": _duration_ms(session),
+        **scaffold.stats_of(trails),
     }
 
 

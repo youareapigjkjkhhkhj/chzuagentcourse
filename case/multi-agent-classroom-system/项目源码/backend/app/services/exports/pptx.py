@@ -31,23 +31,23 @@ from pptx.oxml.ns import qn
 from pptx.util import Emu, Inches, Length, Pt
 
 from app.services.exports import svg as svg_export
-from app.services.exports.ir import Deck, Page, RenderOptions
+from app.services.exports import theme as themes
+from app.services.exports.ir import Bullet, Deck, Page, RenderOptions
+from app.services.generation import formula
 
 __all__ = ["render"]
 
-#: 品牌色（与 `frontend/src/styles/tokens.css` 同源）。
-_BRAND = RGBColor.from_string("0052D9")
-_INK = RGBColor.from_string("181818")
-_MUTED = RGBColor.from_string("6B7280")
-_WARN = RGBColor.from_string("92400E")
-_LINE = RGBColor.from_string("E7E7E7")
+#: 配色与字体不再是写死的常量，而是从**主题**（`exports/theme.py`）取 ——
+#: 一份「PPT 模板」就是一套色号 + 字体，`render()` 按 `options.template` 选一套，
+#: 一路传给需要颜色的那几个函数。几何量（尺寸、栏宽、字号）留在下面，不随主题变。
+def _rgb(color: str) -> RGBColor:
+    """主题的 6 位十六进制（不带 `#`）→ `RGBColor`。"""
+    return RGBColor.from_string(color)
+
 
 #: 幻灯片尺寸：16:9（13.333in × 7.5in）。
 _WIDTH = Inches(13.333)
 _HEIGHT = Inches(7.5)
-
-_FONT = "Microsoft YaHei"  # 中文机器上基本都有；没有时由 PowerPoint 兜底替换
-_MONO = "Consolas"
 
 _WATERMARK = "AI 生成 · EduAgentX"
 
@@ -82,11 +82,21 @@ def render(
     prs = Presentation()
     prs.slide_width = _WIDTH
     prs.slide_height = _HEIGHT
+    theme = themes.get(options.template)
 
     pages = list(deck.pages)
     for index, page in enumerate(pages):
         slide = prs.slides.add_slide(prs.slide_layouts[6])  # 6 = 空白版式
-        _paint(slide, deck, page, options, index=index, total=len(pages), generated_at=generated_at)
+        _paint(
+            slide,
+            deck,
+            page,
+            options,
+            theme,
+            index=index,
+            total=len(pages),
+            generated_at=generated_at,
+        )
         if on_page is not None:
             on_page(index + 1, len(pages))
 
@@ -96,7 +106,15 @@ def render(
 
 
 def _paint(
-    slide, deck: Deck, page: Page, options: RenderOptions, *, index: int, total: int, generated_at: str
+    slide,
+    deck: Deck,
+    page: Page,
+    options: RenderOptions,
+    theme: themes.Theme,
+    *,
+    index: int,
+    total: int,
+    generated_at: str,
 ) -> None:
     """一页 → 一张幻灯片。"""
     _text_box(
@@ -105,7 +123,8 @@ def _paint(
         Inches(0.42),
         Inches(12.1),
         Inches(0.95),
-        [_run_spec(page.title, size=30, bold=True, color=_BRAND)],
+        [_run_spec(page.title, size=30, bold=True, color=_rgb(theme.brand))],
+        theme,
     )
     if page.subtitle:
         _text_box(
@@ -114,12 +133,13 @@ def _paint(
             Inches(1.32),
             Inches(12.1),
             Inches(0.5),
-            [_run_spec(page.subtitle, size=15, color=_MUTED)],
+            [_run_spec(page.subtitle, size=15, color=_rgb(theme.muted))],
+            theme,
         )
 
     top = Inches(1.95)
     body_height = Inches(4.35)
-    _body(slide, page, options, top=top, height=body_height)
+    _body(slide, page, options, theme, top=top, height=body_height)
 
     footer = f"{index + 1} / {total}"
     if page.sources:
@@ -131,7 +151,8 @@ def _paint(
         Inches(6.92),
         Inches(9.6),
         Inches(0.4),
-        [_run_spec(footer, size=10, color=_MUTED)],
+        [_run_spec(footer, size=10, color=_rgb(theme.muted))],
+        theme,
     )
     if options.watermark:
         mark = _WATERMARK + (f" · {generated_at}" if generated_at else "")
@@ -141,7 +162,8 @@ def _paint(
             Inches(6.92),
             Inches(2.3),
             Inches(0.4),
-            [_run_spec(mark, size=10, color=_LINE)],
+            [_run_spec(mark, size=10, color=_rgb(theme.line))],
+            theme,
             align=PP_ALIGN.RIGHT,
         )
 
@@ -168,8 +190,23 @@ def _notes_text(page: Page, options: RenderOptions) -> str:
     return "\n".join(parts)
 
 
+def _inline_text(item: Bullet) -> str:
+    """要点那句话的纯文本版：`$…$` 换成 `plain()` 的 Unicode 近似。
+
+    PPTX 的文本框里放不进矢量图（`add_picture` 只能摆一块**独立**的位图，
+    摆不进一行字的中间），所以行内公式在这里只能是 `y = kx + b` 这种写法。
+    这与示意图的取舍是同一条：**PPT 是拿去改的**，一个不能编辑、不能挪动的
+    图片对象夹在要点中间，比排得差一点更碍事。
+    """
+    if not item.pieces:
+        return item.text
+    return "".join(
+        formula.plain(piece.text) if piece.kind == "math" else piece.text for piece in item.pieces
+    )
+
+
 def _body(  # noqa: PLR0912 —— 块型分派天然这么多分支，见 _blocks_html 的同款说明
-    slide, page: Page, options: RenderOptions, *, top: Length, height: Length
+    slide, page: Page, options: RenderOptions, theme: themes.Theme, *, top: Length, height: Length
 ) -> None:
     """正文区。按块型摆 —— 每一种块型在这里出现一次（与 HTML 渲染器一一对应）。
 
@@ -182,15 +219,15 @@ def _body(  # noqa: PLR0912 —— 块型分派天然这么多分支，见 _bloc
     figures: list[tuple[bytes, str]] = []  # (png 字节, 图注)
     for block in page.blocks:
         if block.kind == "heading":
-            specs.append([_run_spec(block.text, size=20, bold=True, color=_INK)])
+            specs.append([_run_spec(block.text, size=20, bold=True, color=_rgb(theme.ink))])
         elif block.kind == "paragraph":
             specs.append([_run_spec(_with_caption(block.caption, block.text), size=16)])
         elif block.kind == "bullets":
             for item in block.items:
-                specs.append([_run_spec(item.text, size=16)])
+                specs.append([_run_spec(_inline_text(item), size=16)])
         elif block.kind == "steps":
             for number, item in enumerate(block.items, start=1):
-                specs.append([_run_spec(f"{number}. {item.text}", size=16)])
+                specs.append([_run_spec(f"{number}. {_inline_text(item)}", size=16)])
         elif block.kind == "code":
             code = block.code
             if code is not None:
@@ -198,7 +235,7 @@ def _body(  # noqa: PLR0912 —— 块型分派天然这么多分支，见 _bloc
                     specs.append([_run_spec(line, size=13, mono=True)])
             explain = [item.text for item in block.items if item.text]
             for line in explain:
-                specs.append([_run_spec(f"· {line}", size=14, color=_MUTED)])
+                specs.append([_run_spec(f"· {line}", size=14, color=_rgb(theme.muted))])
         elif block.kind == "image":
             png = svg_export.render_png(block.svg)
             if png:
@@ -206,11 +243,11 @@ def _body(  # noqa: PLR0912 —— 块型分派天然这么多分支，见 _bloc
             else:
                 # 老课程的这一页没有 svg（P1 只出描述），或这段 svg 没画出来：
                 # 维持原样的灰色占位行，不假装有图。
-                specs.append([_run_spec(f"［图示］{block.text}", size=15, color=_MUTED)])
+                specs.append([_run_spec(f"［图示］{block.text}", size=15, color=_rgb(theme.muted))])
         elif block.kind == "quote":
             specs.append([_run_spec(block.text, size=16, italic=True)])
             for item in block.items:
-                specs.append([_run_spec(f"· {item.text}", size=15, color=_MUTED)])
+                specs.append([_run_spec(f"· {_inline_text(item)}", size=15, color=_rgb(theme.muted))])
         elif block.kind == "quiz" and block.quiz is not None and options.with_quiz:
             quiz = block.quiz
             specs.append([_run_spec(quiz.stem, size=18, bold=True)])
@@ -221,14 +258,14 @@ def _body(  # noqa: PLR0912 —— 块型分派天然这么多分支，见 _bloc
                 line = f"答案：{quiz.answer}"
                 if quiz.explain:
                     line += f"　解析：{quiz.explain}"
-                specs.append([_run_spec(line, size=14, color=_WARN)])
+                specs.append([_run_spec(line, size=14, color=_rgb(theme.warn))])
 
     if not specs and not figures:
         return
     if figures and specs:
         # 图和文字都有的页（figure / concept / example 都是这样）：左边图、右边字。
         _place_figures(
-            slide, figures, left=_BODY_LEFT, width=_IMAGE_COLUMN_WIDTH, top=top, limit=height
+            slide, figures, theme, left=_BODY_LEFT, width=_IMAGE_COLUMN_WIDTH, top=top, limit=height
         )
         _text_box(
             slide,
@@ -237,18 +274,22 @@ def _body(  # noqa: PLR0912 —— 块型分派天然这么多分支，见 _bloc
             _RIGHT_COLUMN_WIDTH,
             height,
             _flatten(specs),
+            theme,
             bullet_from=1,
         )
     elif figures:
         # 整页只有一张图：它可以把整幅正文区用起来。
-        _place_figures(slide, figures, left=_BODY_LEFT, width=_BODY_WIDTH, top=top, limit=height)
+        _place_figures(
+            slide, figures, theme, left=_BODY_LEFT, width=_BODY_WIDTH, top=top, limit=height
+        )
     else:
-        _text_box(slide, _BODY_LEFT, top, _BODY_WIDTH, height, _flatten(specs), bullet_from=1)
+        _text_box(slide, _BODY_LEFT, top, _BODY_WIDTH, height, _flatten(specs), theme, bullet_from=1)
 
 
 def _place_figures(
     slide,
     figures: list[tuple[bytes, str]],
+    theme: themes.Theme,
     *,
     left: Length,
     width: Length,
@@ -285,7 +326,8 @@ def _place_figures(
                 Emu(cursor),
                 width,
                 Emu(_CAPTION_HEIGHT),
-                [_run_spec(caption, size=12, color=_MUTED)],
+                [_run_spec(caption, size=12, color=_rgb(theme.muted))],
+                theme,
                 align=PP_ALIGN.CENTER,
             )
             cursor += _CAPTION_HEIGHT
@@ -331,13 +373,14 @@ def _run_spec(
     return (text, size, bold, italic, color, mono)
 
 
-def _text_box(  # noqa: PLR0917 —— 四个坐标跟 `add_textbox` 自己的签名同序，按位置读最顺
+def _text_box(  # noqa: PLR0917 —— 坐标跟 `add_textbox` 自己的签名同序，按位置读最顺
     slide,
     left: Length,
     top: Length,
     width: Length,
     height: Length,
     paragraphs: list[tuple],
+    theme: themes.Theme,
     *,
     align=PP_ALIGN.LEFT,
     bullet_from: int | None = None,
@@ -361,8 +404,8 @@ def _text_box(  # noqa: PLR0917 —— 四个坐标跟 `add_textbox` 自己的�
         run.font.size = Pt(size)
         run.font.bold = bold
         run.font.italic = italic
-        run.font.color.rgb = color or _INK
-        _set_font(run, _MONO if mono else _FONT)
+        run.font.color.rgb = color or _rgb(theme.ink)
+        _set_font(run, theme.font_mono_family if mono else theme.font_family)
         if bullet_from is not None and index >= bullet_from:
             _bullet(paragraph)
     return box

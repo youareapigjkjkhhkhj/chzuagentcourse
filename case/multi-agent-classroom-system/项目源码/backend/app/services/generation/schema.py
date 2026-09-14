@@ -31,7 +31,7 @@ from typing import Any, Mapping, Sequence
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic import ValidationError as PydanticValidationError
 
-from app.services.generation import diagram
+from app.services.generation import chrono, diagram, formula, plot, visual
 
 #: P1 §3.2 的九种页型。与 app/models/course.py 的 PAGE_KINDS 必须一致 ——
 #: 那边是数据库 CHECK，这边是生成约束，两边对不上就会出现「生成得出、存不进」。
@@ -115,6 +115,7 @@ class DiagramNode(BaseModel):
     text: str = ""
     shape: str = "box"  # box | ellipse | diamond
     accent: bool = False  # 强调（这一页的主角）
+    icon: str = ""  # 可选图标名（取值见 icons.NAMES）；留空则渲染时按文字自动配
 
     @model_validator(mode="before")
     @classmethod
@@ -148,12 +149,152 @@ class DiagramSpec(BaseModel):
     )
 
 
+class Curve(BaseModel):
+    """一条曲线。`expr` 是**关于 x 的表达式**（`"1/(1+exp(-x))"`），不是代码。
+
+    只有白名单里的函数与常数能用（`plot._FUNCS`），加了可调参数后参数名也
+    算是变量。认不出的表达式在那一条上降级 —— 别的曲线照画。
+    """
+
+    expr: str = ""
+    label: str = ""
+    color: str = ""
+
+
+class CurvePoint(BaseModel):
+    """曲线上的一个标注点（阈值、交点那种）。"""
+
+    x: float = 0.0
+    y: float = 0.0
+    label: str = ""
+
+
+class CurveParam(BaseModel):
+    """可调参数：滑块拖过 `values` 里的每个取值，各画一帧。
+
+    只允许一个 —— 两个参数就是二维网格，页面上摆不下，课堂上也没人愿意拖。
+    """
+
+    name: str = ""
+    label: str = ""
+    values: list[float] = Field(default_factory=list, max_length=plot.MAX_FRAMES)
+
+
+class PlotSpec(BaseModel):
+    """曲线图。`curves` 里的表达式由服务端采样成折线（`plot.render`）。"""
+
+    kind: str = "plot"
+    title: str = ""
+    subtitle: str = ""
+    xlabel: str = ""
+    ylabel: str = ""
+    xrange: tuple[float, float] | None = None
+    yrange: tuple[float, float] | None = None
+    curves: list[Curve] = Field(default_factory=list, max_length=plot.MAX_CURVES)
+    points: list[CurvePoint] = Field(default_factory=list, max_length=plot.MAX_POINTS)
+    params: list[CurveParam] = Field(default_factory=list, max_length=1)
+
+    @field_validator("xrange", "yrange", mode="before")
+    @classmethod
+    def _range_pair(cls, value: Any) -> Any:
+        """`{"min": 0, "max": 6}` 与 `[0, 6]` 都认（模型两种都写）。"""
+        if isinstance(value, Mapping):
+            low, high = value.get("min"), value.get("max")
+            return [low, high] if isinstance(low, (int, float)) and isinstance(high, (int, float)) else None
+        if isinstance(value, Sequence) and not isinstance(value, str) and len(value) == 2:
+            return list(value)
+        return None
+
+
+class FormulaSpec(BaseModel):
+    """一条公式。`tex` 是 LaTeX 子集（`formula` 的模块 docstring 列了认得的命令）。
+
+    既是「这一页的主图」，也可以在要点里内联出现 —— 内联走 `$…$`，
+    与主图同一个排版引擎，两处不会长得不一样。
+    """
+
+    kind: str = "formula"
+    tex: str = ""
+    caption: str = ""
+    size: float = 0.0  # 0 = 按主图的默认字号（formula.PAGE_SIZE）
+
+
+class TableSpec(BaseModel):
+    """对比表格。
+
+    用于「三种算法的复杂度对比」、「优缺点对照表」这类需要结构化对比的场景。
+    `headers` 是表头，`rows` 是数据行（每行的列数应与表头一致）。
+    `highlight` 是高亮单元格的坐标列表（[[行, 列], ...]，行从 0 开始算数据行，
+    列从 0 开始），用于强调重点。
+    """
+
+    kind: str = "table"
+    headers: list[str] = []
+    rows: list[list[str]] = []
+    caption: str = ""
+    highlight: list[list[int]] = []
+
+
+class TimelineEvent(BaseModel):
+    """时间轴上的一个事件。`time` 是年代/阶段名，`label` 是事件名。"""
+
+    time: str = ""
+    label: str = ""
+    note: str = ""
+    accent: bool = False
+
+
+class TimelineSpec(BaseModel):
+    """时间轴：一条横轴，事件交替摆在上下两侧（`chrono.render`）。
+
+    用于朝代更替、历史阶段、版本演进这类**有先后顺序**的内容 ——
+    塞进流程图网格会很难看，时间轴才是它本来的样子。
+    """
+
+    kind: str = "timeline"
+    events: list[TimelineEvent] = Field(
+        default_factory=list, max_length=chrono.MAX_EVENTS, description="按时间先后排"
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_rows(cls, value: Any) -> Any:
+        """模型把事件写成了流程图的 `rows` 也认 —— 拍平成 events。
+
+        它想画时间轴却只会在网格里摆节点时（教之前常这样），这份 spec
+        不该被退回流程图再画一遍格子：节点文字按行优先拍平成事件序列。
+        """
+        if not isinstance(value, Mapping) or value.get("events"):
+            return value
+        rows = value.get("rows")
+        if not isinstance(rows, (list, tuple)):
+            return value
+        events = []
+        for row in rows:
+            items = row if isinstance(row, (list, tuple)) else [row]
+            for item in items:
+                if isinstance(item, Mapping):
+                    label = str(item.get("text") or item.get("label") or "").strip()
+                    accent = bool(item.get("accent"))
+                else:
+                    label, accent = str(item or "").strip(), False
+                if label:
+                    events.append({"label": label, "accent": accent})
+        return {**value, "events": events} if events else value
+
+
+#: 四种 spec 的并集。**靠 `kind` 分派**，不是靠「哪个能解析出来」——
+#: 「试到不报错为止」会让一个字段写错的曲线图被当成流程图收下，画出一张
+#: 空白的网格图，还不如干脆没有图。
+VisualSpec = DiagramSpec | PlotSpec | FormulaSpec | TableSpec | TimelineSpec
+
+
 class Visual(BaseModel):
     """图示。`desc` 是给人看的描述，`spec` 是能真画出图的结构（服务端据此出 SVG）。"""
 
     type: str = ""
     desc: str = ""
-    spec: DiagramSpec | None = None
+    spec: VisualSpec | None = None
 
     @field_validator("spec", mode="before")
     @classmethod
@@ -161,8 +302,15 @@ class Visual(BaseModel):
         """图画不出来不该拖垮整页：spec 不合格就当没给，desc 照旧留着。"""
         if value is None:
             return None
+        models: dict[str, type[BaseModel]] = {
+            "plot": PlotSpec,
+            "formula": FormulaSpec,
+            "table": TableSpec,
+            "timeline": TimelineSpec,
+        }
+        model = models.get(visual.kind_of(value), DiagramSpec)
         try:
-            return DiagramSpec.model_validate(value)
+            return model.model_validate(value)
         except PydanticValidationError:
             return None
 
@@ -757,9 +905,7 @@ def _to_dsl(kind: str, draft: PageDraft, *, page_no: int, chapter_no: int) -> di
         "title": draft.title.strip(),
         "subtitle": draft.subtitle.strip(),
         "bullets": [
-            {"text": bullet.text.strip(), "emphasis": [e for e in bullet.emphasis if e.strip()]}
-            for bullet in draft.bullets
-            if bullet.text.strip()
+            payload for bullet in draft.bullets if (payload := _bullet(bullet)) is not None
         ],
         "narration": normalize_beats(draft.narration, page_no=page_no),
         "visual": _visual(draft.visual),
@@ -805,22 +951,67 @@ def _to_dsl(kind: str, draft: PageDraft, *, page_no: int, chapter_no: int) -> di
     }
 
 
-def _visual(visual: Visual | None) -> dict | None:
+def _bullet(item: Bullet) -> dict[str, Any] | None:
+    """一条要点。空要点丢掉（前端会画一个空圆点）。"""
+    text = item.text.strip()
+    if not text:
+        return None
+    bullet: dict[str, Any] = {
+        "text": text,
+        "emphasis": [e for e in item.emphasis if e.strip()],
+    }
+    pieces = _inline_pieces(text)
+    if pieces:
+        bullet["pieces"] = pieces
+    return bullet
+
+
+def _inline_pieces(text: str) -> list[dict[str, Any]]:
+    """要点里的行内公式：切出来、**就地排好**。
+
+    排在这一步而不是让前端排：浏览器不认 LaTeX，让它在运行时画一遍就得再写
+    一个排版引擎，而服务端那份是确定性的、与主图同一个引擎 —— 网页上的
+    `$x^2$` 与导出的 PDF 里那一张，是同一份字节。
+
+    整句没有公式时返回空表：绝大多数要点是纯文字，DSL 里不多那两个字段。
+    认得出是公式、却排不出来的（空式子之类），**当文字**接着往下走 ——
+    一个排不出的式子不该把整条要点变成空洞。
+
+    字号用 `formula.INLINE_SIZE`：这一份 SVG 前端是**直接原尺寸贴进要点行**的，
+    按主图的 `BASE_SIZE` 排出来会比整行字高出一倍多。
+    """
+    chunks = formula.split(text)
+    if all(not chunk.math for chunk in chunks):
+        return []
+    pieces: list[dict[str, Any]] = []
+    for chunk in chunks:
+        svg = formula.render(chunk.text, size=formula.INLINE_SIZE) if chunk.math else ""
+        if svg:
+            pieces.append({"kind": "math", "text": chunk.text, "svg": svg})
+        else:
+            pieces.append({"kind": "text", "text": chunk.text})
+    return pieces
+
+
+def _visual(draft: Visual | None) -> dict | None:
     """没有 desc 的图示描述是空话 —— 前端画不出来，当作没给。
 
     有 `spec` 就顺带把 SVG 画出来存进 DSL：渲染是**确定性**的，落库后
     导出三格式与网页放映用的是同一份字节，不必各自再画一遍。画不出来
     （节点太少、结构认不出）就只留 desc，退回「文字描述 + 占位」的老样子。
+
+    带可调参数的曲线图还会一并存下 `frames` 与 `params`（见 `visual.build`）：
+    滑块每一格都是一张画好的图，前端换图不做求值。
     """
-    if visual is None or not visual.desc.strip():
+    if draft is None or not draft.desc.strip():
         return None
-    page_visual: dict[str, Any] = {"type": visual.type.strip() or "diagram", "desc": visual.desc.strip()}
-    if visual.spec is not None:
-        spec = visual.spec.model_dump(by_alias=True)
-        svg = diagram.render(spec)
-        if svg:
+    page_visual: dict[str, Any] = {"type": draft.type.strip() or "diagram", "desc": draft.desc.strip()}
+    if draft.spec is not None:
+        spec = draft.spec.model_dump(by_alias=True)
+        built = visual.build(spec)
+        if built["svg"]:
             page_visual["spec"] = spec
-            page_visual["svg"] = svg
+            page_visual.update(built)
     return page_visual
 
 

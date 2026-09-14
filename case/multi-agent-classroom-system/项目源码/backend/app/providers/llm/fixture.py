@@ -152,7 +152,9 @@ _BEATS_REWRITE: tuple[tuple[str, ...], ...] = (
 _BULLET_BANK: tuple[str, ...] = (
     "先看清{topic}要解决的那个问题",
     "把{title}拆成几步，每一步都有明确的输入与输出",
-    "记住{title}的结论，再看它是怎么来的",
+    # 带一条内联公式：要点里的 `$…$` 与主图共用同一个排版引擎，
+    # 这条路离线也得走过一次（见 `_visual_of` 的同一条理由）
+    "记住{title}的结论 $y = kx + b$，再看它是怎么来的",
     "留意{title}最容易出错的地方",
     "想想{title}和上一页的关系",
 )
@@ -304,6 +306,59 @@ def _outline(topic: str, messages: Sequence[Mapping[str, Any]]) -> dict:
     }
 
 
+def _visual_of(title: str) -> dict[str, Any]:
+    """这一页配的图。三种轮着来。
+
+    **三种都要真出一次**：离线桩也走「spec → SVG」，验收环境没有外网、
+    也没有模型，桩要是只会画流程图，曲线与公式这两条路在离线就是没跑过的 ——
+    「离线全绿、上线第一页就露馅」。轮换按标题算，所以同一门课每次跑
+    拿到的是同一批图（见模块 docstring 第 1 条）。
+    """
+    desc = f"一张关于「{title}」的示意图"
+    kind = _stable_index(title, 3)
+    if kind == 0:
+        return {
+            "type": "diagram",
+            "desc": desc + "：左边画输入，右边画输出的变化",
+            "spec": {
+                "rows": [
+                    [{"text": "输入", "shape": "box"}, {"text": title[:8] or "处理", "shape": "box", "accent": True}],
+                    [{"text": "判断", "shape": "diamond"}, {"text": "输出", "shape": "box"}],
+                ],
+                "edges": [
+                    {"from": [0, 0], "to": [0, 1]},
+                    {"from": [0, 1], "to": [1, 0]},
+                    {"from": [1, 0], "to": [1, 1], "label": "通过"},
+                ],
+            },
+        }
+    if kind == 1:
+        # 带可调参数：滑块这条路只有真跑过一次才知道有没有画出来
+        return {
+            "type": "plot",
+            "desc": desc + f"：{title}随步长变化的两条曲线，可以拖动滑块看参数的影响",
+            "spec": {
+                "title": title[:16],
+                "xlabel": "x",
+                "ylabel": "y",
+                "xrange": [0, 6.28],
+                "params": [{"name": "k", "label": "系数 k", "values": [0.5, 1, 2]}],
+                "curves": [
+                    {"expr": "sin(k*x)", "label": "sin(kx)"},
+                    {"expr": "k*x/6.28", "label": "k·x"},
+                ],
+            },
+        }
+    return {
+        "type": "formula",
+        "desc": desc + "：把这一页的核心关系写成一个式子",
+        "spec": {
+            "tex": r"\sigma(z) = \frac{1}{1 + e^{-z}}",
+            "caption": title[:20],
+        },
+    }
+
+
 def _page(task: Mapping[str, Any], messages: Sequence[Mapping[str, Any]]) -> dict:
     """一页内容。页型决定要补哪些字段，通用字段每页都有。"""
     kind = str(task.get("kind") or "concept")
@@ -323,23 +378,7 @@ def _page(task: Mapping[str, Any], messages: Sequence[Mapping[str, Any]]) -> dic
         "narration": [
             {"text": template.format(title=title)} for template in beats
         ],
-        "visual": {
-            "type": "diagram",
-            "desc": f"一张关于「{title}」的示意图：左边画输入，右边画输出的变化",
-            # 离线桩也走一遍「spec → SVG」：验收环境没有外网，但出图这条路
-            # 得是真跑过的，不然离线全绿、上线第一页就露馅。
-            "spec": {
-                "rows": [
-                    [{"text": "输入", "shape": "box"}, {"text": title[:8] or "处理", "shape": "box", "accent": True}],
-                    [{"text": "判断", "shape": "diamond"}, {"text": "输出", "shape": "box"}],
-                ],
-                "edges": [
-                    {"from": [0, 0], "to": [0, 1]},
-                    {"from": [0, 1], "to": [1, 0]},
-                    {"from": [1, 0], "to": [1, 1], "label": "通过"},
-                ],
-            },
-        },
+        "visual": _visual_of(title),
     }
     sources, gaps = _citation(kind, title, messages)
     page["sources"] = sources
@@ -571,12 +610,25 @@ def _discussion_turn(task: Mapping[str, Any], messages: Sequence[Mapping[str, An
 
 
 def _answer(messages: Sequence[Mapping[str, Any]]) -> dict:
-    """教师答疑。回答里要**带上学生问的那件事**，否则人工评分（P3-E3）无从谈起。"""
+    """教师答疑。回答里要**带上学生问的那件事**，否则人工评分（P3-E3）无从谈起。
+
+    引导的收束那一步（提示词里有 `ORIGINAL` 围栏）要走另一套话术：**先接住
+    学生自己想出来的那半截**，再补全 —— 桩也要把这层差别演出来，不然「引导」
+    在离线验收里和「直接答疑」长得一模一样。
+    """
     lines = _fenced(messages, "QUESTION").splitlines()
     asked = lines[0].strip() if lines else ""
     title = _page_title_of(messages)
     key = _first_point(messages)
-    if asked:
+    original = _fenced(messages, "ORIGINAL").splitlines()
+    if original:
+        first = original[0].strip()
+        body = (
+            f"你说的「{asked[:32]}」——这一步是对的，抓的就是它。"
+            f"回到你一开始问的「{first[:28]}」：{key or title}，"
+            f"把这一步接上去，整条就通了。"
+        )
+    elif asked:
         body = (
             f"你问的是「{asked[:40]}」。放到这一页来看，{key or title}——"
             f"所以先按刚才讲的那一步来做，遇到特殊情况我们再单独说。"
@@ -584,6 +636,22 @@ def _answer(messages: Sequence[Mapping[str, Any]]) -> dict:
     else:
         body = f"这个问题先记着。就「{title}」来说，{key or '先抓住结论再回头看推导'}。"
     return {"text": body, "followUp": f"你可以自己找一个例子，套一下「{title}」试试。"}
+
+
+def _scaffold(messages: Sequence[Mapping[str, Any]]) -> dict:
+    """引导模式下的那句反问。
+
+    **必须是一句真问句**（句尾带问号）：离线验收要能一眼看出「老师没有直接
+    给答案」，说成一句陈述句就白测了。
+    """
+    lines = _fenced(messages, "QUESTION").splitlines()
+    asked = lines[0].strip() if lines else ""
+    title = _page_title_of(messages)
+    if asked:
+        text = f"先别急着要结论 —— 你觉得「{asked[:24]}」的关键在哪一步？"
+    else:
+        text = f"就「{title}」来说，你先说说自己卡在哪一步？"
+    return {"text": text}
 
 
 def _board(messages: Sequence[Mapping[str, Any]]) -> dict:
@@ -906,7 +974,7 @@ def _stable_index(text: str, size: int) -> int:
 
 #: 任务名 → 造内容的函数。做成表而不是一长串 `if`：
 #: 「桩认得哪些任务」成了一个能被读、被断言的集合，而不是散在函数体里。
-#: 前五个是 P1 生成课用的，后四个是 P3 **讲课当中**用的（它们必须又短又快，
+#: 前五个是 P1 生成课用的，后五个是 P3 **讲课当中**用的（它们必须又短又快，
 #: 而且不能出现「示例文本」—— 一句话被播出去就是要被人听见的）。
 _BUILDERS: dict[
     str, Callable[[Mapping[str, Any], Sequence[Mapping[str, Any]]], dict | None]
@@ -919,6 +987,7 @@ _BUILDERS: dict[
     "interjection": _interjection,
     "discussion_turn": _discussion_turn,
     "answer": lambda task, messages: _answer(messages),
+    "scaffold": lambda task, messages: _scaffold(messages),
     "board": lambda task, messages: _board(messages),
 }
 

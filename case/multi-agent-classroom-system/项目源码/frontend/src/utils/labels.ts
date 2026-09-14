@@ -28,14 +28,22 @@ export const PAGE_KIND_LABELS: Record<PageKind, string> = {
  * 认识的翻译成中文，不认识的原样显示（见 `visualTypeLabel`），
  * 页面上不会因为模型换了个词就空一块。
  *
- * 已知会出现的两类：真·图示词（diagram / figure / flow …），以及模型顺手
- * 把页型（cover / quiz / summary）当类型写的（跑真模型时两个演示课程里都有）。
+ * 已知会出现的三类：真·图示词（diagram / figure / flow …）、三种图的正式名
+ * （`plot` / `formula`，我们的离线桩写的就是它们）、以及模型顺手把页型
+ * （cover / quiz / summary）当类型写的（跑真模型时两个演示课程里都有）。
  */
 export const VISUAL_TYPE_LABELS: Record<string, string> = {
   diagram: '示意图',
   figure: '插图',
   flow: '流程图',
   chart: '图表',
+  // 三种图的正式名（见 P1 §3.4）：曲线图 / 公式，以及它们的常见别称
+  plot: '曲线图',
+  curve: '曲线图',
+  line: '曲线图',
+  formula: '公式',
+  math: '公式',
+  equation: '公式',
   timeline: '时间轴',
   table: '表格',
   map: '地图',

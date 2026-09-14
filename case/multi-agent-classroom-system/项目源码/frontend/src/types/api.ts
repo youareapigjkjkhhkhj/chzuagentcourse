@@ -99,6 +99,8 @@ export interface GenerationSettings {
   autoIllustration: boolean
   quizPerChapter: boolean
   whiteboard: boolean
+  /** 苏格拉底式引导：学生提问先追问一层再给答案（关掉就是直接答）。 */
+  socraticAnswer: boolean
 }
 
 /** 滑杆的 min/max 与后端校验共用同一份常量（/api/capabilities）。 */
@@ -267,9 +269,25 @@ export interface Beat {
   estSec?: number
 }
 
+/**
+ * 要点切成的小块。`math` 块的 `svg` 是服务端排好的行内公式，
+ * 前端原尺寸贴进这一行就行（见 `SlideBullet.pieces`）。
+ */
+export interface SlidePiece {
+  kind: 'text' | 'math'
+  text: string
+  svg?: string
+}
+
 export interface SlideBullet {
   text: string
   emphasis?: string[]
+  /**
+   * 有行内公式的要点才有这一项；没有就是条纯文字。
+   * 前端**按 `pieces` 渲染、不按 `text` 渲染** —— `text` 里的 `$…$` 是
+   * 原始标记，直接显示出来会带着美元号。`pieces` 拼起来等于 `text`。
+   */
+  pieces?: SlidePiece[]
 }
 
 export interface QuizItem {
@@ -300,6 +318,36 @@ export interface SlideSource {
   fileName?: string
 }
 
+/**
+ * 可调参数（`visual.params`）。页面据此出一个滑块：拖到第 i 个取值，
+ * 就把 `frames[i].svg` 换上去。
+ */
+export interface SlideVisualParam {
+  name: string
+  label: string
+  values: number[]
+}
+
+/**
+ * 这一页的图。
+ *
+ * 三种图（流程图 / 曲线图 / 公式）共用一个结构：`spec` 是模型给的结构、
+ * `svg` 是服务端按它画好的那一张。**导出三格式取的就是 `svg` 这一帧** ——
+ * 交互（滑块、逐拍揭示）只活在页面里。
+ */
+export interface SlideVisual {
+  type: string
+  desc: string
+  svg?: string
+  spec?: unknown
+  /**
+   * 可调参数的每一帧（服务端预渲染，与 `svg` 同一套画法）。
+   * 只有「带 params 的曲线图」才有；没有参数时这两个字段都不出现。
+   */
+  frames?: { value: number; svg: string }[]
+  params?: SlideVisualParam
+}
+
 export interface SlideDsl {
   kind?: PageKind
   title?: string
@@ -309,13 +357,13 @@ export interface SlideDsl {
   /**
    * 这一页的示意图。
    *
-   * `svg` 是**服务端画好的**（生成时由 `generation.diagram` 从 `spec` 确定性
+   * `svg` 是**服务端画好的**（生成时由 `generation.visual` 从 `spec` 确定性
    * 渲染，随 DSL 落库），前端只负责把它显示出来 —— 这里没有画图的逻辑，
    * 也就不存在「工作台预览和导出课件长得不一样」这件事。
    *
    * 老课程只有 `desc`（P1 原本只出描述），那时按文字提示画，不假装有图。
    */
-  visual?: { type: string; desc: string; svg?: string; spec?: unknown } | null
+  visual?: SlideVisual | null
   interaction?: { askAtEnd: boolean; allowFreeChat: boolean } | null
   boardPlan?: { tool: string; desc: string; atBeat: string }[]
   /** 这一页的出处（P4-8 的徽标读它）。**只有核对通过的才在里面**。 */
@@ -865,6 +913,18 @@ export interface ExportOptions {
   watermark?: boolean
   withNotes?: boolean
   withQuiz?: boolean
+  /**
+   * 用哪套 PPT 模板（配色+字体），值是后端 `exports/theme.py` 里的 key
+   * （`default` / `swiss` / `tech`）。缺省 `default`。只对课件生效 ——
+   * 课堂记录导的是逐字稿，不套模板。
+   */
+  template?: string
+}
+
+/** 一套可选的 PPT 模板。清单由后端下发（`ExportList.templates`），前端不写死。 */
+export interface ExportTemplate {
+  key: string
+  name: string
 }
 
 /**
@@ -911,6 +971,11 @@ export interface ExportList {
    * 用户就会点到一个「这个格式不支持」的报错上。
    */
   supported: Record<ExportScope, ExportFormat[]>
+  /**
+   * 可选的 PPT 模板（配色+字体）。和 `supported` 一样由后端下发 ——
+   * 模板是后端 `theme.py` 那份注册表说了算，前端写死一份迟早对不上。
+   */
+  templates: ExportTemplate[]
 }
 
 export interface ExportCreatePayload {

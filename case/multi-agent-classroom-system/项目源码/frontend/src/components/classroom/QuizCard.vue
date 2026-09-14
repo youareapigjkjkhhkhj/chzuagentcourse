@@ -44,10 +44,33 @@ function pick(option: string): void {
   emit('submit', option)
 }
 
-/** 答错之后的下一步。`remedial` 是后端给的分支名，前端只翻译不说别的。 */
+/** 答错之后的下一步。P6.1 三档分支：pass / remedial / review。 */
 const branchText = computed(() => {
   if (!props.result) return ''
-  return props.result.correct ? '回答正确，继续讲下一段。' : '答错了 —— 看一下解析，这个知识点稍后再过一遍。'
+  if (props.result.correct) return '回答正确，继续讲下一段。'
+  switch (props.result.branch) {
+    case 'review':
+      return '同章连错多题 —— 已插入一页复习，稍后自动展示。'
+    case 'remedial':
+      return '答错了 —— AI 同学会补充讲解这个知识点。'
+    default:
+      return '答错了 —— 看一下解析，这个知识点稍后再过一遍。'
+  }
+})
+
+/** P6.1：分支反馈的补充消息（AI 同学的讲解 / 复习页标题）。 */
+const feedbackText = computed(() => {
+  const fb = props.result?.feedback
+  if (!fb) return ''
+  if (fb.message && typeof fb.message === 'object') {
+    const msg = fb.message as { speaker?: string; text?: string }
+    if (msg.text) return msg.text
+  }
+  if (fb.reviewPage && typeof fb.reviewPage === 'object') {
+    const page = fb.reviewPage as { title?: string }
+    if (page.title) return `复习页：${page.title}`
+  }
+  return ''
 })
 </script>
 
@@ -99,6 +122,10 @@ const branchText = computed(() => {
     <div v-if="result" class="quiz__result" :class="result.correct ? 'is-right' : 'is-wrong'">
       <div class="quiz__verdict">{{ result.correct ? '回答正确' : '回答错误' }}</div>
       <div class="quiz__branch">{{ branchText }}</div>
+      <div v-if="feedbackText" class="quiz__feedback">
+        <t-tag size="small" variant="light" theme="primary">补充</t-tag>
+        <span>{{ feedbackText }}</span>
+      </div>
       <div v-if="result.explain" class="quiz__explain">
         <span class="quiz__explain-label">解析</span>
         <span>{{ result.explain }}</span>
@@ -249,6 +276,18 @@ const branchText = computed(() => {
   margin-top: 4px;
   font-size: 13px;
   color: var(--td-text-secondary);
+}
+
+.quiz__feedback {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--td-bg-color-secondarycontainer);
+  border-radius: var(--td-radius-default);
+  font-size: 13px;
+  color: var(--td-text-primary);
 }
 
 .quiz__explain {

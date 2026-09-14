@@ -700,6 +700,22 @@ watch(status, (value) => {
 
 const headerTitle = computed(() => store.courseTitle || course.value?.title || '课堂')
 const onlineCount = computed(() => presence.value.online)
+
+/**
+ * 这堂课里的 AI 同学（人数在设置页「AI 同学数量」里调，服务端按它取角色）。
+ *
+ * 与右侧面板上的名单**同一个来源**：顶栏说「3 位同学」，讨论里就该是那 3 位
+ * 在说话。它们不算进 `online` —— 那个数是真人的到齐情况。
+ */
+const aiMembers = computed(() => presence.value.aiMembers)
+
+const onlineTitle = computed(() => {
+  if (!aiMembers.value.length) return `${onlineCount.value} 人正在这堂课里`
+  return (
+    `${onlineCount.value} 位真人在线；另有 ${aiMembers.value.length} 位 AI 同学，` +
+    '讨论环节由 TA 们发言（人数在设置页「AI 同学数量」里调）'
+  )
+})
 const handLabel = computed(() =>
   store.myHandPosition > 0 ? `已举手（第 ${store.myHandPosition} 位）` : '举手',
 )
@@ -722,8 +738,9 @@ const handLabel = computed(() =>
             {{ CLASSROOM_STATUS_LABELS[status] }}
           </t-tag>
           <t-tag v-else variant="light">尚未开课</t-tag>
-          <t-tag v-if="sessionId" variant="light" :title="`${onlineCount} 人正在这堂课里`">
+          <t-tag v-if="sessionId" variant="light" :title="onlineTitle">
             在线 {{ onlineCount }}
+            <span v-if="aiMembers.length"> · AI {{ aiMembers.length }}</span>
           </t-tag>
           <t-tag v-if="store.wsDisabled" variant="light" theme="warning">手动翻页</t-tag>
           <t-tag v-if="store.mode === 'manual' && !store.wsDisabled" variant="light">

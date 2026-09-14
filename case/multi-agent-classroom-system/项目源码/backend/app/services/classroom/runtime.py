@@ -89,8 +89,10 @@ from app.services.classroom import (
     board,
     interjection,
     prompts,
+    quiz_feedback,
     recorder,
     roster,
+    scaffold,
     scheduler,
     sessions,
     speech,
@@ -154,6 +156,11 @@ BOARD_RETRY_SEC = 2.0
 #: 模型一时答不上来时老师说的话。**不编内容**：宁可承认没接上，也不能让一句
 #: 编出来的答案进课堂记录（P3-A5 要的是「有一句回答」，不是「有内容」）。
 FALLBACK_ANSWER = "这个问题我一时没想好怎么讲最清楚，我们先记下来，课后再补一段。"
+
+#: 判「这次该追问还是该收束」时往回看几条消息（`scaffold.next_stage`）。
+#: 比 `prompts.RECENT_TURNS` 宽：追问那一步要能看到**上一条学生提问**，
+#: 中间隔着老师那句追问，只看 3 条有时候刚到边（`scaffold.original_question` 同理）。
+_STAGE_WINDOW = 6
 
 #: 消息类型白名单（`models/classroom.py` 的 `MESSAGE_TYPES`）。
 #: 这里是**运行时**再收一次：提示词/模型给的 `type` 不合法时不该让落库 500。
@@ -220,8 +227,8 @@ def submit_quiz(
     """判一次作答（§4.1 `POST /quiz-submit`，HTTP 与 WS 共用）。
 
     一次作答**一行**（P6.1 要分开算第一次答对率与最终答对率），判定结果就是
-    `quiz_result` 事件的载荷。判完把课推回 `lecture`：MVP 的「答错分支」只到
-    文案（`branch=remedial`），补救讲解在 P6。
+    `quiz_result` 事件的载荷。判完把课推回 `lecture`：P6.1 的三档分支在这里
+    真正落地（pass/remedial/review）。
 
     **位置不动**：答完之后由客户端再报一次 `beat_done` 继续（见模块 docstring）。
     """
@@ -240,18 +247,36 @@ def submit_quiz(
     chosen = str(option or "").strip()[:OPTION_MAX_CHARS]
     answer = str(quiz.get("answer") or "")
     correct = bool(chosen) and chosen == answer
+    concept_tag = str(quiz.get("conceptTag") or "")
     recorder.record_quiz(
         session.id,
         course_id=session.course_id,
         page_no=page.page_no,
         option=chosen,
         correct=correct,
-        node_id=str(quiz.get("conceptTag") or ""),
+        node_id=concept_tag,
         response_ms=int(response_ms or 0),
     )
     # 「这一页答过了」记在状态口袋里：位置不动，全靠这个记号让下一次 beat_done
     # 走「继续」而不是「再弹一次题」。
     _mark(session, "quizDonePages", page.page_no)
+
+    # P6.1：三档分支（pass/remedial/review）
+    page_dict = {"pageNo": page.page_no, "quiz": quiz}
+    branch = quiz_feedback.decide_branch(session, page_dict, correct)
+    feedback_event: dict | None = None
+    if branch == "pass":
+        feedback_event = quiz_feedback.handle_pass(session, page_dict)
+    elif branch == "remedial":
+        feedback_event = quiz_feedback.handle_remedial(session, page_dict, concept_tag)
+    elif branch == "review":
+        chapter_no = _get_chapter_no(session.course_id, page.page_no)
+        if chapter_no is not None:
+            feedback_event = quiz_feedback.handle_review(session, page_dict, chapter_no)
+        else:
+            branch = "remedial"  # 拿不到章号，降级为 remedial
+            feedback_event = quiz_feedback.handle_remedial(session, page_dict, concept_tag)
+
     event = recorder.publish(
         session,
         "quiz_result",
@@ -261,13 +286,22 @@ def submit_quiz(
             "option": chosen,
             "answer": answer,
             "explain": str(quiz.get("explain") or ""),
-            "branch": "pass" if correct else "remedial",
+            "branch": branch,
+            "feedback": feedback_event,
         },
     )
     if str(session.status or "") == state.QUIZ_WAIT:
         state.transition(session, state.LECTURE, reason="测验作答完成")
         announce_state(session)
     return event
+
+
+def _get_chapter_no(course_id: str, page_no: int) -> int | None:
+    """拿这一页属于第几章（quiz_feedback 用）。"""
+    from app.models.course import CoursePage
+
+    row = CoursePage.query.filter_by(course_id=course_id, page_no=page_no).first()
+    return row.chapter_no if row else None
 
 
 def raise_hand(session: ClassroomSession, user_id: str) -> dict:
@@ -676,7 +710,7 @@ class ClassroomRuntime:
         text = self._student_text(payload)
         page = self.timeline.page(int(self.session.current_page_no or 1))
         self._interrupt("ask")  # 学生提问可抢占除教师答疑外的一切（§2.2）
-        self._speak_text(
+        message = self._speak_text(
             speaker_code=self.user_id or "me",
             speaker_name=self._name or "我",
             speaker_kind="me",
@@ -686,18 +720,25 @@ class ClassroomRuntime:
             page_no=page.page_no if page is not None else 0,
             quote_msg_id=str(payload.get("quoteMsgId") or ""),
         )
-        self._answer(text, page)
+        # 把这条消息的 id 交给答疑：老师那句要引用它，引导链才是串起来的
+        self._answer(text, page, quote_msg_id=str(message.get("id") or ""))
 
     def _on_chat(self, payload: Mapping[str, Any]) -> None:
-        """讨论区里发的消息：进消息流；点名问老师时老师才回答。
+        """讨论区里发的消息：进消息流；点名问老师、或者**在接老师的追问**时才回答。
 
         普通发言**不发 `speak`**（`silent=True`）：没有音频要播，
         发一条只会让所有人的播放器多一次空转。消息本身照发 —— 讨论区靠它。
+
+        第二类回答的条件（`scaffold.awaiting_reply`）是后加的：老师刚追问完
+        一句「你觉得 X 和 Y 差在哪」，学生多半**不会**再打一次「@老师」，
+        只是接着说自己的想法。这时候老师不吭声，课堂上就悬着一个没人接的问题。
         """
         state.require_interactive(self.session)
         text = self._student_text(payload)
         page = self.timeline.page(int(self.session.current_page_no or 1))
-        self._speak_text(
+        recent = self._recent()
+        inherits = scaffold.awaiting_reply(recent)
+        message = self._speak_text(
             speaker_code=self.user_id or "me",
             speaker_name=self._name or "我",
             speaker_kind="me",
@@ -705,10 +746,13 @@ class ClassroomRuntime:
             kind="chat",
             message_type="comment",
             page_no=page.page_no if page is not None else 0,
+            # 在接老师的追问：这句话得引用**那一句**，链子才串得下去
+            quote_msg_id=str(payload.get("quoteMsgId") or "")
+            or (str(recent[-1].get("id") or "") if inherits else ""),
             silent=True,
         )
-        if str(payload.get("target") or "") == "teacher":
-            self._answer(text, page)
+        if str(payload.get("target") or "") == "teacher" or inherits:
+            self._answer(text, page, quote_msg_id=str(message.get("id") or ""))
 
     def _on_hand(self, payload: Mapping[str, Any]) -> None:
         """举手 / 撤回 / 点名（P3-A5/A6）。"""
@@ -812,6 +856,9 @@ class ClassroomRuntime:
         队列是「老师与 AI 同学谁先开口」的仲裁器；学生说的话本人已经确认过了，
         再排队等 AI 说完才出现就成了「我发的消息卡住了」。
         真人说话也**不需要 300ms 的 `typing`** —— 那个停顿是给 AI 留的。
+
+        返回落库后的那条消息（`id` 就是它）—— 调用方拿这个 id 去引用它，
+        引导式答疑的链子就是这么串起来的。
         """
         message = recorder.add_message(
             self.session,
@@ -822,7 +869,7 @@ class ClassroomRuntime:
             page_no=page_no or None,
             quote_msg_id=quote_msg_id,
         )
-        event = self._publish("message", {"msg": message})
+        self._publish("message", {"msg": message})
         if not silent:
             self._publish(
                 "speak",
@@ -835,7 +882,7 @@ class ClassroomRuntime:
                     page_no=page_no,
                 ).to_dict(),
             )
-        return event
+        return message
 
     def _speak(self, turn: Turn) -> None:
         """把一条发言放出去：`typing` → `speak` → `message` →（讲稿才有）`subtitle`。
@@ -860,6 +907,7 @@ class ClassroomRuntime:
             page_no=turn.page_no or None,
             beat_id=turn.beat_ids[0] if turn.beat_ids else "",
             audio_url=turn.audio_url,
+            quote_msg_id=turn.quote_msg_id,
             ts=turn.ts or None,
         )
         # 插话是「真的说出口了」才记（`interjection.mark_interjected` 的口径）
@@ -941,31 +989,28 @@ class ClassroomRuntime:
         estimated = SPEAK_BASE_MS + SPEAK_PER_CHAR_MS * len(turn.text or "")
         return max(SPEAK_MIN_MS, min(estimated, SPEAK_MAX_MS))
 
-    def _answer(self, question: str, page: timeline_module.TimelinePage | None) -> None:
+    def _answer(self, question: str, page: timeline_module.TimelinePage | None, *, quote_msg_id: str = "") -> None:
         """教师答疑（P3-A5）：一次 LLM 调用，入队等 `tick` 说出来。
+
+        **两种走法**（`scaffold.next_stage` 判）：默认先**追问一层** —— 学生问
+        「为什么」，老师先反问「你觉得 X 和 Y 差在哪」，等他自己说一嘴，下一句才
+        收束给答案。这不是刁难：学生说的那一嘴本身就是这堂课留下来的产物，
+        记录页的「思辨轨迹」数的就是它（`scaffold.build_trails`）。两条路都会
+        直接收束：学生说「直接告诉我」、或者已经追问过一层了 —— 把人困在问题里
+        比不给答案更糟。
 
         **不编内容**：模型失败时用 `FALLBACK_ANSWER`，而不是拿问题本身拼一句
         看起来像答案的话 —— 那会进课堂记录，而记录是要能回看的。
         """
+        recent = self._recent(_STAGE_WINDOW)
+        stage = (
+            scaffold.ANSWER_TYPE
+            if page is None
+            else scaffold.next_stage(recent, on=scaffold.enabled())
+        )
         text = FALLBACK_ANSWER
         if page is not None:
-            try:
-                result = call_json(
-                    get_registry().current_llm(),
-                    prompts.answer_messages(
-                        question, self._page_dsl(page.page_no), self._teacher(), self._recent()
-                    ),
-                    schema=prompts.SCHEMA_ANSWER,
-                    timeout=turn_timeout(),
-                )
-                said = " ".join(str(result.data.get("text") or "").split())
-                follow = " ".join(str(result.data.get("followUp") or "").split())
-                if said:
-                    text = said[: prompts.MAX_ANSWER_CHARS]
-                    if follow:
-                        text = f"{text} {follow[:60]}"
-            except AppError as exc:
-                logger.info("教师答疑跳过（用兜底话术）：%s", exc.message)
+            text, stage = self._draft(question, page, recent, stage)
 
         hits = sensitive.scan(text)
         if hits:
@@ -977,6 +1022,7 @@ class ClassroomRuntime:
                 extra={"sessionId": self.session.id},
             )
             text = FALLBACK_ANSWER
+            stage = scaffold.ANSWER_TYPE  # 兜底那句是个答案形状的话，别记成追问
 
         # 答疑是**当场合成**的（讲稿才有预合成）：配不上就按纯文字走，
         # 这一层绝不能因为上游 TTS 抖动就把答案本身弄没
@@ -989,12 +1035,60 @@ class ClassroomRuntime:
                 speaker_kind="teacher",
                 text=text,
                 kind="answer",
-                message_type="answer",
+                # `question` / `answer` 两个类型分别就是「追问」与「收束」——
+                # 记录页靠它认出链上这一环演的是哪一出
+                message_type=stage,
+                quote_msg_id=quote_msg_id,
                 page_no=page.page_no if page is not None else 0,
                 audio_url=str(entry.get("url") or ""),
                 duration_ms=_int_of(entry.get("durationMs")),
             )
         )
+
+    def _draft(
+        self,
+        question: str,
+        page: timeline_module.TimelinePage,
+        recent: list[dict],
+        stage: str,
+    ) -> tuple[str, str]:
+        """造老师这句话，返回 `(文本, 消息类型)`。失败就退回兜底话术。
+
+        **失败时类型跟着文本走**：兜底那句是「这个问题我一时没想好怎么讲最清楚…」，
+        它是个答案形状的话。追问的调用失败了却把这条记成 `question`，记录页就会
+        多出一条没人问的「追问」—— 记录可以少，不能说反。
+        """
+        dsl = self._page_dsl(page.page_no)
+        asking = stage == scaffold.ASK_TYPE
+        try:
+            result = call_json(
+                get_registry().current_llm(),
+                prompts.scaffold_messages(question, dsl, self._teacher(), recent)
+                if asking
+                else prompts.answer_messages(
+                    question,
+                    dsl,
+                    self._teacher(),
+                    recent,
+                    guided_from=scaffold.original_question(recent),
+                ),
+                schema=prompts.SCHEMA_SCAFFOLD if asking else prompts.SCHEMA_ANSWER,
+                timeout=turn_timeout(),
+            )
+            said = " ".join(str(result.data.get("text") or "").split())
+            if asking:
+                if said:
+                    return said[: prompts.MAX_SCAFFOLD_CHARS], scaffold.ASK_TYPE
+                return FALLBACK_ANSWER, scaffold.ANSWER_TYPE
+            follow = " ".join(str(result.data.get("followUp") or "").split())
+            if said:
+                text = said[: prompts.MAX_ANSWER_CHARS]
+                if follow:
+                    text = f"{text} {follow[:60]}"
+                return text, scaffold.ANSWER_TYPE
+        except AppError as exc:
+            logger.info("教师答疑跳过（用兜底话术）：%s", exc.message)
+        return FALLBACK_ANSWER, scaffold.ANSWER_TYPE
 
     # --- 内部：插话（§2.3）---
 

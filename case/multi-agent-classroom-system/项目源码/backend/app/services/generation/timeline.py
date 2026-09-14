@@ -123,7 +123,7 @@ def _codes(failed: Sequence[ModelCall]) -> list[str]:
 
 
 def _models(calls: Sequence[ModelCall]) -> list[str]:
-    out: list[str] = []
+    out = []
     for row in calls:
         name = row.model or row.provider or ""
         if name and name not in out:

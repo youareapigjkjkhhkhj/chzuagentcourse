@@ -15,7 +15,7 @@
  *
  * 白板 Tab 的画笔是另一回事：那条走服务端（见 `ClassroomBoard.vue`）。
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import PageSlide from '@/components/workbench/PageSlide.vue'
 import { captionParts, formatClock } from '@/utils/voice'
@@ -335,6 +335,35 @@ const parts = computed(() => {
   return captionParts(props.cues, props.positionMs)
 })
 
+/**
+ * 幻灯片上的图该揭示到第几拍（`PageSlide` 的 `beat`）。
+ *
+ * 讲稿的每一拍都是一次发言（`runtime` 那边一个 beat 一条 turn），而这一句
+ * 讲的是哪一拍，服务端写在 `speaking.beats` 里 —— 这里按 beatId 在这一页的
+ * 讲稿里查位置，不自己解析 `p3-b1` 这种串（编法是服务端的事，前端解析等于
+ * 把那个约定抄了第二份）。
+ *
+ * **只进不退**：一句讲完 `speaking` 就清空了，跟着它回退的话，老师一停下来
+ * 图就缩回去一半 —— 那一页讲到哪儿，图就长到哪儿。翻页时归零重新长。
+ *
+ * 取不到（这一页没讲稿、这句是答疑不是讲稿）就是 `null`，图整张全显示。
+ */
+const revealedBeat = ref<number | null>(null)
+
+watch(
+  () => [props.page?.pageNo, props.speaking?.pageNo, props.speaking?.beats?.[0]] as const,
+  ([pageNo, spokenPage, beatId], prev) => {
+    // 第一次进来（`immediate`）没有旧值，也当翻页处理 —— 本来就是从头开始
+    if (prev?.[0] !== pageNo) revealedBeat.value = null
+    // 讲的是别的页（翻页有半拍延迟）时不动这一页的图
+    if (!beatId || spokenPage !== pageNo) return
+    const at = (props.page?.dsl?.narration ?? []).findIndex((beat) => beat.beatId === beatId)
+    if (at < 0) return
+    if (revealedBeat.value === null || at > revealedBeat.value) revealedBeat.value = at
+  },
+  { immediate: true },
+)
+
 /** 进度条按整课算：F3-2 要的是「07:32 / 25:00 真实计算」。 */
 const percent = computed(() => {
   if (props.totalMs <= 0) return 0
@@ -419,7 +448,13 @@ function togglePlay() {
         class="stage-screen"
         :style="{ '--stage-zoom': stageZoom }"
       >
-        <PageSlide variant="classroom" :page="page" :course-title="courseTitle" :page-count="pageCount" />
+        <PageSlide
+          variant="classroom"
+          :page="page"
+          :course-title="courseTitle"
+          :page-count="pageCount"
+          :beat="revealedBeat"
+        />
 
         <div
           class="stage-ink"

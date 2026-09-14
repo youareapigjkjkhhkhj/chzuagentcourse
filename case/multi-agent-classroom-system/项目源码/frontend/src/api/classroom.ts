@@ -16,6 +16,7 @@ import type {
   ClassroomStart,
   ClassroomSummary,
   ClassroomTicket,
+  MasteryData,
   MessagePage,
   QuizResult,
 } from '@/types/classroom'
@@ -92,6 +93,9 @@ export const submitQuiz = (id: string, payload: { option: string; responseMs?: n
 /** 这一页的板书笔画。没有板书的页返回空数组，不是 404。 */
 export const fetchBoard = (id: string, pageNo: number) =>
   get<{ pageNo: number; strokes: BoardStroke[] }>(`/classroom/sessions/${id}/board/${pageNo}`)
+
+/** 学情总览（P6.1）：按章掌握度 + 错题列表 + 复习页记录。 */
+export const fetchMastery = (id: string) => get<MasteryData>(`/classroom/sessions/${id}/mastery`)
 
 /**
  * 课堂通道的 WS 地址。`EventSource`/axios 都不走这条路，只能自己拼 ——

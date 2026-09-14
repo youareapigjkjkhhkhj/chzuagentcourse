@@ -86,6 +86,10 @@ class Turn:
     #: beat 可查，只能由造 Turn 的那一步把时长一起递进来。
     duration_ms: int = 0
     message_type: str = "lecture"
+    #: 这条发言是**回谁**说的（落库进 `messages.quote_msg_id`）。引导式答疑靠它
+    #: 把「学生问 → 老师追问 → 学生答 → 老师收束」串成一条链，记录页据此画出
+    #: 思辨轨迹（`scaffold.build_trails`）。讲稿、插话不带 —— 它们不是回复。
+    quote_msg_id: str = ""
     #: 讲稿的时间戳（`ts`）—— 讲稿消息在时间线上的位置由 beat 决定，
     #: 不是「写库的那一刻」，所以它随 Turn 一起传。
     ts: str = ""
