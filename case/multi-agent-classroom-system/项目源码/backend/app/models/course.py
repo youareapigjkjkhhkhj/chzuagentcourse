@@ -47,6 +47,10 @@ class Course(PkMixin, TimestampMixin, db.Model):
     # 又想要回来，或者要去查「那次生成到底怎么回事」时，还在。
     deleted_at = db.Column(db.String(32))
     dsl_json = db.Column(db.Text)
+    # 课程级的 PPT 模板（配色+字体+版式），值是 `exports/theme.py` 里的 key。
+    # 在首页「开始生成」时选定，预览与导出都默认用它（导出面板仍可单次改）。
+    # 单独一列而不塞进 dsl_json：它是**用户的选择**不是模型产出，重生成不该冲掉它。
+    template = db.Column(db.String(16), nullable=False, default="default")
 
     cover = JSONField("cover_json")
     dsl = JSONField("dsl_json")
@@ -79,6 +83,7 @@ class Course(PkMixin, TimestampMixin, db.Model):
             "pageCount": self.page_count,
             "durationMin": self.duration_min,
             "ownerId": self.owner_id,
+            "template": self.template or "default",
             "cover": self.cover or {},
             "createdAt": self.created_at,
             "updatedAt": self.updated_at,

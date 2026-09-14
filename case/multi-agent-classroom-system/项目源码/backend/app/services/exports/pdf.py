@@ -69,6 +69,15 @@ def _pdf_css(theme: themes.Theme) -> str:
     ink = theme.css(theme.ink)
     muted = theme.css(theme.muted)
     warn = theme.css(theme.warn)
+    # 版式微调：三档 layout 给标题一道不同的装饰（瑞士下划线、科技左竖条）。
+    # MuPDF 的排版器只认 CSS 的一个子集，border 是它排得出来的那一样。
+    layout = theme.layout if theme.layout in ("swiss", "tech") else "classic"
+    if layout == "swiss":
+        decor = f"h1 {{ border-bottom: 2pt solid {brand}; padding-bottom: 4pt; }}"
+    elif layout == "tech":
+        decor = f"h1 {{ border-left: 3pt solid {brand}; padding-left: 8pt; }}"
+    else:
+        decor = ""
     return f"""
 body {{ font-family: sans-serif; font-size: 10.5pt; line-height: 1.65; color: {ink}; }}
 h1 {{ font-size: 17pt; color: {brand}; margin: 0 0 8pt 0; }}
@@ -89,6 +98,7 @@ figcaption {{ color: {muted}; font-size: 8.5pt; }}
 .gap {{ color: {warn}; }}
 .quiz__answer {{ color: {warn}; }}
 .note {{ color: {warn}; }}
+{decor}
 """
 
 

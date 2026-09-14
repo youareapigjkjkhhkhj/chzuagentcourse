@@ -62,6 +62,9 @@ export const useSettingsStore = defineStore('settings', () => {
    */
   const materialEnabled = computed(() => capabilities.value?.materials?.enabled !== false)
 
+  /** 可选的 PPT 模板清单（随能力清单一起下发）。首页选模板与工作台预览都读它。 */
+  const templates = computed(() => capabilities.value?.templates ?? [])
+
   // --- 读 ---
 
   async function loadProviders(): Promise<void> {
@@ -164,6 +167,7 @@ export const useSettingsStore = defineStore('settings', () => {
     teacher,
     students,
     materialEnabled,
+    templates,
     // actions
     loadAll,
     loadProviders,

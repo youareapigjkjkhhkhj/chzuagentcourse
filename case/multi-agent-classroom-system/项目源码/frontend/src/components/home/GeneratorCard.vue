@@ -7,6 +7,7 @@
  */
 import { ref } from 'vue'
 
+import { useSettingsStore } from '@/stores/settings'
 import type { CourseMode } from '@/types/api'
 
 defineProps<{
@@ -16,12 +17,16 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  submit: [payload: { topic: string; mode: CourseMode }]
+  submit: [payload: { topic: string; mode: CourseMode; template: string }]
   upload: []
 }>()
 
+const settings = useSettingsStore()
+
 const topic = ref('')
 const mode = ref<CourseMode>('lecture')
+/** 课程级 PPT 模板（配色+字体+版式）。清单由后端下发，认不出就退回 default。 */
+const template = ref('default')
 const hint = ref('')
 
 const PLACEHOLDER = '输入你想学习的主题，例如：机器学习入门 · 从感知机到神经网络'
@@ -46,7 +51,7 @@ function onStart(): void {
     return
   }
   hint.value = ''
-  emit('submit', { topic: value, mode: mode.value })
+  emit('submit', { topic: value, mode: mode.value, template: template.value })
 }
 </script>
 
@@ -90,6 +95,17 @@ function onStart(): void {
         研讨模式
       </span>
       <span class="spacer" />
+      <label v-if="settings.templates.length" class="gen-tpl">
+        <span class="gen-tpl__label">模板</span>
+        <t-select v-model="template" size="small" class="gen-tpl__select">
+          <t-option
+            v-for="one in settings.templates"
+            :key="one.key"
+            :value="one.key"
+            :label="one.name"
+          />
+        </t-select>
+      </label>
       <span class="text-placeholder est">
         预计生成 {{ estimatePages }} 页 · 约 {{ estimateMinutes }} 分钟课时
       </span>
@@ -243,6 +259,21 @@ function onStart(): void {
 .gen-tool svg {
   width: 16px;
   height: 16px;
+}
+
+.gen-tpl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gen-tpl__label {
+  font-size: 13px;
+  color: var(--td-text-secondary);
+}
+
+.gen-tpl__select {
+  width: 132px;
 }
 
 .examples {

@@ -142,6 +142,8 @@ export interface Capabilities {
   providers: Record<string, Record<string, Record<string, unknown>>>
   generation: GenerationLimits
   materials: MaterialCapability
+  /** 可选的 PPT 模板清单（配色+字体+版式）。首页选模板与工作台预览都读它。 */
+  templates?: ExportTemplate[]
 }
 
 export interface HealthInfo {
@@ -242,6 +244,8 @@ export interface OutlineTree {
   title: string
   subtitle: string
   status: CourseStatus
+  /** 课程级 PPT 模板 key（预览与导出默认都用它）。 */
+  template?: string
   chapters: OutlineChapter[]
   /** 封面与大纲页（章号 0 的开篇） */
   front: OutlinePageItem[]
@@ -492,6 +496,8 @@ export interface StartGenerationPayload {
    * 增删改序只在确认点开着（`confirmable`），不传的话界面上永远走不到那一步。
    */
   confirmOutline?: boolean
+  /** 课程级 PPT 模板 key（`default` / `swiss` / `tech`）。缺省 `default`。 */
+  template?: string
 }
 
 export interface CourseQuery {
@@ -921,10 +927,16 @@ export interface ExportOptions {
   template?: string
 }
 
-/** 一套可选的 PPT 模板。清单由后端下发（`ExportList.templates`），前端不写死。 */
+/** 一套可选的 PPT 模板。清单由后端下发（`Capabilities.templates` / `ExportList.templates`），前端不写死。 */
 export interface ExportTemplate {
   key: string
   name: string
+  /** 装饰性版式档位：`classic` / `swiss` / `tech`。预览与三渲染器同源。 */
+  layout?: string
+  /** 一套 CSS 颜色（小写带 `#`），预览按它给幻灯片换色。 */
+  colors?: { brand: string; ink: string; muted: string; line: string; warn: string }
+  /** CSS 字体栈，预览按它换字体。 */
+  fonts?: { sans: string; mono: string }
 }
 
 /**

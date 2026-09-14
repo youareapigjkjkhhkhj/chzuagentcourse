@@ -300,8 +300,10 @@ def document(
         ensure_ascii=False,
     )
     theme = themes.get(options.template)
+    layout = theme.layout if theme.layout in ("swiss", "tech") else "classic"
     return (
         _DOCUMENT_TEMPLATE.replace("<!--THEME_VARS-->", _theme_vars(theme))
+        .replace("<!--LAYOUT-->", layout)
         .replace("<!--SLIDES-->", "\n".join(slides))
         .replace("<!--META-->", payload)
     )
@@ -447,6 +449,18 @@ _DOCUMENT_TEMPLATE = """<!doctype html>
   .notes p { margin:6px 0 0; color:#374151; line-height:1.8; }
   .slide__foot { position:absolute; left:40px; right:40px; bottom:16px; display:flex;
                  justify-content:space-between; color:var(--muted); font-size:12px; }
+  /* 版式微调：三档 layout 给页眉/页脚不同的样子（标题大小、装饰线、页码）。
+     正文主体的排布三档一致 —— 换的是「封面与页眉页脚那一圈」。 */
+  [data-layout="swiss"] .slide__kind { border:none; padding:0; letter-spacing:.14em;
+                                       text-transform:uppercase; font-weight:700; }
+  [data-layout="swiss"] .slide h1 { font-size:32px; letter-spacing:-.5px; }
+  [data-layout="swiss"] .slide__head::after { content:""; display:block; height:3px;
+                                              background:var(--brand); margin-top:12px; }
+  [data-layout="swiss"] .slide__foot span:last-child { color:var(--brand); font-weight:700; }
+  [data-layout="tech"] .slide__head { border-left:4px solid var(--brand); padding-left:12px; }
+  [data-layout="tech"] .slide h1 { font-size:26px; }
+  [data-layout="tech"] .slide__foot span:last-child { border:1px solid var(--line);
+                                                      border-radius:8px; padding:0 8px; }
   .bar { position:fixed; left:0; right:0; bottom:0; background:#fff; border-top:1px solid var(--line);
          display:flex; gap:12px; align-items:center; justify-content:center; padding:10px; }
   .bar button { font:inherit; padding:6px 16px; border:1px solid var(--line); border-radius:8px;
@@ -462,7 +476,7 @@ _DOCUMENT_TEMPLATE = """<!doctype html>
 </style>
 </head>
 <body>
-<div class="deck">
+<div class="deck" data-layout="<!--LAYOUT-->">
 <!--SLIDES-->
 </div>
 <div class="bar">

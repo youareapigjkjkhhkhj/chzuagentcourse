@@ -26,6 +26,7 @@ from typing import Callable, Iterable
 from lxml import etree
 from pptx import Presentation
 from pptx.dml.color import RGBColor
+from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import PP_ALIGN
 from pptx.oxml.ns import qn
 from pptx.util import Emu, Inches, Length, Pt
@@ -117,21 +118,35 @@ def _paint(
     generated_at: str,
 ) -> None:
     """一页 → 一张幻灯片。"""
+    # 页眉页脚那一圈按主题的 `layout` 换一档版式（标题位置/字号、装饰线、页脚色）；
+    # 正文主体的几何（下面的 top / body_height / 两栏）三档一致 —— 「版式微调」不是重排母版。
+    layout = theme.layout if theme.layout in ("swiss", "tech") else "classic"
+
+    if layout == "swiss":
+        title_left, title_top, title_width, title_size = Inches(0.6), Inches(0.44), Inches(12.1), 32
+    elif layout == "tech":
+        title_left, title_top, title_width, title_size = Inches(0.88), Inches(0.44), Inches(11.85), 28
+    else:
+        title_left, title_top, title_width, title_size = Inches(0.6), Inches(0.42), Inches(12.1), 30
     _text_box(
         slide,
-        Inches(0.6),
-        Inches(0.42),
-        Inches(12.1),
+        title_left,
+        title_top,
+        title_width,
         Inches(0.95),
-        [_run_spec(page.title, size=30, bold=True, color=_rgb(theme.brand))],
+        [_run_spec(page.title, size=title_size, bold=True, color=_rgb(theme.brand))],
         theme,
     )
+    _header_decor(slide, theme, layout)
     if page.subtitle:
+        sub_left = Inches(0.88) if layout == "tech" else Inches(0.62)
+        sub_width = Inches(11.85) if layout == "tech" else Inches(12.1)
+        sub_top = Inches(1.34) if layout == "swiss" else Inches(1.32)
         _text_box(
             slide,
-            Inches(0.62),
-            Inches(1.32),
-            Inches(12.1),
+            sub_left,
+            sub_top,
+            sub_width,
             Inches(0.5),
             [_run_spec(page.subtitle, size=15, color=_rgb(theme.muted))],
             theme,
@@ -145,13 +160,16 @@ def _paint(
     if page.sources:
         labels = "；".join(item.label for item in page.sources if item.label)
         footer = f"{footer}　出处：{labels}"
+    # 瑞士那一档把页码做成品牌色粗体（网格感、页码是主角）；其余维持次要灰。
+    foot_bold = layout == "swiss"
     _text_box(
         slide,
         Inches(0.62),
         Inches(6.92),
         Inches(9.6),
         Inches(0.4),
-        [_run_spec(footer, size=10, color=_rgb(theme.muted))],
+        [_run_spec(footer, size=11 if foot_bold else 10, bold=foot_bold,
+                   color=_rgb(theme.brand if foot_bold else theme.muted))],
         theme,
     )
     if options.watermark:
@@ -170,6 +188,26 @@ def _paint(
     notes = _notes_text(page, options)
     if notes:
         slide.notes_slide.notes_text_frame.text = notes
+
+
+def _header_decor(slide, theme: themes.Theme, layout: str) -> None:
+    """页眉的装饰线：瑞士一道横向红线压在标题下，科技青一道竖向强调条贴在标题左。
+
+    只有这两档画；classic 不画（保持现状）。装饰只是一个纯色矩形，不拦正文区。
+    """
+    if layout == "swiss":
+        _bar(slide, theme, left=Inches(0.6), top=Inches(1.2), width=Inches(12.1), height=Inches(0.035))
+    elif layout == "tech":
+        _bar(slide, theme, left=Inches(0.6), top=Inches(0.46), width=Inches(0.1), height=Inches(0.6))
+
+
+def _bar(slide, theme: themes.Theme, *, left: Length, top: Length, width: Length, height: Length) -> None:
+    """一个品牌色实心矩形（装饰线/强调条）。关掉阴影与轮廓，只要一道纯色。"""
+    shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left, top, width, height)
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = _rgb(theme.brand)
+    shape.line.fill.background()
+    shape.shadow.inherit = False
 
 
 def _notes_text(page: Page, options: RenderOptions) -> str:

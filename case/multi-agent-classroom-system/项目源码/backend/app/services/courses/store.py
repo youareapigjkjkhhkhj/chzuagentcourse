@@ -44,14 +44,19 @@ def create_course(
     topic: str = "",
     options: Mapping[str, Any] | None = None,
     owner_id: str = "",
+    template: str = "default",
 ) -> Course:
     """建一门课。生成开始时课程就已经存在（状态 generating）——
-    用户在生成过程中刷新页面要能看到它，而不是一个只活在内存里的任务。"""
+    用户在生成过程中刷新页面要能看到它，而不是一个只活在内存里的任务。
+
+    `template` 是课程级的 PPT 模板（首页开始生成时选的）：预览与导出默认都用它。
+    """
     course = Course(
         title=title.strip()[:255] or "未命名课程",
         topic=(topic or title).strip()[:255],
         status="generating",
         owner_id=owner_id or None,
+        template=(template or "default").strip()[:16] or "default",
     )
     course.dsl = {"version": "", "mode": str((options or {}).get("mode") or "lecture")}
     db_write(lambda: db.session.add(course))
@@ -460,6 +465,8 @@ def outline_tree(course: Course) -> dict:
         "title": course.title,
         "subtitle": str(stored.get("subtitle") or ""),
         "status": course.status,
+        # 课程级 PPT 模板：工作台预览与导出面板都从这里读（单一数据源，与课程详情同源）。
+        "template": course.template or "default",
         "chapters": chapters,
         "front": [_page(row) for row in loose if row.kind in FRONT_KINDS],
         "back": [_page(row) for row in loose if row.kind not in FRONT_KINDS],

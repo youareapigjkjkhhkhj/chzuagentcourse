@@ -126,7 +126,7 @@ def create(
         # （`supported_formats` 对不认识的 scope 返回空元组，任何 fmt 都过不了）。
         _require_ready(course)
 
-    merged = _clean_options(options)
+    merged = _clean_options(options, default_template=course.template)
     row = Export(
         course_id=course.id,
         session_id=session_id or None,
@@ -154,7 +154,9 @@ def _as_mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
-def _clean_options(options: Mapping[str, Any] | None) -> dict[str, Any]:
+def _clean_options(
+    options: Mapping[str, Any] | None, *, default_template: str = ""
+) -> dict[str, Any]:
     """补上缺省的渲染选项。
 
     三个认识的键**必须是布尔**：`options_json` 是原样留档的（模型注释第 1 条），
@@ -171,20 +173,23 @@ def _clean_options(options: Mapping[str, Any] | None) -> dict[str, Any]:
             raise ValidationError(
                 f"options.{key} 必须是布尔值", details={"option": key}
             )
-    _clean_template(merged)
+    _clean_template(merged, default_template=default_template)
     return merged
 
 
-def _clean_template(merged: dict[str, Any]) -> None:
+def _clean_template(merged: dict[str, Any], *, default_template: str = "") -> None:
     """补上并校验 `template`（PPT 模板）。
 
-    与三个布尔开关分开处理：它是**字符串**，缺省补 `default`，给了但认不出就
+    与三个布尔开关分开处理：它是**字符串**。没给就退回**课程级的那一套**
+    （`courses.template`，首页开始生成时选的）—— 于是导出默认跟着课程走，
+    面板上再选一次则是单次覆盖；两者都没给才退回 `default`。给了但认不出就
     当场 40001 —— 与其让渲染时 `theme.get` 悄悄退回默认（用户选了「瑞士」却拿到
     「品牌蓝」，只有打开文件才看得出），不如在建任务时就把话说清楚。
     """
+    fallback = str(default_template or "").strip() or theme_registry.DEFAULT_KEY
     raw = merged.get("template")
     if raw is None or not str(raw).strip():
-        merged["template"] = theme_registry.DEFAULT_KEY
+        merged["template"] = fallback
         return
     key = str(raw).strip()
     if key not in theme_registry.THEMES:

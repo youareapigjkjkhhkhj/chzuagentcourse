@@ -17,7 +17,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 import SourceBadge from '@/components/workbench/SourceBadge.vue'
-import type { CoursePageItem, SlideDsl, SlideSource } from '@/types/api'
+import type { CoursePageItem, ExportTemplate, SlideDsl, SlideSource } from '@/types/api'
 import { PAGE_KIND_LABELS, visualTypeLabel } from '@/utils/labels'
 
 /** 参数自己走一遍时，一帧停多久。太快看不清曲线怎么变的，太慢等得人心焦。 */
@@ -51,11 +51,62 @@ const props = withDefaults(
      * 标的），这里只负责把还没讲到的那些藏起来。
      */
     beat?: number | null
+    /**
+     * 课程选定的 PPT 模板（配色 / 字体 / 版式），来自 `/api/capabilities`。
+     *
+     * 给了就照着换色、按 `layout` 换页眉页脚的版式，与三个导出渲染器同源
+     * （`exports/theme.py`）；为 null（老课程 / 清单没拉到）就用 TDesign 默认样式。
+     */
+    theme?: ExportTemplate | null
   }>(),
-  { variant: 'workbench', activeSource: '', missingSources: () => [], beat: null },
+  {
+    variant: 'workbench',
+    activeSource: '',
+    missingSources: () => [],
+    beat: null,
+    theme: null,
+  },
 )
 
 const emit = defineEmits<{ openSource: [source: SlideSource] }>()
+
+/**
+ * 一套模板令牌 → 幻灯片上的 CSS 变量（`--sl-*`）。
+ *
+ * 每个变量在样式里都带 TDesign 兜底（`var(--sl-brand, var(--td-brand-color))`），
+ * 所以 `theme` 为 null 时预览就是原来那个样子；给了 theme 才照着换色换字体 ——
+ * 与导出同源，避免「预览一个样、导出另一个样」。变量只挂在 `.preview__slide`
+ * 上，下方的讲稿 / 出处提示那些工作台壳子不受影响（它们不属于幻灯片）。
+ */
+const slideStyle = computed<Record<string, string>>(() => {
+  const theme = props.theme
+  if (!theme) return {}
+  const style: Record<string, string> = {}
+  const colors = theme.colors
+  if (colors) {
+    if (colors.brand) {
+      style['--sl-brand'] = colors.brand
+      // 图示那块底色是品牌色的淡色版：没对应令牌，用 color-mix 现调一个。
+      style['--sl-brand-light'] = `color-mix(in srgb, ${colors.brand} 10%, #fff)`
+    }
+    if (colors.ink) style['--sl-ink'] = colors.ink
+    if (colors.muted) style['--sl-muted'] = colors.muted
+    if (colors.line) style['--sl-line'] = colors.line
+    if (colors.warn) style['--sl-warn'] = colors.warn
+  }
+  const fonts = theme.fonts
+  if (fonts) {
+    if (fonts.sans) style['--sl-sans'] = fonts.sans
+    if (fonts.mono) style['--sl-mono'] = fonts.mono
+  }
+  return style
+})
+
+/** 版式档位：认不出的值当 `classic`（与三个渲染器同一条兜底）。 */
+const layout = computed(() => {
+  const value = props.theme?.layout
+  return value === 'swiss' || value === 'tech' ? value : 'classic'
+})
 
 const dsl = computed<SlideDsl>(() => props.page?.dsl ?? {})
 const narration = computed(() => dsl.value.narration ?? [])
@@ -237,7 +288,7 @@ const isMissing = (source: SlideSource) =>
 
 <template>
   <div class="page-slide" :class="{ 'is-stage': onStage }">
-    <div v-if="page" class="preview__slide">
+    <div v-if="page" class="preview__slide" :style="slideStyle" :data-layout="layout">
       <div class="slide-head">
         第 {{ page.pageNo }} 页 · {{ PAGE_KIND_LABELS[page.kind] }}
       </div>
@@ -437,6 +488,8 @@ const isMissing = (source: SlideSource) =>
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  color: var(--sl-ink, var(--td-text-primary));
+  font-family: var(--sl-sans, var(--td-font-family));
 }
 
 .preview__slide.is-empty {
@@ -446,7 +499,7 @@ const isMissing = (source: SlideSource) =>
 
 .slide-head {
   font-size: 12px;
-  color: var(--td-brand-color);
+  color: var(--sl-brand, var(--td-brand-color));
   font-weight: 600;
   letter-spacing: 2px;
   margin-bottom: 8px;
@@ -460,7 +513,7 @@ const isMissing = (source: SlideSource) =>
 .slide-title small {
   display: block;
   font-size: 13px;
-  color: var(--td-text-secondary);
+  color: var(--sl-muted, var(--td-text-secondary));
   font-weight: 400;
   margin-top: 6px;
 }
@@ -527,7 +580,7 @@ const isMissing = (source: SlideSource) =>
   width: 7px;
   height: 7px;
   border-radius: 2px;
-  background: var(--td-brand-color);
+  background: var(--sl-brand, var(--td-brand-color));
 }
 
 /*
@@ -551,7 +604,7 @@ const isMissing = (source: SlideSource) =>
 }
 
 .slide-code pre {
-  font-family: var(--td-font-mono);
+  font-family: var(--sl-mono, var(--td-font-mono));
   font-size: 12.5px;
   line-height: 1.7;
   white-space: pre-wrap;
@@ -567,11 +620,11 @@ const isMissing = (source: SlideSource) =>
 
 .slide-visual {
   margin-top: 18px;
-  background: var(--td-brand-color-light);
+  background: var(--sl-brand-light, var(--td-brand-color-light));
   border-radius: var(--td-radius-medium);
   padding: 16px 18px;
   font-size: 13px;
-  color: var(--td-text-secondary);
+  color: var(--sl-muted, var(--td-text-secondary));
   display: flex;
   gap: 10px;
 }
@@ -619,7 +672,7 @@ const isMissing = (source: SlideSource) =>
   align-items: center;
   justify-content: center;
   background: var(--td-bg-container);
-  border: 1px solid var(--td-component-stroke);
+  border: 1px solid var(--sl-line, var(--td-component-stroke));
   border-radius: var(--td-radius-medium);
   overflow: hidden;
 }
@@ -691,8 +744,8 @@ const isMissing = (source: SlideSource) =>
 }
 
 .slide-param__label {
-  font-family: var(--td-font-mono);
-  color: var(--td-brand-color);
+  font-family: var(--sl-mono, var(--td-font-mono));
+  color: var(--sl-brand, var(--td-brand-color));
   flex-shrink: 0;
 }
 
@@ -702,7 +755,7 @@ const isMissing = (source: SlideSource) =>
 }
 
 .slide-param__value {
-  font-family: var(--td-font-mono);
+  font-family: var(--sl-mono, var(--td-font-mono));
   min-width: 44px;
   text-align: right;
   flex-shrink: 0;
@@ -715,15 +768,15 @@ const isMissing = (source: SlideSource) =>
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--td-component-stroke);
+  border: 1px solid var(--sl-line, var(--td-component-stroke));
   border-radius: 50%;
   background: var(--td-bg-container);
-  color: var(--td-brand-color);
+  color: var(--sl-brand, var(--td-brand-color));
   cursor: pointer;
 }
 
 .slide-param__play:hover {
-  border-color: var(--td-brand-color);
+  border-color: var(--sl-brand, var(--td-brand-color));
 }
 
 .slide-param__play svg {
@@ -740,8 +793,8 @@ const isMissing = (source: SlideSource) =>
 }
 
 .slide-visual__type {
-  color: var(--td-brand-color);
-  font-family: var(--td-font-mono);
+  color: var(--sl-brand, var(--td-brand-color));
+  font-family: var(--sl-mono, var(--td-font-mono));
   font-size: 12px;
 }
 
@@ -766,7 +819,7 @@ const isMissing = (source: SlideSource) =>
 .slide-question {
   margin-top: 14px;
   font-size: 14px;
-  color: var(--td-brand-color);
+  color: var(--sl-brand, var(--td-brand-color));
 }
 
 /* 出处那一行：贴着底部，不挤正文（正文用 flex 顶在上面） */
@@ -777,7 +830,7 @@ const isMissing = (source: SlideSource) =>
   flex-wrap: wrap;
   margin-top: 12px;
   padding-top: 10px;
-  border-top: 1px solid var(--td-component-stroke);
+  border-top: 1px solid var(--sl-line, var(--td-component-stroke));
 }
 
 .slide-sources__label {
@@ -808,10 +861,55 @@ const isMissing = (source: SlideSource) =>
   display: flex;
   justify-content: space-between;
   font-size: 11px;
-  color: var(--td-text-placeholder);
+  color: var(--sl-muted, var(--td-text-placeholder));
   padding-top: 12px;
   margin-top: auto;
-  border-top: 1px solid var(--td-component-stroke);
+  border-top: 1px solid var(--sl-line, var(--td-component-stroke));
+}
+
+/*
+ * 版式微调：三档 layout 给页眉 / 标题 / 页脚不同的样子 —— 与三个导出渲染器
+ * 同源（`exports/html.py` 的 `[data-layout=…]`、`exports/pptx.py` 的 `_header_decor`）。
+ * 正文主体的排布三档一致，换的只是「封面与页眉页脚那一圈」。classic 就是上面
+ * 那套默认样子，不额外写。
+ */
+[data-layout='swiss'] .slide-head {
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+[data-layout='swiss'] .slide-title {
+  font-size: 28px;
+  letter-spacing: -0.5px;
+}
+
+/* 瑞士：标题下压一道品牌色横线（对应 html 的 `.slide__head::after`）。 */
+[data-layout='swiss'] .slide-title::after {
+  content: '';
+  display: block;
+  width: 100%;
+  height: 3px;
+  margin-top: 10px;
+  background: var(--sl-brand, var(--td-brand-color));
+}
+
+[data-layout='swiss'] .slide-foot span:last-child {
+  color: var(--sl-brand, var(--td-brand-color));
+  font-weight: 700;
+}
+
+/* 科技青：标题带一道竖向强调条（对应 pptx 的 `_bar`）。 */
+[data-layout='tech'] .slide-title {
+  font-size: 22px;
+  border-left: 4px solid var(--sl-brand, var(--td-brand-color));
+  padding-left: 12px;
+}
+
+[data-layout='tech'] .slide-foot span:last-child {
+  border: 1px solid var(--sl-line, var(--td-component-stroke));
+  border-radius: 8px;
+  padding: 0 8px;
 }
 
 .slide-notes {

@@ -28,13 +28,14 @@ from flask import Blueprint, Response, current_app, request
 
 from app.api import json_body
 from app.common import tasks
-from app.common.errors import NotFoundError, StateError
+from app.common.errors import NotFoundError, StateError, ValidationError
 from app.common.identity import current_owner_id, owned_by
 from app.common.response import ok
 from app.extensions import db
 from app.models import GenJob
 from app.services import audit
 from app.services.courses import library, store
+from app.services.exports import theme as themes
 from app.services.generation import events, intake, pipeline, timeline
 from app.services.usage import budget
 
@@ -98,12 +99,15 @@ def create_generation():
     body = json_body()
     topic = intake.clean_topic(body.get("topic"))
     options = intake.parse_options(body)
+    template = _clean_template(body.get("template"))
     owner_id = current_owner_id()
     budget.ensure_allowed(course_id="", owner_id=owner_id)
 
     # 课程先落库（状态 generating）：生成过程中刷新页面要能看到它，
     # 而不是「任务在跑，但课程列表里什么都没有」。
-    course = store.create_course(title=topic, topic=topic, options=options, owner_id=owner_id)
+    course = store.create_course(
+        title=topic, topic=topic, options=options, owner_id=owner_id, template=template
+    )
     job = pipeline.start_job(course, options=options, owner_id=owner_id)
     tasks.submit_job(job.id)
     # 建课是这一阶段最要紧的一次写：它同时决定了「花了多少钱」（预算是按课程算的）
@@ -112,7 +116,8 @@ def create_generation():
     audit.record(
         audit.ACTION_COURSE_CREATE,
         target=f"course:{course.id}",
-        detail={"title": topic, "jobId": job.id, "pageCount": options.get("pageCount")},
+        detail={"title": topic, "jobId": job.id, "pageCount": options.get("pageCount"),
+                "template": template},
     )
     return ok(
         {
@@ -291,6 +296,25 @@ def _resume_from(job_id: str) -> int:
         return max(0, int(raw))
     except ValueError:
         return 0
+
+
+def _clean_template(raw: Any) -> str:
+    """课程级 PPT 模板的 key。缺省补 `default`，给了但认不出当场 40001。
+
+    与导出建任务时同一口径（`exports.queue._clean_template`）：与其让渲染时
+    `theme.get` 悄悄退回默认（用户选了「瑞士」却拿到「品牌蓝」），不如在建课时
+    就把话说清楚。模板是**课程级**的，存到 `courses.template` 一列，不进
+    `gen_jobs.options`（那里是「这次生成按什么参数跑」，模板不是生成参数）。
+    """
+    key = str(raw or "").strip()
+    if not key:
+        return themes.DEFAULT_KEY
+    if key not in themes.THEMES:
+        raise ValidationError(
+            f"未知的模板 {key}",
+            details={"template": key, "allowed": list(themes.THEMES)},
+        )
+    return key
 
 
 def _job_or_404(job_id: str) -> GenJob:

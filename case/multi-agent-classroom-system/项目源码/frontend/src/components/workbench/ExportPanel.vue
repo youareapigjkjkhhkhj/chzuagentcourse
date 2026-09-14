@@ -31,8 +31,15 @@ const props = withDefaults(
     scope?: ExportScope
     /** `scope='record'` 时必填：导的是哪一节课堂。 */
     sessionId?: string
+    /**
+     * 课程级模板（首页开始生成时选的那个）。
+     *
+     * 面板一开就把它预选上，用户仍可在这里单次换一个 —— 课程级只是默认值，
+     * 不是锁死。空字符串表示这门课没带模板（老课程），那就留在 `default`。
+     */
+    defaultTemplate?: string
   }>(),
-  { scope: 'course', sessionId: '' },
+  { scope: 'course', sessionId: '', defaultTemplate: '' },
 )
 
 const emit = defineEmits<{ 'update:visible': [visible: boolean] }>()
@@ -76,10 +83,15 @@ watch(
 /**
  * 选一个默认格式。**从服务端给的那份里挑第一个**，而不是写死 `pptx` ——
  * 课堂记录那条路根本没有 pptx，写死的话每次打开都是一个空选中。
+ *
+ * 顺带把课程级模板预选上（`defaultTemplate`）：它是清单里认得的 key 才改，
+ * 认不出就留在当前值，不往选择器里硬塞一个后端会 40001 的项。
  */
 function pickDefault(): void {
   if (!formats.value.length) return
   if (!formats.value.includes(fmt.value)) fmt.value = formats.value[0]
+  const key = props.defaultTemplate
+  if (key && templates.value.some((one) => one.key === key)) options.value.template = key
 }
 
 async function submit(): Promise<void> {

@@ -6,18 +6,21 @@
 `get(key)` 要一套令牌，再各自决定怎么落到 PPTX 的 `RGBColor` / HTML 的 CSS 变量 /
 PDF 的样式表上。
 
-**只换颜色与字体，不动版式**：字号、栏宽、页边距这些几何量留在各渲染器里 ——
-它们是「排得下、读得清」调出来的结果，不随风格变。模板因此是一份**纯数据**，
-不跑任何脚本（这与「导入一个可执行 skill」是两回事：那种要跑别人的引擎，
-这种只是给自家渲染器换一套色号）。
+**换颜色、字体，外加一档「版式」**：字号、栏宽、页边距这些**主体几何**留在各
+渲染器里（它们是「排得下、读得清」调出来的结果，不随风格变）；但封面与页眉页脚
+那一圈**装饰性版式**（标题对齐与大小、装饰线/角标、页脚页码样式）跟着 `layout`
+走一档 —— 于是「瑞士」是左对齐大标题压一道红线、「科技青」是标题带一道竖向强调
+条，各不相同，而正文主体的排布三套一致。模板仍是一份**纯数据**，不跑任何脚本
+（这与「导入一个可执行 skill」是两回事：那种要跑别人的引擎，这种只是给自家
+渲染器换一套色号 + 一档版式）。
 
 内置三套：
 
-- `default` 品牌蓝 —— 现状，也是**向后兼容的退路**：老导出记录的 `options_json`
-  里没有 `template` 这一项，`get()` 认不出就退回它，于是「加模板」不会让任何一份
-  历史产物在重导时悄悄变了样子。
-- `swiss`   瑞士国际主义 —— 黑白 + 正红、Arial，网格感、无衬线。
-- `tech`    科技青 —— 深墨 + 青蓝强调，现代无衬线。
+- `default` 品牌蓝 —— 现状（`layout=classic`），也是**向后兼容的退路**：老导出
+  记录的 `options_json` 里没有 `template` 这一项，`get()` 认不出就退回它，于是
+  「加模板」不会让任何一份历史产物在重导时悄悄变了样子。
+- `swiss`   瑞士国际主义 —— 黑白 + 正红、Arial，`layout=swiss`：左对齐、装饰红线。
+- `tech`    科技青 —— 深墨 + 青蓝强调，`layout=tech`：标题带竖向强调条。
 """
 
 from __future__ import annotations
@@ -48,6 +51,10 @@ class Theme:
     font_mono_family: str  #: PPTX 用的单一等宽字体名
     font_sans: str  #: HTML / PDF 用的 CSS 无衬线字体栈（带兜底）
     font_mono: str  #: HTML / PDF 用的 CSS 等宽字体栈
+    #: 封面与页眉页脚那一圈**装饰性版式**的档位（`classic` / `swiss` / `tech`）。
+    #: 三个渲染器与前端预览都按它给标题对齐、装饰线、页脚样式换一套样子；
+    #: 正文主体的几何（栏宽、字号、页边距）不受它影响。认不出的值当 `classic`。
+    layout: str = "classic"
 
     def css(self, color: str) -> str:
         """`0052D9` → `#0052d9`（CSS 里用小写带井号）。"""
@@ -69,6 +76,7 @@ _DEFAULT = Theme(
     font_mono_family="Consolas",
     font_sans='"PingFang SC","Microsoft YaHei","Source Han Sans SC",system-ui,sans-serif',
     font_mono='Consolas,"Courier New",monospace',
+    layout="classic",
 )
 
 _SWISS = Theme(
@@ -83,6 +91,7 @@ _SWISS = Theme(
     font_mono_family="Courier New",
     font_sans='Arial,"Helvetica Neue",Helvetica,sans-serif',
     font_mono='"Courier New",monospace',
+    layout="swiss",
 )
 
 _TECH = Theme(
@@ -97,6 +106,7 @@ _TECH = Theme(
     font_mono_family="Consolas",
     font_sans='"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif',
     font_mono='Consolas,"Courier New",monospace',
+    layout="tech",
 )
 
 #: 注册表。**插入顺序就是前端选择器里的顺序**（缺省排在最前）。
@@ -113,6 +123,27 @@ def get(key: str) -> Theme:
     return THEMES.get(str(key or "").strip(), THEMES[DEFAULT_KEY])
 
 
-def catalogue() -> list[dict[str, str]]:
-    """给前端选择器的清单：`[{key, name}]`，按注册顺序。"""
-    return [{"key": item.key, "name": item.name} for item in THEMES.values()]
+def catalogue() -> list[dict[str, object]]:
+    """给前端的清单，按注册顺序。
+
+    除了选择器要的 `{key, name}`，还带上 `layout` 与一套**已经补了 `#` 的 CSS
+    颜色/字体**：前端预览（`PageSlide`）要照这套令牌给幻灯片换色、按 `layout`
+    换页眉页脚的版式，与导出同源 —— 否则「预览一个样、导出另一个样」。
+    颜色是 CSS 形式（小写带井号），前端直接塞进 CSS 变量即可。
+    """
+    return [
+        {
+            "key": item.key,
+            "name": item.name,
+            "layout": item.layout,
+            "colors": {
+                "brand": item.css(item.brand),
+                "ink": item.css(item.ink),
+                "muted": item.css(item.muted),
+                "line": item.css(item.line),
+                "warn": item.css(item.warn),
+            },
+            "fonts": {"sans": item.font_sans, "mono": item.font_mono},
+        }
+        for item in THEMES.values()
+    ]

@@ -15,6 +15,7 @@ from flask import Blueprint
 from app.common.response import ok
 from app.providers.registry import MOCK_NAME
 from app.services import provider_registry
+from app.services.exports import theme as themes
 
 bp = Blueprint("health", __name__, url_prefix="/api")
 
@@ -97,5 +98,12 @@ def capabilities():
         GET /api/capabilities
 
     前端据此置灰不可用的入口。只暴露「配没配」，绝不回显凭据。
+
+    顺带下发一份 PPT 模板清单（`templates`）：首页开始生成时选模板、以及工作台
+    预览要照模板换色/换版式，都在**还没有课程**的时候就要这份清单，不能等
+    `/courses/{id}/exports`（那个要先有课）。模板只是配色+字体+版式的纯数据，
+    与凭据无关，搭能力清单的顺风车下发最省一个端点。
     """
-    return ok(provider_registry.capabilities())
+    data = dict(provider_registry.capabilities())
+    data["templates"] = themes.catalogue()
+    return ok(data)

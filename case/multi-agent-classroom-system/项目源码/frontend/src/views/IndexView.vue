@@ -62,7 +62,11 @@ watch(
  * 不带上它，「大纲先行」这件事在界面上就没有第二次机会。想一路写完，得走
  * API 显式传 `confirmOutline: false`。
  */
-async function start(payload: { topic: string; mode: CourseMode }): Promise<void> {
+async function start(payload: {
+  topic: string
+  mode: CourseMode
+  template?: string
+}): Promise<void> {
   submitting.value = true
   try {
     const started = await api.startGeneration({ ...payload, confirmOutline: true })
@@ -109,7 +113,7 @@ onMounted(async () => {
     <section class="hero">
       <span class="hero__badge">
         <i class="dot" />
-        开源 · 多智能体 · 一键生成互动课堂
+        多智能体 · 一键生成互动课堂
       </span>
       <h1>
         输入一个主题，<br />

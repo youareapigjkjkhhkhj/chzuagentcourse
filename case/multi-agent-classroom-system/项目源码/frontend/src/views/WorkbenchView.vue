@@ -44,7 +44,12 @@ import type { PageRewrite } from '@/composables/useWorkbenchChat'
 import * as api from '@/api'
 import { describeError, useSettingsStore } from '@/stores/settings'
 import { COURSE_STATUS_LABELS } from '@/utils/labels'
-import type { CoursePageItem, OutlineTree as OutlineTreeData, SlideSource } from '@/types/api'
+import type {
+  CoursePageItem,
+  ExportTemplate,
+  OutlineTree as OutlineTreeData,
+  SlideSource,
+} from '@/types/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -75,6 +80,16 @@ const floatEl = ref<InstanceType<typeof AgentFloat> | null>(null)
 const activeSource = ref('')
 /** 原文已经取不到的出处（材料删了）：徽标画成失效态（P4-A13）。 */
 const missingSources = ref<string[]>([])
+
+/**
+ * 预览跟着课程选定的模板走（配色 / 字体 / 版式）。
+ *
+ * 清单来自 `/api/capabilities`，按 `tree.template` 查出那一套。查不到就给 null
+ * （老课程没这列、清单还没拉到），预览退回 TDesign 默认样式 —— 不假装套了模板。
+ */
+const slideTheme = computed<ExportTemplate | null>(
+  () => settings.templates.find((one) => one.key === tree.value?.template) ?? null,
+)
 
 /** 删页、加页、加章、拖动都只动这份草稿，点「确认大纲」才整棵提交（P1-A3）。 */
 const { dirty, addChapter, addPage, markClean, movePage, removePage, toSubmit } =
@@ -472,6 +487,7 @@ function onWorkspaceDrop(event: DragEvent): void {
           :page="page"
           :course-title="tree?.title ?? ''"
           :page-count="tree?.pageCount ?? 0"
+          :theme="slideTheme"
           :active-source="activeSource"
           :missing-sources="missingSources"
           @open-source="onOpenSource"
@@ -501,7 +517,11 @@ function onWorkspaceDrop(event: DragEvent): void {
     />
 
     <!-- scope 缺省是 course：工作台导的是整门课的课件 -->
-    <ExportPanel v-model:visible="exportVisible" :course-id="courseId" />
+    <ExportPanel
+      v-model:visible="exportVisible"
+      :course-id="courseId"
+      :default-template="tree?.template"
+    />
 
     <!--
       右下角：生成任务 + 对话 + 材料。挂在工作台上而不是某一栏里 ——
