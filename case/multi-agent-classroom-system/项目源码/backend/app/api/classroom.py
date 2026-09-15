@@ -234,9 +234,13 @@ def quiz_submit(session_id: str):
         POST /api/classroom/sessions/cs_01H…/quiz-submit
         {"option": "B", "responseMs": 4200}
 
-    返回 `quiz_result` 的载荷：`{pageNo, correct, option, answer, explain, branch}`。
-    答错给 `branch=remedial`（MVP 只到文案，补救讲解在 P6），答完课回到 `lecture`
-    但**位置不动** —— 由客户端再报一次 `beat_done` 继续。
+    返回 `quiz_result` 的载荷：`{pageNo, correct, option, answer, explain, branch,
+    feedback}`（`feedback` 见 P6.1 的三档分支）。答完课回到 `lecture` 但**位置不动**
+    —— 由客户端再报一次 `beat_done` 继续。
+
+    **反馈那一句在这条路上是静默的**：发言队列在每条连接的运行时里，HTTP 够不着
+    （`runtime._deliver_feedback` 的说明）。要让它出声，作答走 WS 上行
+    `quiz_answer` —— 判定完全相同，只是那一句能进队说出来。
 
     答案与解析**只在判定之后**给：题目下发时 `quiz` 事件里没有这两个字段
     （见 `runtime.quiz_question`），否则前端看一眼 network 就有答案了。
@@ -312,7 +316,7 @@ def classroom_socket(session_id: str):
         （浏览器里是 `new WebSocket(`ws://${location.host}/ws/classroom/${id}?ticket=…`)`）
 
     上行走 `hello / play / pause / seek / beat_done / ask / chat / hand /
-    board_sync / speed`，下行走 `state / speak / speak_end / subtitle /
+    quiz_answer / board_sync / speed`，下行走 `state / speak / speak_end / subtitle /
     message / hand_queue / board / quiz / quiz_result / presence`，
     外加两条**每连接私有**的帧：`error` 与 `ping`（§4.2 的契约要点）。
     所有协议语义都在 `ClassroomChannel` 里 —— 因为 Flask 的测试客户端做不了

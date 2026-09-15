@@ -161,7 +161,7 @@ def _draw_header(headers: list[str], col_widths: list[float]) -> str:
         f'fill="{_HEADER_BG}" stroke="{_BORDER}" stroke-width="1"/>',
     ]
 
-    x = 0
+    x = 0.0
     for j, header in enumerate(headers):
         width = col_widths[j]
         # 文字居中
@@ -177,7 +177,7 @@ def _draw_header(headers: list[str], col_widths: list[float]) -> str:
     return "".join(parts)
 
 
-def _draw_row(
+def _draw_row(  # noqa: PLR0917 —— 几何参数连着排，跟下面 f-string 里用的顺序一致
     row: list[str],
     col_widths: list[float],
     y: float,
@@ -187,7 +187,7 @@ def _draw_row(
 ) -> str:
     """绘制一行数据。"""
     parts: list[str] = []
-    x = 0
+    x = 0.0
 
     for j, cell in enumerate(row):
         width = col_widths[j]

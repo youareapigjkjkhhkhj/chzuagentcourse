@@ -14,8 +14,9 @@
  *    `GET /sessions/{id}` 把位置拿回来（P3-A10）。
  * 2. **把事件流接到 store**，并把「该发出的上行」发出去：翻页 → `seek`、
  *    播/停 → `play`/`pause`、倍速 → `speed`、答完一句 → `beat_done`、
- *    举手/发言 → `hand`/`ask`/`chat`。上行全部经 `useClassroomSocket.send`，
- *    没连上时**静默丢掉**（理由见那个模块）。
+ *    举手/发言 → `hand`/`ask`/`chat`、交随堂题 → `quiz_answer`。上行全部经
+ *    `useClassroomSocket.send`，没连上时**静默丢掉**（理由见那个模块）——
+ *    只有交答案这一条会退回 HTTP（见 `submitQuiz`）。
  * 3. **出声**。`speak` 事件带音频 URL 就播、不带就只上屏（`useBeatPlayer`），
  *    并在这一句说完时报一次 `beat_done` —— 时间线是这么往前走的。
  * 4. **字幕的字级高亮**。课堂的字幕文字来自 `speak`（整句），逐词时间戳来自
@@ -519,10 +520,16 @@ function submitAsk(payload: { text: string; mode: 'voice' | 'text'; quoteMsgId: 
 const quizClosed = ref(false)
 const showQuiz = computed(() => Boolean(store.quiz) && !quizClosed.value)
 
+/** 题是什么时候弹出来的。作答耗时从这里算起（`submitQuiz` 用）。 */
+const quizShownAt = ref(0)
+
 watch(
   () => store.quiz,
   (value) => {
-    if (value) quizClosed.value = false
+    if (value) {
+      quizClosed.value = false
+      quizShownAt.value = Date.now()
+    }
   },
 )
 
@@ -540,17 +547,30 @@ function skipQuiz(): void {
   closeQuiz()
 }
 
+/**
+ * 交这道题。
+ *
+ * **先走 WS 上行 `quiz_answer`**：判定与 HTTP 那条完全相同（服务端同一个
+ * `submit_quiz`），差别只在反馈那一句 —— 队列在这条连接里，老师那句带过 /
+ * 同学那句补充讲解能**带着自己的嗓子说出来**；走 HTTP 的话队列够不着，
+ * 那一句只落在讨论区里、没有声音。
+ *
+ * 回执是广播回来的 `quiz_result`（带 `seq`），由 `applyEvent` 落进 store ——
+ * 所以这里不再自己 `applyEvent` 一次，也就不存在判两次的问题。
+ * 连接不通（或还没连上）时退回 HTTP：答案照交，只是那句话没声音。
+ */
 async function submitQuiz(option: string): Promise<void> {
   if (!sessionId.value || quizSubmitting.value) return
   quizSubmitting.value = true
-  const started = Date.now()
+  // 作答耗时 = 「题弹出来」到「按下提交」，不是这一次请求跑了多久
+  // （`quiz_attempts.response_ms` 记的就是这个：学情报告里它是「想了多久」）
+  const responseMs = quizShownAt.value ? Date.now() - quizShownAt.value : 0
+  if (socket.send({ type: 'quiz_answer', option, responseMs })) {
+    quizSubmitting.value = false
+    return
+  }
   try {
-    const result = await classroomApi.submitQuiz(sessionId.value, {
-      option,
-      responseMs: Date.now() - started,
-    })
-    // 回执就是那条 `quiz_result` 事件（带 `seq`）—— 走同一条入口落进 store，
-    // 于是 WS 上广播回来的同一条会被 `seq` 去重掉，不会判两次
+    const result = await classroomApi.submitQuiz(sessionId.value, { option, responseMs })
     store.applyEvent(result as unknown as ClassroomEvent)
   } catch (error) {
     MessagePlugin.error(describeError(error))

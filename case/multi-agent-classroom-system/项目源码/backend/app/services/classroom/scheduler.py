@@ -6,8 +6,8 @@
 
 四条规则，逐条对着 §2.2 写：
 
-1. **优先级**：学生提问(barge) > 教师答疑(answer) > 同学插话(interject)
-   > 同学讨论(discussion) > 教师讲授(lecture)。
+1. **优先级**：学生提问(barge) > 教师答疑(answer) > 测验反馈(feedback)
+   > 同学插话(interject) > 同学讨论(discussion) > 教师讲授(lecture)。
 2. **抢占**：学生提问可抢占**除教师答疑外**的所有发言；被抢占的 Turn **丢弃，
    不补播** —— 补播会让课堂拖沓，而且那句话说出口的时机已经过去了。
 3. **TTL**：任何 Turn 排队超过 20s 未播即丢弃。恢复播放时不该一次性蹦出
@@ -29,10 +29,15 @@ from app.common.logging import get_logger
 
 logger = get_logger("app.classroom.scheduler")
 
-#: 五类发言的优先级。数字本身没有意义，比大小才有（`speak` 事件里会带上它）。
+#: 六类发言的优先级。数字本身没有意义，比大小才有（`speak` 事件里会带上它）。
 PRIORITY_LECTURE = 10
 PRIORITY_DISCUSSION = 20
 PRIORITY_INTERJECT = 30
+#: 测验反馈（答对老师带过一句 / 答错同学补一句，P6.1）。夹在插话与答疑之间：
+#: 它是对学生刚那一次作答的**当场回应**，比课堂闲聊该先说出来；但它毕竟不是
+#: 「回答学生提的问题」，让答疑先走。也不受保护 —— 学生此刻真有话说，插进来
+#: 把这一句打断，比让他等着更对。
+PRIORITY_FEEDBACK = 35
 PRIORITY_ANSWER = 40
 PRIORITY_BARGE = 50
 
@@ -40,6 +45,7 @@ PRIORITIES: dict[str, int] = {
     "lecture": PRIORITY_LECTURE,
     "discussion": PRIORITY_DISCUSSION,
     "interject": PRIORITY_INTERJECT,
+    "feedback": PRIORITY_FEEDBACK,
     "answer": PRIORITY_ANSWER,
     "barge": PRIORITY_BARGE,
 }
@@ -312,6 +318,7 @@ __all__ = [
     "PRIORITY_ANSWER",
     "PRIORITY_BARGE",
     "PRIORITY_DISCUSSION",
+    "PRIORITY_FEEDBACK",
     "PRIORITY_INTERJECT",
     "PRIORITY_LECTURE",
     "PROTECTED_KINDS",

@@ -58,13 +58,20 @@ const branchText = computed(() => {
   }
 })
 
-/** P6.1：分支反馈的补充消息（AI 同学的讲解 / 复习页标题）。 */
+/**
+ * P6.1：分支反馈的补充消息（AI 同学的讲解 / 复习页标题）。
+ *
+ * 形状对齐后端的 `quiz_feedback`：`feedback.line` 是「谁、说什么」
+ * （`{speakerName, text, …}`），`review` 那一档没有 `line`，它换成
+ * `reviewPage`。**这句话同时也是课上说的那一句** —— 学生听到的和这里显示的
+ * 是同一份文本（WS 上作答时那一句会带说话人自己的嗓子说出来）。
+ */
 const feedbackText = computed(() => {
   const fb = props.result?.feedback
   if (!fb) return ''
-  if (fb.message && typeof fb.message === 'object') {
-    const msg = fb.message as { speaker?: string; text?: string }
-    if (msg.text) return msg.text
+  const line = fb.line as { speakerName?: string; text?: string } | undefined
+  if (line?.text) {
+    return line.speakerName ? `${line.speakerName}：${line.text}` : line.text
   }
   if (fb.reviewPage && typeof fb.reviewPage === 'object') {
     const page = fb.reviewPage as { title?: string }

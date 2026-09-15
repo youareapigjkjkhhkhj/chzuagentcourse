@@ -221,12 +221,23 @@ export interface QuizResult {
   answer: string
   explain: string
   branch: 'pass' | 'remedial' | 'review'
-  /** P6.1：分支反馈事件的载荷（quiz_feedback 事件）。 */
+  /** P6.1：分支反馈的载荷（与 `quiz_feedback` 事件里那一份同形）。 */
   feedback?: {
     branch: string
-    message?: { speaker: string; text: string }
+    /**
+     * 要说的那句话：谁、说什么。**课上说的就是它** —— 走 WS 作答时这一句会
+     * 带说话人自己的嗓子里说出来，`review` 那一档没有它（它换来的是一页复习）。
+     */
+    line?: {
+      speakerCode: string
+      speakerName: string
+      speakerKind: string
+      text: string
+    }
+    conceptTag?: string
+    chapterNo?: number
     reviewPage?: Record<string, unknown>
-    [key: string]: unknown
+    reviewPageId?: string
   }
 }
 
@@ -324,7 +335,7 @@ export type ClassroomEvent =
   // 没有外面再套一层 `quiz` 键
   | ({ type: 'quiz' } & ClassroomQuiz)
   | ({ type: 'quiz_result' } & QuizResult)
-  | { type: 'quiz_feedback'; pageNo: number; branch: string; message?: unknown; reviewPage?: unknown }
+  | { type: 'quiz_feedback'; pageNo: number; branch: string; line?: unknown; reviewPage?: unknown }
   | ({ type: 'presence' } & ClassroomPresence)
   | { type: 'error'; code: string; message: string; recoverable?: boolean }
   | { type: 'ping'; ts?: string }

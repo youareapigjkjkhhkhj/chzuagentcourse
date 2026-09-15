@@ -151,10 +151,20 @@ export function useBeatPlayer(options: BeatPlayerOptions): BeatPlayer {
   function complete(finished: SpeakPayload | null): void {
     if (!finished) return
     settle()
-    // 没有 beat 的不是讲稿（答疑、系统提示）：它们说完就完了，时间线不动
-    if (!finished.beats.length) return
+    if (finished.beats.length) {
+      if (!options.claim(finished.turnId)) return
+      options.onBeatDone(finished.beats[0])
+      return
+    }
+    // 没有 beat 的不是讲稿（答疑、插话、讨论）：它们说完就完了，时间线不动。
+    //
+    // **测验反馈那一句是例外**：它不是插在讲稿之间的一句闲话，而是**这道题
+    // 过了**这件事本身（`runtime._say_feedback`）。它说完的那一刻正是「接着往下
+    // 讲」的那一刻，不报这一下，课堂就停在答完题的地方不动了 —— 与「跳过这道题」
+    // 按的那个 `beat_done` 是同一条（空 `beatId`：位置由服务端的会话行说了算）。
+    if (finished.kind !== 'feedback') return
     if (!options.claim(finished.turnId)) return
-    options.onBeatDone(finished.beats[0])
+    options.onBeatDone('')
   }
 
   function start(next: SpeakPayload): void {

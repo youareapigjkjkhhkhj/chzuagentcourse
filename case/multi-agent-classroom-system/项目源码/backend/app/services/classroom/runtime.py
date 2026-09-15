@@ -12,6 +12,7 @@
 | `beat_done` | 推进时间线，触发插话、章末讨论、测验、板书 |
 | `ask` / `chat` | 学生发言入消息流（过滤 + 限流），教师答疑 |
 | `hand` | 举手 / 撤回 / 点名 |
+| `quiz_answer` | 提交一次作答（与 `POST /quiz-submit` 同一条判定，多一句有声的反馈） |
 | `board_sync` | 收下客户端笔画并回播 |
 | `speed` | 倍速 |
 
@@ -223,14 +224,20 @@ def submit_quiz(
     option: str,
     response_ms: int = 0,
     timeline: timeline_module.Timeline | None = None,
+    say: Callable[[Mapping[str, Any], int], None] | None = None,
 ) -> dict:
-    """判一次作答（§4.1 `POST /quiz-submit`，HTTP 与 WS 共用）。
+    """判一次作答（§4.1 `POST /quiz-submit` 与 WS 上行 `quiz_answer` 共用）。
 
     一次作答**一行**（P6.1 要分开算第一次答对率与最终答对率），判定结果就是
     `quiz_result` 事件的载荷。判完把课推回 `lecture`：P6.1 的三档分支在这里
     真正落地（pass/remedial/review）。
 
     **位置不动**：答完之后由客户端再报一次 `beat_done` 继续（见模块 docstring）。
+
+    `say` 是「那句反馈怎么说出口」：WS 那条路把连接的发言队列传进来（
+    `ClassroomRuntime._say_feedback`），于是这一句带上说话人自己的嗓子；HTTP
+    那条路没有队列可传，留给 `_deliver_feedback` 按静默发言处理。两条路都进
+    消息流，区别只在**有没有声音**。
     """
     state.require_interactive(session)
     line = timeline if timeline is not None else sessions.timeline_of(session)
@@ -264,18 +271,22 @@ def submit_quiz(
     # P6.1：三档分支（pass/remedial/review）
     page_dict = {"pageNo": page.page_no, "quiz": quiz}
     branch = quiz_feedback.decide_branch(session, page_dict, correct)
-    feedback_event: dict | None = None
+    feedback: dict = {"branch": branch}
     if branch == "pass":
-        feedback_event = quiz_feedback.handle_pass(session, page_dict)
+        feedback = quiz_feedback.handle_pass(session, page_dict)
     elif branch == "remedial":
-        feedback_event = quiz_feedback.handle_remedial(session, page_dict, concept_tag)
+        feedback = quiz_feedback.handle_remedial(session, page_dict, concept_tag)
     elif branch == "review":
         chapter_no = _get_chapter_no(session.course_id, page.page_no)
         if chapter_no is not None:
-            feedback_event = quiz_feedback.handle_review(session, page_dict, chapter_no)
+            feedback = quiz_feedback.handle_review(session, page_dict, chapter_no)
         else:
             branch = "remedial"  # 拿不到章号，降级为 remedial
-            feedback_event = quiz_feedback.handle_remedial(session, page_dict, concept_tag)
+            feedback = quiz_feedback.handle_remedial(session, page_dict, concept_tag)
+    branch = str(feedback.get("branch") or branch)
+    # 那句话得**说出口**才算数：要么交给队列说（有声音），要么按静默发言进消息流
+    _deliver_feedback(session, feedback, page.page_no, say=say)
+    recorder.publish(session, "quiz_feedback", {"pageNo": page.page_no, **feedback})
 
     event = recorder.publish(
         session,
@@ -287,13 +298,58 @@ def submit_quiz(
             "answer": answer,
             "explain": str(quiz.get("explain") or ""),
             "branch": branch,
-            "feedback": feedback_event,
+            "feedback": feedback,
         },
     )
     if str(session.status or "") == state.QUIZ_WAIT:
         state.transition(session, state.LECTURE, reason="测验作答完成")
         announce_state(session)
     return event
+
+
+def _deliver_feedback(
+    session: ClassroomSession,
+    feedback: Mapping[str, Any],
+    page_no: int,
+    *,
+    say: Callable[[Mapping[str, Any], int], None] | None = None,
+) -> None:
+    """把反馈那句话**说出口**（P6.1）。
+
+    要说的只有 `line`（谁、说什么）：答对是老师一句带过，答错是某位同学补一句
+    讲解；`review` 那档没有话 —— 它换来的是一页新内容，什么时候讲那一页由时间线
+    决定。
+
+    **分岔只在这一处，两条路只差「有没有声音」**：
+
+    - 有发言队列（WS 上行 `quiz_answer`）：交给 `say`（`ClassroomRuntime._say_feedback`）。
+      这句话进队列，由 `tick` 放出来 —— 带说话人自己的嗓子，也照样受「同一时刻
+      只有一个说话者」那把仲裁管（被抢占、超时就说不成了，与插话/讨论一个口径）。
+    - 没有队列（HTTP `POST /quiz-submit`）：队列在每条连接各自的运行时里
+      （`channel._enter` 给每条连接新建一个），HTTP 够不着。按**静默发言**处理：
+      落一条消息、发一条 `message` 帧，没人念它。
+
+    **两条路都必须进消息流**：只落库不发帧的话，这句话在课堂上没人看得见
+    （前端不认 `quiz_feedback` 事件），要翻课后记录才冒出来 —— 而记录里就会多出
+    一条「课堂上没发生过」的发言（P3-C1/A14 数的正是这个差）。
+    """
+    line = feedback.get("line")
+    if not isinstance(line, Mapping) or not str(line.get("text") or ""):
+        return
+    if say is not None:
+        say(line, int(page_no or 0))
+        return
+    message = recorder.add_message(
+        session,
+        speaker_code=str(line.get("speakerCode") or ""),
+        speaker_kind=str(line.get("speakerKind") or "teacher"),
+        # `comment` 是这一句的既定类型：与 `handle_pass` 那句带过、以及
+        # `_count_remedial_messages` 的轮换计数（按 `comment`+`student_ai` 数）对齐
+        type="comment",
+        text=str(line.get("text") or ""),
+        page_no=int(page_no or 0) or None,
+    )
+    recorder.publish(session, "message", {"msg": message})
 
 
 def _get_chapter_no(course_id: str, page_no: int) -> int | None:
@@ -770,6 +826,34 @@ class ClassroomRuntime:
         self._interrupt("hand")
         call_student(self.session)
 
+    def _on_quiz_answer(self, payload: Mapping[str, Any]) -> None:
+        """WS 上提交一次作答（与 §4.1 的 `POST /quiz-submit` 同一件事）。
+
+        **多出来的只有「那句话有声音」**：队列在这条连接里，反馈那一句能进队
+        说出来（`_say_feedback`）；HTTP 那条路够不着队列，只能按静默发言落进
+        消息流。判题、落 `quiz_attempts`、发 `quiz_result` —— 全都走同一个
+        `submit_quiz`，两条路不会判出两个结果。
+        """
+        option = str(payload.get("option") or "")
+        submit_quiz(
+            self.session,
+            option=option,
+            response_ms=_int_of(payload.get("responseMs")),
+            timeline=self.timeline,
+            say=self._say_feedback,
+        )
+        # 一句话都没排上，就当我们自己把「这一拍播完了」报上来：课堂接着往下讲。
+        # 走的是与客户端 `beat_done` **完全相同**的那条路（`_on_beat_done` 认得出
+        # 这一页的题已经答过，不会当成「再弹一次题」）。
+        #
+        # 这条兜底是给 `review` 那一档留的：它没有要说的那句话（它换来的是一页
+        # 复习内容），于是没有任何一条 `speak` 能让客户端知道「该往下走了」——
+        # 不兜的话，课堂就停在答完题的那一刻不动了。
+        # **队列里还有话就不动**：那说明反馈那一句在，它说完由客户端报这一拍
+        # （`useBeatPlayer.complete` 对 `feedback` 那条发言就是这么做的）。
+        if not self._scheduler.speaking and not self._scheduler.pending:
+            self._on_beat_done({})
+
     def _on_board_sync(self, payload: Mapping[str, Any]) -> None:
         """学生端教具条的笔画：清洗后落库，并把这一页的完整板书回播给所有人。"""
         state.require_interactive(self.session)
@@ -948,7 +1032,10 @@ class ClassroomRuntime:
 
     def _after_turn(self, turn: Turn) -> None:
         """一条发言说完之后的衔接：讨论继续，答疑收尾。"""
-        if turn.kind in ("lecture", "interject"):
+        # `feedback`（P6.1 的测验反馈）也在里面：它说完之后该做的是**等学生
+        # 再报一次 `beat_done` 继续**（`submit_quiz` 那一句「位置不动」），
+        # 往下走就成了替讨论推进一轮、或者把刚被点名的人收尾掉 —— 都不是它的事。
+        if turn.kind in ("lecture", "interject", "feedback"):
             return
         if self._discussion is not None:
             self._advance_discussion()
@@ -1093,7 +1180,11 @@ class ClassroomRuntime:
     # --- 内部：插话（§2.3）---
 
     def _maybe_interject(self, page: timeline_module.TimelinePage, beat_idx: int) -> None:
-        """规则先筛，再由一次 LLM 调用决定说什么（超时/失败就跳过这一轮）。"""
+        """规则先筛，再由一次 LLM 调用决定说什么（超时/失败就跳过这一轮）。
+
+        决定了就顺手配一段声音：这一轮已经花掉一次 LLM 调用，多一次 TTS 换
+        「同学真的开口了」是值的（`speech.turn_audio` 配不上就是纯文字）。
+        """
         if page.page_no in self._interjects_queued:
             return
         allowed, reason = interjection.should_interject(
@@ -1115,7 +1206,18 @@ class ClassroomRuntime:
         if said is None:
             return
         self._interjects_queued.add(page.page_no)
-        self._scheduler.enqueue(Turn(**said.as_turn_kwargs(page_no=page.page_no)))
+        audio = speech.turn_audio(
+            said.text,
+            voice_id=said.voice_profile_id,
+            persona=said.persona,
+        )
+        self._scheduler.enqueue(
+            Turn(
+                **said.as_turn_kwargs(page_no=page.page_no),
+                audio_url=str(audio.get("url") or ""),
+                duration_ms=int(audio.get("durationMs") or 0),
+            )
+        )
 
     # --- 内部：章末讨论（§2.2 / P3-A4）---
 
@@ -1200,7 +1302,12 @@ class ClassroomRuntime:
     def _discussion_turn(
         self, speaker: Mapping[str, Any], page: timeline_module.TimelinePage, context: dict
     ) -> Turn | None:
-        """一次 LLM 调用换一句话。失败就收尾 —— 讨论不能卡在模型上（P3-D3）。"""
+        """一次 LLM 调用换一句话。失败就收尾 —— 讨论不能卡在模型上（P3-D3）。
+
+        说话人的那句话还当场配一段声音（`speech.turn_audio`）：讨论这一轮本来
+        就在等一次 LLM 调用，TTS 挂在这条已有的慢路径后面，学生听到的和读到的
+        是同一句话。**配不上就没有声音**，按字数估时照样往下走。
+        """
         try:
             result = call_json(
                 get_registry().current_llm(),
@@ -1237,6 +1344,12 @@ class ClassroomRuntime:
             message_type = "comment"
         text = text[: prompts.MAX_INTERJECTION_CHARS]
         context["history"].append({"speaker": speaker.get("name"), "text": text})
+        audio = speech.turn_audio(
+            text,
+            voice_id=str(speaker.get("voiceProfileId") or ""),
+            role="teacher" if is_teacher else "student",
+            persona=speaker.get("persona") or {},
+        )
         return Turn(
             speaker_code=str(speaker.get("code") or ""),
             speaker_name=str(speaker.get("name") or ""),
@@ -1245,6 +1358,9 @@ class ClassroomRuntime:
             kind="discussion",
             message_type=message_type,
             page_no=page.page_no,
+            audio_url=str(audio.get("url") or ""),
+            # 有音频就得带上时长：课堂按它计时（见 `Turn.duration_ms` 的说明）
+            duration_ms=int(audio.get("durationMs") or 0),
         )
 
     def _finish_discussion(self) -> None:
@@ -1259,6 +1375,43 @@ class ClassroomRuntime:
         self._speak_current_beat()
 
     # --- 内部：测验与板书 ---
+
+    def _say_feedback(self, line: Mapping[str, Any], page_no: int) -> None:
+        """把测验反馈那一句交给发言队列（`submit_quiz` 的 `say` 回调）。
+
+        这是 WS 上作答与 HTTP 作答**唯一**的差别：入队由 `tick` 放出来，于是
+        学生听到的就是屏幕上那一句，而且是**说话人自己的嗓子**（老师答对那句
+        带过、同学那句补充讲解，各配各的）。配不上音色档就没有声音，按纯文字
+        往下走（`speech.turn_audio` 的口径）。
+
+        入队之后**不再单独落库**：这句话由 `_speak` 落（与讲稿、插话、讨论
+        同一条路），抢占了、超时就当没说过 —— 与那几类发言一个口径。
+        """
+        text = " ".join(str(line.get("text") or "").split())
+        if not text:
+            return
+        is_teacher = str(line.get("speakerKind") or "teacher") == "teacher"
+        audio = speech.turn_audio(
+            text,
+            voice_id=str(line.get("voiceProfileId") or ""),
+            role="teacher" if is_teacher else "student",
+            persona=line.get("persona") or {},
+        )
+        self._scheduler.enqueue(
+            Turn(
+                speaker_code=str(line.get("speakerCode") or ""),
+                speaker_name=str(line.get("speakerName") or ""),
+                speaker_kind="teacher" if is_teacher else "student_ai",
+                text=text,
+                kind="feedback",
+                # 与 `_deliver_feedback` 静默那条路同一种类型（见那里的说明）
+                message_type="comment",
+                page_no=int(page_no or 0),
+                audio_url=str(audio.get("url") or ""),
+                # 有音频就得带上时长：课堂按它计时（见 `Turn.duration_ms` 的说明）
+                duration_ms=_int_of(audio.get("durationMs")),
+            )
+        )
 
     def _enter_quiz(self, page: timeline_module.TimelinePage) -> None:
         """弹题并等作答（P3-A7）。**位置不动**（见 `submit_quiz`）。"""
@@ -1496,6 +1649,7 @@ _UPLINK: dict[str, Callable[[ClassroomRuntime, Mapping[str, Any]], None]] = {
     "ask": ClassroomRuntime._on_ask,
     "chat": ClassroomRuntime._on_chat,
     "hand": ClassroomRuntime._on_hand,
+    "quiz_answer": ClassroomRuntime._on_quiz_answer,
     "board_sync": ClassroomRuntime._on_board_sync,
     "speed": ClassroomRuntime._on_speed,
 }

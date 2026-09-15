@@ -15,6 +15,16 @@
 - **不重复讲解**：同一个 conceptTag 在一堂课里只讲解一次（避免复读）
 - **复习页落库**：插入的复习页存 `review_pages` 表，课后生成学情报告时用
 
+### 这一层只做决定，话由 runtime 说
+
+三个 `handle_*` 返回的是**决定**（走哪一档、谁来说、说什么），**不落库、不下行**：
+「说的动作」归 `runtime.submit_quiz` 的 `_deliver_feedback` —— 那一步要看
+**作答是从哪条路来的**：WS 上行（`quiz_answer`）有发言队列可用，这一句就交给
+队列说出口（带说话人自己的声音）；HTTP（`POST /quiz-submit`）够不着队列
+（队列在每条连接各自的 runtime 里），只能按静默发言落进消息流。两边都**进
+消息流**这一点是一样的 —— 只写库不发帧的话，课堂上没人看得见这句话
+（前端不认 `quiz_feedback` 事件），要翻课后记录才冒出来。
+
 ### 与 runtime.py 的集成
 
 `submit_quiz` 判完答案后调用 `decide_branch`，根据分支调用不同的处理函数：
@@ -22,11 +32,12 @@
 ```python
 branch = quiz_feedback.decide_branch(session, page, correct)
 if branch == "pass":
-    quiz_feedback.handle_pass(session, page)
+    feedback = quiz_feedback.handle_pass(session, page)
 elif branch == "remedial":
-    quiz_feedback.handle_remedial(session, page, concept_tag)
+    feedback = quiz_feedback.handle_remedial(session, page, concept_tag)
 elif branch == "review":
-    quiz_feedback.handle_review(session, page, chapter_no)
+    feedback = quiz_feedback.handle_review(session, page, chapter_no)
+# feedback = {"branch": …, "line": {谁、说什么} | None, "conceptTag"/"reviewPage": …}
 ```
 """
 
@@ -39,7 +50,7 @@ from app.common.logging import get_logger
 from app.extensions import db
 from app.models import ClassroomSession, QuizAttempt, ReviewPage
 from app.models.course import CoursePage
-from app.services.classroom import recorder, roster
+from app.services.classroom import roster
 from app.services.generation.llm import call_json
 from app.services.provider_registry import get_registry
 
@@ -92,33 +103,12 @@ def decide_branch(
 def handle_pass(session: ClassroomSession, page: Mapping[str, Any]) -> dict:
     """答对：教师一句话带过（P6.1）。
 
-    返回：quiz_result 事件的载荷（branch="pass"）
+    返回：`{"branch": "pass", "line": {谁、说什么}}`
     """
-    teacher = roster.teacher()
-    text = "答对了！我们继续。"
-
-    # 发一条教师消息
-    msg = recorder.add_message(
-        session,
-        speaker_code=teacher["code"],
-        speaker_kind="teacher",
-        type="comment",
-        text=text,
-        page_no=int(page.get("pageNo") or 0),
-    )
-
-    # 发 quiz_feedback 事件（前端渲染教师消息）
-    event = recorder.publish(
-        session,
-        "quiz_feedback",
-        {
-            "pageNo": int(page.get("pageNo") or 0),
-            "branch": "pass",
-            "message": msg,
-        },
-    )
-
-    return event
+    return {
+        "branch": "pass",
+        "line": _line(roster.teacher(), speaker_kind="teacher", text="答对了！我们继续。"),
+    }
 
 
 def handle_remedial(
@@ -128,11 +118,10 @@ def handle_remedial(
 ) -> dict:
     """答错：AI 同学补充讲解该概念（P6.1）。
 
-    返回：quiz_result 事件的载荷（branch="remedial"）
+    返回：`{"branch": "remedial", "conceptTag": …, "line": {谁、说什么}}`
 
     **降级策略**：LLM 调用 3 秒超时，降级为"显示参考答案"。
     """
-    page_no = int(page.get("pageNo") or 0)
     quiz = page.get("quiz") or {}
     explain = str(quiz.get("explain") or "")
 
@@ -143,8 +132,7 @@ def handle_remedial(
     classmates = roster.classmates()
     if not classmates:
         # 没有 AI 同学，降级为教师讲解
-        teacher = roster.teacher()
-        speaker = teacher
+        speaker = roster.teacher()
         speaker_kind = "teacher"
     else:
         # 轮流选一位同学
@@ -152,29 +140,11 @@ def handle_remedial(
         speaker = classmates[index]
         speaker_kind = "student_ai"
 
-    # 发一条 AI 同学消息
-    msg = recorder.add_message(
-        session,
-        speaker_code=speaker["code"],
-        speaker_kind=speaker_kind,
-        type="comment",
-        text=text,
-        page_no=page_no,
-    )
-
-    # 发 quiz_feedback 事件
-    event = recorder.publish(
-        session,
-        "quiz_feedback",
-        {
-            "pageNo": page_no,
-            "branch": "remedial",
-            "conceptTag": concept_tag,
-            "message": msg,
-        },
-    )
-
-    return event
+    return {
+        "branch": "remedial",
+        "conceptTag": concept_tag,
+        "line": _line(speaker, speaker_kind=speaker_kind, text=text),
+    }
 
 
 def handle_review(
@@ -184,7 +154,10 @@ def handle_review(
 ) -> dict:
     """同章连错 ≥2 题：动态插入一页复习内容（P6.1）。
 
-    返回：quiz_result 事件的载荷（branch="review"）
+    返回：`{"branch": "review", "chapterNo": …, "reviewPage": …, "reviewPageId": …}`
+
+    这一档**没有要说的那句话**（`line`）：它换来的是一页新内容，什么时候讲
+    那一页由时间线决定，不在这里抢话。
 
     **降级策略**：LLM 调用 3 秒超时，降级为"插入一页空白复习页"。
     """
@@ -206,25 +179,33 @@ def handle_review(
     db.session.add(review_page)
     db.session.flush()
 
-    # 发 quiz_feedback 事件（前端渲染复习页）
-    event = recorder.publish(
-        session,
-        "quiz_feedback",
-        {
-            "pageNo": page_no,
-            "branch": "review",
-            "chapterNo": chapter_no,
-            "reviewPage": review_page_dsl,
-            "reviewPageId": review_page.id,
-        },
-    )
-
-    return event
+    return {
+        "branch": "review",
+        "chapterNo": chapter_no,
+        "reviewPage": review_page_dsl,
+        "reviewPageId": review_page.id,
+    }
 
 
 # --------------------------------------------------------------------------
 # 内部函数
 # --------------------------------------------------------------------------
+
+
+def _line(speaker: Mapping[str, Any], *, speaker_kind: str, text: str) -> dict:
+    """一句话的「谁、说什么」——说出口是 runtime 的事（见模块 docstring）。
+
+    `voiceProfileId` 与 `persona` 一并带上：嗓子是说话人的，这一层不认识
+    `speech`。runtime 拿它去配声，配不上（没配音色）就按纯文字说。
+    """
+    return {
+        "speakerCode": str(speaker.get("code") or ""),
+        "speakerName": str(speaker.get("name") or ""),
+        "speakerKind": speaker_kind,
+        "text": text,
+        "voiceProfileId": str(speaker.get("voiceProfileId") or ""),
+        "persona": speaker.get("persona") or {},
+    }
 
 
 def _get_chapter_no(course_id: str, page_no: int) -> int | None:

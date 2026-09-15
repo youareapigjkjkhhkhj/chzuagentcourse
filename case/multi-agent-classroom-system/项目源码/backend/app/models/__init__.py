@@ -51,6 +51,7 @@ from app.models.generation import (
     GenJob,
     GenStep,
 )
+from app.models.mastery import ReviewPage
 from app.models.material import (
     MATERIAL_EXTS,
     MATERIAL_STATUSES,
@@ -61,7 +62,6 @@ from app.models.material import (
     MaterialStats,
     PageSource,
 )
-from app.models.mastery import ReviewPage
 from app.models.page_version import PAGE_VERSION_REASONS, CoursePageVersion
 from app.models.provider import BUILTIN_PROVIDERS, PROVIDER_KINDS, Provider
 from app.models.settings_kv import (

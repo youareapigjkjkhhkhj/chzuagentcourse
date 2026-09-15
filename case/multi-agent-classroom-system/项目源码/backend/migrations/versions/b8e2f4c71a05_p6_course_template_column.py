@@ -34,6 +34,9 @@ def upgrade():
 
 
 def downgrade():
-    # SQLite 删列要走 batch（重建表）—— 直接 drop_column 在旧版本上不支持。
-    with op.batch_alter_table('courses') as batch_op:
-        batch_op.drop_column('template')
+    # 原生删列，**不要**用 batch（重建表）—— 理由与 fd6cc663b1c6 里那段一字不差：
+    # courses 是 course_pages / gen_jobs 的外键父表，batch 重建在 foreign_keys=ON
+    # 时等价于「建新表 → 搬数据 → DROP TABLE courses → 改名」，那次 DROP 的隐式
+    # DELETE 会顺着 CASCADE 把页面、版本、任务全带走 —— 降级一次就清空课程内容，
+    # 而且不报任何错。需要 SQLite ≥ 3.35（venv 内置 3.38，同 fd6cc663b1c6）。
+    op.execute('ALTER TABLE courses DROP COLUMN template')

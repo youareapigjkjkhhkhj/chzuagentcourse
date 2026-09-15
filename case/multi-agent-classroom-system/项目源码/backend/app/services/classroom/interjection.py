@@ -51,6 +51,10 @@ class Interjection:
     type: str
     trigger: str
     persona: Mapping[str, Any]
+    #: 说话人的音色档（`AgentRole.voice_profile_id`）。造 Turn 的那一步拿它去
+    #: 合成这一句的声音（`speech.turn_audio`）；空 = 这位同学没配音色，
+    #: 那就没有声音 —— 绝不退回老师的嗓子。
+    voice_profile_id: str = ""
 
     def as_turn_kwargs(self, *, page_no: int) -> dict:
         return {
@@ -160,6 +164,7 @@ def decide(
         type=kind,
         trigger=str(data.get("trigger") or "concept_midway"),
         persona=dict(persona),
+        voice_profile_id=str(speaker.get("voiceProfileId") or ""),
     )
 
 

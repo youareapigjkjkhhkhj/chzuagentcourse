@@ -404,14 +404,15 @@ def _read_environment(source: str, index: int, state: _State) -> tuple[_Box, int
     # 按环境名分派
     if env_name in ("matrix", "pmatrix", "bmatrix"):
         return _matrix_box(body, env_name, state), index
-    elif env_name in ("aligned", "cases"):
+    if env_name in ("aligned", "cases"):
         return _multiline_box(body, env_name, state), index
-    else:
-        # 不认识的环境：原样当文字排
-        return _text_box(f"\\begin{{{env_name}}}{body}\\end{{{env_name}}}", state), index
+    # 不认识的环境：原样当文字排
+    return _text_box(f"\\begin{{{env_name}}}{body}\\end{{{env_name}}}", state), index
 
 
-def _matrix_box(body: str, env_name: str, state: _State) -> _Box:
+def _matrix_box(  # noqa: PLR0912 —— 分行、分列、再按环境加括号，拆开就看不出全貌了
+    body: str, env_name: str, state: _State
+) -> _Box:
     """矩阵环境：按 `&` 分列、`\\\\` 分行，拼成网格。
 
     `pmatrix` 加圆括号、`bmatrix` 加方括号、`matrix` 不加。
@@ -506,12 +507,11 @@ def _draw_paren(width: float, height: float, state: _State, *, left: bool) -> st
             f'<path d="M{width},0 Q0,{height / 2} {width},{height}" '
             f'fill="none" stroke="{_INK}" stroke-width="{stroke}"/>'
         )
-    else:
-        # 右括号：)
-        return (
-            f'<path d="M0,0 Q{width},{height / 2} 0,{height}" '
-            f'fill="none" stroke="{_INK}" stroke-width="{stroke}"/>'
-        )
+    # 右括号：)
+    return (
+        f'<path d="M0,0 Q{width},{height / 2} 0,{height}" '
+        f'fill="none" stroke="{_INK}" stroke-width="{stroke}"/>'
+    )
 
 
 def _draw_bracket(width: float, height: float, state: _State, *, left: bool) -> str:
@@ -523,12 +523,11 @@ def _draw_bracket(width: float, height: float, state: _State, *, left: bool) -> 
             f'<path d="M{width},0 L0,0 L0,{height} L{width},{height}" '
             f'fill="none" stroke="{_INK}" stroke-width="{stroke}"/>'
         )
-    else:
-        # 右括号：]
-        return (
-            f'<path d="M0,0 L{width},0 L{width},{height} L0,{height}" '
-            f'fill="none" stroke="{_INK}" stroke-width="{stroke}"/>'
-        )
+    # 右括号：]
+    return (
+        f'<path d="M0,0 L{width},0 L{width},{height} L0,{height}" '
+        f'fill="none" stroke="{_INK}" stroke-width="{stroke}"/>'
+    )
 
 
 def _multiline_box(body: str, env_name: str, state: _State) -> _Box:

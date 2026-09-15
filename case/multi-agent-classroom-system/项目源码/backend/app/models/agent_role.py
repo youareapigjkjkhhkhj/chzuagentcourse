@@ -1,7 +1,9 @@
 """课堂角色（主讲老师 + AI 同学）。
 
 `persona_json` 承载角色的说话风格与行为倾向，P3 课堂运行时把它拼进提示词。
-同学共用音色池里有限的音色时，靠 persona 里的语速/音高偏移拉开区分度。
+同学共用音色池里有限的音色时（种子里林晓与苏雨都是顾老师），靠 persona 里的
+`speechRate` 拉开语速 —— 那一位说话时由 `speech.turn_audio` 递进合成。
+`pitch` 目前没有出口：合成链上还没有这个参数，先留着。
 """
 
 from __future__ import annotations
