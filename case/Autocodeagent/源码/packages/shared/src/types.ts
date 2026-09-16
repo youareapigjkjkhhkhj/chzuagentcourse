@@ -71,6 +71,8 @@ export interface ChatMessage {
   toolMs?: number;
   /** tool：write/edit/bash 产生的变更集 id（P2 审阅链路，回放时恢复 [查看 Diff]） */
   toolChangeId?: string;
+  /** tool（task）：子代理实时进度文本（live 展示，不落盘；回放只见最终结果） */
+  toolProgress?: string;
 }
 
 export interface SessionMeta {
@@ -172,6 +174,8 @@ export type StreamEvent =
   | { type: 'error'; sessionId: string; message: string }
   | { type: 'tool_start'; sessionId: string; callId: string; name: string; argsSummary: string; risk: Risk }
   | { type: 'tool_result'; sessionId: string; callId: string; ok: boolean; ms: number; summary: string }
+  /** 子代理（task）执行进度：更新对应 task 卡片的进度文本（callId = 主 agent 侧 task 调用 id）；live 展示不落盘 */
+  | { type: 'tool_progress'; sessionId: string; callId: string; text: string }
   | { type: 'permission_request'; sessionId: string; requestId: string; callId: string; name: string; risk: Risk; detail: string }
   | { type: 'diff_ready'; sessionId: string; callId: string; changeId: string }
   | { type: 'plan'; sessionId: string; todos: TodoItem[] }

@@ -30,6 +30,7 @@ import {
 } from '@agent-core/agent-core';
 import type { AppSettings, ChangeSetView, ChatImage, ChatMessage, DiffView, ModelConfig, NormalizedUsage, Risk, RollbackResult, SessionRunState, StreamEvent } from '@agentbuddy/shared';
 import type { SkillHub } from '@agent-core/agent-core';
+import { SubagentRunner } from './subagent';
 
 export type Emit = (event: StreamEvent) => void;
 
@@ -45,6 +46,8 @@ const zeroUsage = (): NormalizedUsage => ({ promptTokens: 0, completionTokens: 0
 
 export class ChatService {
   private readonly checkpoint: Checkpoint;
+  /** 子代理派发器（task 工具后端；拆出本类以聚焦会话编排，详见 subagent.ts） */
+  private readonly subagents: SubagentRunner;
   private running = new Map<string, AbortController>();
   /** 挂起的权限询问：存全 query 字段（callId/name/risk/detail），使切换会话后能重建权限卡（permission_request 事件不重发） */
   private pendingPerms = new Map<string, { sessionId: string; callId: string; name: string; risk: Risk; detail: string; resolve: (a: PermissionAnswer) => void }>();
@@ -70,6 +73,12 @@ export class ChatService {
     private readonly opts: ChatServiceOptions = {},
   ) {
     this.checkpoint = new Checkpoint(dataDir);
+    // 子代理派发器复用本类已持有的 store / 能力（构造期一次注入）；buildWebSearchTool 与主 agent 同源
+    this.subagents = new SubagentRunner({
+      configs, checkpoint: this.checkpoint, workspace, experts, skills, mcp,
+      usage: opts.usage,
+      buildWebSearchTool: (s) => this.buildWebSearchTool(s),
+    });
   }
 
   isBusy(sessionId: string): boolean {
@@ -172,8 +181,8 @@ export class ChatService {
       : null;
     // 联网搜索：设置开启且已配置 Tavily key → 注入 websearch（webfetch 已在内置总线，零配置）
     const webSearchTool = await this.buildWebSearchTool(settings);
-    // task（子代理派发）：spawn 闭包捕获本会话 config/gate/emit/total，子代理复用之（详见 spawnSubagent）
-    const taskTool = createTaskTool((eid, p, sig) => this.spawnSubagent(sessionId, eid, p, sig, { config, gate, emit, total }));
+    // task（子代理派发）：委派给 SubagentRunner，spawn 闭包捕获本会话 config/gate/emit/total + 本次 callId（详见 subagent.ts）
+    const taskTool = createTaskTool((eid, p, sig, callId) => this.subagents.spawn(sessionId, eid, p, sig, { config, gate, emit, total, callId }));
     const mcpTools = this.mcp?.sessionTools() ?? [];
     const extra = [skillTool, webSearchTool, taskTool].filter((t): t is Tool => t !== null);
     // alwaysLoadServers：强制常驻连接器名（pool 侧算，仅已连接且 cfg.alwaysLoad）
@@ -357,85 +366,6 @@ export class ChatService {
     const cur = prev.then(() => this.askUser(sessionId, query, emit, signal));
     this.permQueue.set(sessionId, cur.then(() => undefined, () => undefined)); // 队列尾只用于串行，吞掉结果 / 异常
     return cur;
-  }
-
-  /**
-   * 派发子代理（task 工具的 spawn 实现）：加载 expert → 独立上下文跑嵌套 runTurn → 返回其最终结果文本回灌主 agent。
-   * 复用主会话 config/gate/checkpoint/workspace；子消息不落盘（persist no-op → 上下文隔离）；signal 透传（主停子停）；
-   * usage 汇总进主 total（子 token 不漏计）；子 bus 不含 task（depth=1，防递归派发）；子内部事件静默，仅 error 提为 notice。
-   */
-  private async spawnSubagent(
-    sessionId: string,
-    expertId: string | undefined,
-    prompt: string,
-    signal: AbortSignal,
-    parent: { config: ModelConfig; gate: PermissionGate; emit: Emit; total: NormalizedUsage },
-  ): Promise<string> {
-    const expert = expertId && this.experts ? await this.experts.get(expertId) : null;
-    if (expertId && !expert) return `子代理派发失败：专家不存在（${expertId}）`;
-
-    // 子工具集：内置 + 技能自取 + 联网，按 expert.tools/skills 限定；不含 task（depth=1，子代理不能再派）
-    const settings = await this.configs.getSettings();
-    const skillTool = this.skills
-      ? createSkillTool(this.skills, expert && expert.skills.length > 0 ? expert.skills : undefined)
-      : null;
-    const webSearchTool = await this.buildWebSearchTool(settings);
-    const mcpTools = this.mcp?.sessionTools() ?? [];
-    const childExtra = [skillTool, webSearchTool].filter((t): t is Tool => t !== null);
-    const bus = buildSessionBus(mcpTools, expert?.tools, childExtra, { alwaysLoadServers: this.mcp?.alwaysLoadServers() });
-
-    let skillCatalog = this.skills ? await this.skills.catalog() : undefined;
-    if (skillCatalog && expert && expert.skills.length > 0) skillCatalog = skillCatalog.filter((s) => expert.skills.includes(s.name));
-    let mcpCatalog = this.mcp?.catalog();
-    if (mcpCatalog && expert && expert.tools.length > 0) mcpCatalog = mcpCatalog.filter((c) => expert.tools.includes(`mcp:${c.name}`));
-
-    const messages: ChatMessage[] = [{ id: randomUUID(), role: 'user', content: prompt, createdAt: Date.now() }];
-    // 静默转发：子代理内部过程不混入主对话流，仅 error 提为 notice 让用户知晓子任务失败
-    const childEmit: Emit = (e) => {
-      if (e.type === 'error') parent.emit({ type: 'notice', sessionId, message: `子代理任务出错：${e.message}` });
-    };
-
-    await runTurn({
-      sessionId,
-      messages,
-      client: new LlmClient(parent.config),
-      config: parent.config,
-      bus,
-      gate: parent.gate,
-      checkpoint: this.checkpoint,
-      readState: new ReadState(),
-      workspace: this.workspace.activePath(),
-      workspaceRoots: this.workspace.rootsList(),
-      signal,
-      emit: childEmit,
-      persist: async () => undefined, // 子消息不落盘：独立上下文，仅结果回灌主 agent
-      skillCatalog,
-      mcpCatalog,
-      persona: expert?.persona || undefined,
-      discovered: new Set<string>(), // 子独立发现集（不与主会话累积混用）
-      onUsage: (u) => {
-        parent.total.promptTokens += u.promptTokens;
-        parent.total.completionTokens += u.completionTokens;
-        parent.total.totalTokens += u.totalTokens;
-        parent.total.cacheReadTokens += u.cacheReadTokens;
-        void this.opts.usage?.recordUsage({
-          sessionId,
-          model: parent.config.model,
-          provider: parent.config.provider,
-          promptTokens: u.promptTokens,
-          completionTokens: u.completionTokens,
-          totalTokens: u.totalTokens,
-          cacheReadTokens: u.cacheReadTokens,
-        });
-      },
-      onRecord: (r) => {
-        void this.opts.usage?.recordTool({ sessionId, ...r });
-      },
-    });
-
-    if (signal.aborted) return '（子代理任务已随主任务中断）';
-    const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
-    return (lastAssistant?.content || '').trim() || '（子代理未产出结果）';
   }
 
   /** 保存模型配置（供 ipc 层复用同一 configs 实例） */

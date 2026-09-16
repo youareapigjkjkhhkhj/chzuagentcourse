@@ -80,6 +80,12 @@ export function useAgent() {
       thinking.value = true; // 工具完成 → 模型继续思考下一轮
       return;
     }
+    // 子代理（task）实时进度：更新对应卡片进度文本（必须早退，否则落末尾 fallback 被当 error → busy=false 破坏回合态）
+    if (event.type === 'tool_progress') {
+      const msg = messages.value.find((m) => m.id === event.callId);
+      if (msg) msg.toolProgress = event.text;
+      return;
+    }
     if (event.type === 'permission_request') {
       // 模型本轮输出已停顿在工具调用上（等用户决策），收掉上条气泡的流式尾迹/光标，避免「显示不全有阴影」
       streamingId.value = null;

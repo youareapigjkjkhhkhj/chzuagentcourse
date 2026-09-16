@@ -33,6 +33,8 @@ export interface ToolContext {
   workspace: string | null;
   signal: AbortSignal;
   readState: ReadState;
+  /** 本次工具调用 id（= 前端 Trace 卡片 id）：task 工具据此把子代理进度关联到正确的卡片 */
+  callId: string;
   /** WRITE/EXEC 前打快照（checkpoint v1），返回 changeId 或 null */
   snapshot(affected: string[]): Promise<string | null>;
   /** 用户路径 → 工作区内绝对路径；逃逸抛错（AGENTS §15） */

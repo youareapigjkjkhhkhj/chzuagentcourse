@@ -19,6 +19,7 @@ const TOOL_ICON: Record<string, string> = {
   bash: 'terminal',
   todo_write: 'check',
   use_skill: 'sparkle',
+  task: 'bot',
   webfetch: 'globe',
   websearch: 'globe',
 };
@@ -105,6 +106,13 @@ const summary = computed<string>(() => {
       return sOf('url');
     case 'websearch':
       return sOf('query');
+    case 'task': {
+      // 执行中显示子代理实时进度（子代理 · edit 手册3.md）；完成 / 未开始回退子任务 prompt 截断
+      const prog = props.msg.toolProgress;
+      if (props.msg.toolOk === undefined && prog) return `子代理 · ${prog}`;
+      const pr = sOf('prompt');
+      return pr ? (pr.length > 40 ? `${pr.slice(0, 40)}…` : pr) : '子代理';
+    }
     default:
       // MCP 工具：无固定入参约定，退化为首个字符串参数摘要（截断）
       if ((props.msg.toolName ?? '').startsWith('mcp__')) {

@@ -11,8 +11,9 @@ import { str } from './types';
 
 export const TASK_TOOL_NAME = 'task';
 
-/** 子代理派发器：由外层注入（负责组装嵌套 runTurn 的模型 / 权限 / 专家依赖），返回子代理最终结果文本 */
-export type SpawnSubagent = (expertId: string | undefined, prompt: string, signal: AbortSignal) => Promise<string>;
+/** 子代理派发器：由外层注入（负责组装嵌套 runTurn 的模型 / 权限 / 专家依赖），返回子代理最终结果文本。
+ * callId = 本次 task 调用 id（前端卡片 id），外层据此把子代理进度冒泡到对应卡片 */
+export type SpawnSubagent = (expertId: string | undefined, prompt: string, signal: AbortSignal, callId: string) => Promise<string>;
 
 /**
  * 构造 task（子代理派发）工具。
@@ -39,7 +40,7 @@ export function createTaskTool(spawn: SpawnSubagent): Tool {
       if (!prompt) throw new Error('参数 prompt 不能为空');
       const rawExpertId = input['expertId'];
       const expertId = typeof rawExpertId === 'string' && rawExpertId.trim() ? rawExpertId.trim() : undefined;
-      const result = await spawn(expertId, prompt, ctx.signal);
+      const result = await spawn(expertId, prompt, ctx.signal, ctx.callId);
       return { text: result || '（子代理未返回内容）' };
     },
   };

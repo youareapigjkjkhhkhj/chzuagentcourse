@@ -134,6 +134,12 @@ export async function runTurn(dep: TurnDeps): Promise<void> {
     const transcript = renderHistoryForSummary(dep.messages, newStart, end);
     if (!transcript.trim()) return;
     const prev = compactSummary ? `已有摘要（请合并进新摘要，勿丢其中关键信息）：\n${compactSummary}\n\n` : '';
+    // 压缩是一次耗时的 LLM 往返：先给「进行中」反馈（复用 notice 琥珀横幅，前端零改动）。
+    // 成功→被「已压缩」覆盖；空摘要/失败→被 failNotice 覆盖；中断→交由外层 interrupted，均不残留横幅。
+    dep.emit({ type: 'notice', sessionId: dep.sessionId, message: '正在压缩上下文以节省空间…（会话原始记录仍完整保留）' });
+    const failNotice = (): void => {
+      if (!dep.signal.aborted) dep.emit({ type: 'notice', sessionId: dep.sessionId, message: '上下文压缩未完成，已自动退回裁剪最旧历史（不影响继续对话）。' });
+    };
     try {
       const res = await dep.client.chat({
         messages: [
@@ -146,7 +152,7 @@ export async function runTurn(dep: TurnDeps): Promise<void> {
         onDelta: () => {},
       });
       const text = (res.message.content || '').trim();
-      if (!text) return; // 空摘要 → 放弃本次压缩
+      if (!text) { failNotice(); return; } // 空摘要 → 放弃本次压缩
       compactSummary = text;
       compactHeadEnd = plan.headEnd;
       compactFrom = end;
@@ -156,7 +162,8 @@ export async function runTurn(dep: TurnDeps): Promise<void> {
         message: `已把较早的 ${compactFrom - compactHeadEnd} 条历史压缩为摘要以节省上下文（会话原始记录仍完整保留）。`,
       });
     } catch {
-      // 摘要调用失败（网络/超窗/空响应/中断）：静默退回原截断式兜底，不打断主任务
+      // 摘要调用失败（网络/超窗/空响应/中断）：退回原截断式兜底，不打断主任务，并覆盖「正在压缩」提示
+      failNotice();
     }
   };
 
@@ -406,6 +413,7 @@ async function execCall(dep: TurnDeps, p: ParsedCall, failures: Map<string, numb
     workspace: dep.workspace,
     signal: dep.signal,
     readState: dep.readState,
+    callId: call.id,
     snapshot: (affected) =>
       dep.workspace
         ? dep.checkpoint.snapshot(dep.workspace, affected, randomUUID(), dep.sessionId).then((set) => set?.changeId ?? null)
