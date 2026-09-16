@@ -487,8 +487,8 @@ function previewImage(img: ChatImage): void {
 
         <!-- Auto 模式边界说明 -->
         <p class="text-[10px] text-stone-400 leading-relaxed text-center max-w-lg">
-          Auto 模式仅自动执行：读取文件、修改工作区文件、白名单低风险命令（如测试）。
-          高风险命令、网络操作与删除类操作（rm / git reset --hard / docker rm…）任何模式下都需要你确认。
+          Auto 模式自动执行低风险操作（读取、修改工作区文件、运行测试等）；
+          高风险命令、网络与删除操作（rm / git reset --hard 等）始终需你确认。
         </p>
       </div>
 

@@ -399,7 +399,7 @@ async function remove(e: Expert): Promise<void> {
 
           <!-- 人设 -->
           <div>
-            <label class="block text-[11px] text-stone-600 mb-1">人设 / System Prompt <span class="text-stone-400">(追加到系统提示，空 = 不注入)</span></label>
+            <label class="block text-[11px] text-stone-600 mb-1">人设 / System Prompt <span class="text-stone-400">(设定专家的角色与风格，留空则不生效)</span></label>
             <textarea
               v-model="form.persona"
               rows="4"

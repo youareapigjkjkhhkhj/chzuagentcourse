@@ -291,12 +291,8 @@ function commandLine(view: McpServerView): string {
         </div>
       </div>
       <p class="text-[11px] text-stone-500 leading-relaxed max-w-4xl">
-        按 MCP 协议接入外部工具（stdio / http / sse 三种传输）。配置存于
-        <span class="font-mono text-[10px] bg-surface px-1 rounded border border-border">~/.AgentBuddy/mcp.json</span>
-        （兼容 Claude Desktop 格式 JSON 导入）；工具以
-        <span class="font-mono text-[10px] bg-surface px-1 rounded border border-border">NETWORK</span>
-        风险接入，首次调用需确认（可按连接器记住）；输入框键入
-        <span class="font-mono text-[10px] bg-surface px-1 rounded border border-border">#</span> 提及连接器。
+        接入外部工具服务，扩展助理能力。支持导入 Claude Desktop 格式的配置，工具首次调用需你确认；对话框输入
+        <span class="font-mono text-[10px] bg-surface px-1 rounded border border-border">#</span> 即可提及。
       </p>
     </div>
 
@@ -312,7 +308,7 @@ function commandLine(view: McpServerView): string {
     <!-- 已连接工具数：小规模全量常驻，schema 合计超阈值转按需（search_tools 检索发现）；标「常驻」的连接器强制全量下发 -->
     <div class="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] border bg-surface border-border text-stone-500">
       <span v-html="ico('check')" />
-      <span>已挂载 MCP 工具 {{ mountedTools }} 个。规模较小时全量随会话下发；合计过大时自动转「按需加载」（模型经 search_tools 检索命中后调用），标「常驻」的连接器强制全量下发。</span>
+      <span>已挂载 {{ mountedTools }} 个工具。数量较多时系统会自动按需加载，无需手动管理；标记「常驻」的连接器始终全量可用。</span>
     </div>
 
     <!-- 卡片列表 -->
@@ -362,11 +358,11 @@ function commandLine(view: McpServerView): string {
                 : 'bg-surface text-stone-500 border-border']"
           >{{ view.config.alwaysLoad ? '常驻' : view.onDemand ? '按需' : '全量' }}</span>
           <span class="text-[10px] text-stone-500 truncate">
-            {{ view.config.alwaysLoad ? '强制常驻中：工具参数始终随会话下发' : view.onDemand ? '按需加载：模型经 search_tools 检索命中后调用' : '工具规模较小：参数全量随会话下发' }}
+            {{ view.config.alwaysLoad ? '工具始终全量可用' : view.onDemand ? '模型用到时才调用' : '工具较少，直接可用' }}
           </span>
           <button
             :class="['ml-auto w-8 h-[18px] rounded-full relative transition-std shrink-0', view.config.alwaysLoad ? 'bg-purple-500' : 'bg-stone-300', busyName === view.config.name ? 'opacity-50' : '']"
-            :title="view.config.alwaysLoad ? '取消强制常驻（恢复按需分流）' : '强制常驻（工具参数始终下发，跳过 search_tools 检索）'"
+            :title="view.config.alwaysLoad ? '取消强制常驻（恢复按需加载）' : '强制常驻（工具始终全量可用）'"
             :disabled="busyName === view.config.name"
             @click="() => void toggleAlwaysLoad(view)"
           >
@@ -569,7 +565,7 @@ function commandLine(view: McpServerView): string {
 
           <label class="flex items-start gap-2 text-[11px] text-stone-700 cursor-pointer select-none">
             <input v-model="form.alwaysLoad" type="checkbox" class="accent-purple-600 mt-0.5" />
-            <span>强制常驻工具（跳过按需检索，参数始终随会话下发）；工具很多时会增大每次请求体积，通常保持关闭、由系统按 schema 规模自动分流。</span>
+            <span>强制常驻工具（始终全量可用，跳过按需加载）；工具较多时会增大请求体积，通常保持关闭即可。</span>
           </label>
 
           <p v-if="formErr" class="text-[11px] text-rose-600 flex items-start gap-1.5">
@@ -580,11 +576,9 @@ function commandLine(view: McpServerView): string {
         <!-- JSON 粘贴导入 -->
         <div v-else class="p-6 space-y-3 overflow-y-auto">
           <p class="text-[11px] text-stone-500 leading-relaxed">
-            兼容 Claude Desktop / Cursor 的
-            <span class="font-mono text-stone-700">mcp.json</span>（<span class="font-mono text-stone-700">{"mcpServers": {...}}</span>、
-            内层对象、或带 <span class="font-mono text-stone-700">name</span> 的单条配置对象均可），解析后批量合并，同名覆盖；<span class="font-mono text-stone-700">enabled: false</span>
-            导入后保持未连接；<span class="font-mono text-stone-700">env</span> 中
-            <span class="font-mono text-stone-700">${VAR}</span> 占位符连接时从系统环境变量注入。
+            粘贴 Claude Desktop / Cursor 的 MCP 配置即可批量导入，同名自动覆盖。支持
+            <span class="font-mono text-stone-700">env</span> 中的
+            <span class="font-mono text-stone-700">${VAR}</span> 环境变量占位符。
           </p>
           <textarea
             v-model="jsonText"

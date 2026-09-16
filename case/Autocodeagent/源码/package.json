@@ -2,7 +2,7 @@
   "name": "agentbuddy",
   "version": "0.1.0",
   "private": true,
-  "description": "AgentBuddy — 本地轻量编程代理（P0：应用壳与流式聊天）",
+  "description": "AgentBuddy — 本地轻量编程代理",
   "workspaces": [
     "packages/shared",
     "packages/agent-core",

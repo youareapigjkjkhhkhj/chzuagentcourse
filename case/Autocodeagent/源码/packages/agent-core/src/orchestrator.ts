@@ -342,6 +342,8 @@ function riskOf(bus: ToolBus, p: ParsedCall): Risk {
 
 /** 返回 true = 熔断触发，主循环应终止；discovered 为本次 runTurn 的按需加载发现集（search_tools 命中回填）；todoState 为执行计划 holder（todo_write 回填） */
 async function execCall(dep: TurnDeps, p: ParsedCall, failures: Map<string, number>, discovered: Set<string>, todoState: { items: TodoItem[] }): Promise<boolean> {
+  // 已中断则不再派发：runPool 批次里停止后剩余排队的 task 不应继续 spawn（否则点停止后仍冒新卡 + 白跑子代理）
+  if (dep.signal.aborted) return false;
   const { call } = p;
   const tool = dep.bus.get(call.name);
   // P6：风险 / 目标提前计算，执行记录各终态分支共用
@@ -436,7 +438,7 @@ async function execCall(dep: TurnDeps, p: ParsedCall, failures: Map<string, numb
 
   const t0 = Date.now();
   try {
-    const out = await withTimeout(tool.execute(ctx, p.input), tool.name === 'bash' ? Number.POSITIVE_INFINITY : TOOL_TIMEOUT_MS);
+    const out = await withTimeout(tool.execute(ctx, p.input), toolTimeoutMs(tool.name));
     rec(true, Date.now() - t0);
     await pushToolMsg(out.text, true, Date.now() - t0, out.change?.changeId);
     // P2：WRITE/EXEC 落盘后通知右栏审阅（§事件驱动）
@@ -469,4 +471,14 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+/**
+ * 工具墙钟超时决策：bash（长命令）与 task（子代理：内部多轮 LLM + 工具）豁免 60s 限制——
+ * 二者生命周期由 abort 信号（主停子停）与各自轮数上限约束，而非固定墙钟。
+ * 误对 task 施加 60s 会把长跑子代理判为「工具超时」失败；且 withTimeout 用 Promise.race 不取消底层
+ * promise，超时后子代理仍作孤儿继续跑（继续写文件 / 冒进度），主 agent 却已记失败 → 状态错乱。
+ */
+export function toolTimeoutMs(name: string): number {
+  return name === 'bash' || name === TASK_TOOL_NAME ? Number.POSITIVE_INFINITY : TOOL_TIMEOUT_MS;
 }

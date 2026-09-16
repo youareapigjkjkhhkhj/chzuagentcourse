@@ -175,12 +175,12 @@ onMounted(() => {
         </div>
       </div>
       <p class="text-[11px] text-stone-500 leading-relaxed max-w-4xl">
-        技能 = Markdown 指令资产（纯文本，不含可执行脚本）。两级目录：全局
+        技能是 Markdown 指令文件，为助理扩展专项能力。分全局
         <span class="font-mono text-[10px] bg-surface px-1 rounded border border-border">~/.AgentBuddy/skills/</span>
         与项目级
-        <span class="font-mono text-[10px] bg-surface px-1 rounded border border-border">&lt;工作区&gt;/.AgentBuddy/skills/</span>，
-        同名时项目覆盖全局。启用技能的摘要进系统提示目录，模型需要时用 read 自取正文；输入框键入
-        <span class="font-mono text-[10px] bg-surface px-1 rounded border border-border">/</span> 可触发。
+        <span class="font-mono text-[10px] bg-surface px-1 rounded border border-border">&lt;工作区&gt;/.AgentBuddy/skills/</span>
+        两层，同名时项目覆盖全局；对话框输入
+        <span class="font-mono text-[10px] bg-surface px-1 rounded border border-border">/</span> 即可触发。
       </p>
     </div>
 
@@ -343,7 +343,7 @@ onMounted(() => {
           </div>
 
           <div>
-            <label class="block text-[11px] text-stone-600 mb-1.5">描述 <span class="text-stone-400">(注入系统提示目录，模型据此决定何时使用)</span></label>
+            <label class="block text-[11px] text-stone-600 mb-1.5">描述 <span class="text-stone-400">(一句话说明技能用途，模型据此判断何时使用)</span></label>
             <textarea
               v-model="form.description"
               rows="2"

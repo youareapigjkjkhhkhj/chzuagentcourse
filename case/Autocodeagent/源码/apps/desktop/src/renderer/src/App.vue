@@ -269,7 +269,6 @@ onUnmounted(() => offTitleStream?.());
           <span class="text-[10px] text-stone-500 font-normal">v0.1 · 本地轻量编程代理</span>
         </span>
       </div>
-      <div class="flex items-center gap-2 text-[10px] text-stone-400 font-mono">P0 · 应用壳与流式聊天</div>
     </header>
 
     <!-- 主体容器 -->
