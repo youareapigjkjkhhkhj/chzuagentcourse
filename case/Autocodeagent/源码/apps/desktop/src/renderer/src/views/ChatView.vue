@@ -429,7 +429,7 @@ function previewImage(img: ChatImage): void {
     <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
 
       <!-- 场景 A：首页（大输入框，无场景分类 Tab） -->
-      <div v-if="messages.length === 0" class="flex-1 flex flex-col items-center justify-center px-6 -mt-10 max-w-3xl mx-auto w-full space-y-7 overflow-y-auto">
+      <div v-if="messages.length === 0" class="flex-1 flex flex-col items-center justify-center px-6 -mt-10 max-w-4xl mx-auto w-full space-y-7 overflow-y-auto">
 
         <div class="text-center space-y-2.5">
           <img src="img/logo.png" class="w-11 h-11 mx-auto rounded-2xl shadow-glow mb-1" alt="AgentBuddy" />

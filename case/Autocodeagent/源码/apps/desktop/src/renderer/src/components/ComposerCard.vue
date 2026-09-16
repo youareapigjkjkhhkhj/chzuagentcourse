@@ -384,8 +384,8 @@ function onKey(e: KeyboardEvent): void {
       />
     </div>
 
-    <div class="flex items-center justify-between pt-2.5 border-t border-border">
-      <div class="flex items-center gap-2">
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-2 pt-3 border-t border-border">
+      <div class="flex items-center gap-2.5 shrink-0">
         <!-- 多模态：添加图片（点击选择；也可直接 Ctrl+V 粘贴或拖拽图片到输入卡） -->
         <button
           class="flex items-center justify-center w-8 h-8 rounded-lg text-stone-500 hover:bg-cardHover hover:text-stone-800 transition-std disabled:opacity-40 disabled:cursor-not-allowed"
@@ -440,8 +440,11 @@ function onKey(e: KeyboardEvent): void {
           </div>
         </div>
 
-        <!-- Chat / Agent 模式切换（Claude 同款） -->
-        <div class="flex items-center bg-surface border border-border rounded-lg p-0.5">
+        <!-- Chat / Agent 模式切换（Claude 同款）；Chat 模式不调用工具改为悬停说明，避免挤占底栏宽度 -->
+        <div
+          class="flex items-center bg-surface border border-border rounded-lg p-0.5 shrink-0"
+          :title="chatMode === 'chat' ? 'Chat 模式：仅纯对话，不调用工具' : ''"
+        >
           <button
             :class="['px-2.5 py-1 rounded-md text-[11px] font-medium transition-std', chatMode === 'chat' ? 'bg-card text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700']"
             @click="chatMode = 'chat'"
@@ -474,10 +477,9 @@ function onKey(e: KeyboardEvent): void {
             </div>
           </div>
         </div>
-        <span v-else class="text-[10px] text-stone-400 whitespace-nowrap shrink-0">Chat 模式不调用工具</span>
       </div>
 
-      <div class="flex items-center gap-2.5">
+      <div class="flex items-center gap-2.5 shrink-0 ml-auto">
         <!-- 模型下拉：在「模型配置」中新增/切换 -->
         <div class="relative">
           <select
