@@ -254,6 +254,9 @@ onMounted(async () => {
   });
 });
 
+/** 侧栏收缩（ChatGPT 式）：收起时宽度归零，展开按钮出现在顶栏 */
+const sidebarCollapsed = ref(false);
+
 onUnmounted(() => offTitleStream?.());
 </script>
 
@@ -263,6 +266,13 @@ onUnmounted(() => offTitleStream?.());
     <!-- 顶部应用标题栏 -->
     <header class="h-9 bg-sidebar border-b border-border flex items-center justify-between px-3 text-stone-600">
       <div class="flex items-center gap-3">
+        <button
+          v-if="sidebarCollapsed"
+          class="text-stone-500 hover:text-stone-900 transition-std"
+          title="展开侧栏"
+          v-html="ico('sidebar')"
+          @click="sidebarCollapsed = false"
+        />
         <span class="font-semibold text-stone-900 tracking-tight flex items-center gap-2">
           <img src="img/logo.png" class="w-5 h-5 rounded-md shadow-sm" alt="logo" />
           <span>AgentBuddy</span>
@@ -275,11 +285,20 @@ onUnmounted(() => offTitleStream?.());
     <div class="flex-1 flex overflow-hidden">
 
       <!-- 左侧导航与代码空间 -->
-      <aside class="w-64 bg-sidebar border-r border-border flex flex-col justify-between shrink-0">
+      <aside
+        class="bg-sidebar border-r border-border flex flex-col justify-between shrink-0 overflow-hidden transition-[width] duration-200"
+        :class="sidebarCollapsed ? 'w-0 border-r-0' : 'w-64'"
+      >
         <div class="flex-1 overflow-y-auto p-3 space-y-5">
 
           <div class="flex items-center justify-between px-1 text-stone-600">
             <span class="font-semibold text-stone-900 tracking-tight">工作台</span>
+            <button
+              class="hover:text-stone-900 transition-std"
+              title="收起侧栏"
+              v-html="ico('sidebar')"
+              @click="sidebarCollapsed = true"
+            />
           </div>
 
           <!-- 新建会话 -->

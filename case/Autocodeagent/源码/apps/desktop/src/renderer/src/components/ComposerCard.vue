@@ -47,6 +47,19 @@ const emit = defineEmits<{
 const chatMode = ref<'chat' | 'agent'>('agent');
 const showPermMenu = ref(false);
 
+/** IME 组合守卫：中文输入法组合期间不回写父级——受控 :value 若落后于预编辑文本被 Vue 写回会打断组合，
+ * 表现为「打字没反应、稍后才恢复」；组合结束（compositionend）再一次性上交。 */
+let composing = false;
+function onCompositionStart(): void { composing = true; }
+function onCompositionEnd(e: CompositionEvent): void {
+  composing = false;
+  emit('update:modelValue', (e.target as HTMLTextAreaElement).value);
+}
+function onInput(e: Event): void {
+  if (composing) return;
+  emit('update:modelValue', (e.target as HTMLTextAreaElement).value);
+}
+
 /** 火力档位滑块：本地态实时跟手（v-model 随 @input 更新标签），松手（@change）才 emit 持久化，
  * 避免拖动过程频繁写盘；父级 power 变化（切模型 / 写回成功）时同步本地态。 */
 const localPower = ref(props.power);
@@ -362,7 +375,9 @@ function onKey(e: KeyboardEvent): void {
         :disabled="disabled"
         placeholder="今天帮你做什么？@ 选文件/文件夹 · # 调 MCP · / 调技能 · 可粘贴/拖入图片"
         class="relative w-full bg-transparent text-transparent caret-stone-900 placeholder-stone-400 outline-none resize-none leading-relaxed text-[13px] break-words"
-        @input="emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)"
+        @input="onInput"
+        @compositionstart="onCompositionStart"
+        @compositionend="onCompositionEnd"
         @keydown="onKey"
         @paste="onPaste"
         @scroll="syncScroll"
@@ -459,7 +474,7 @@ function onKey(e: KeyboardEvent): void {
             </div>
           </div>
         </div>
-        <span v-else class="text-[10px] text-stone-400">Chat 模式不调用工具</span>
+        <span v-else class="text-[10px] text-stone-400 whitespace-nowrap shrink-0">Chat 模式不调用工具</span>
       </div>
 
       <div class="flex items-center gap-2.5">

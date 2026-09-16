@@ -180,12 +180,12 @@ async function clearWebKey(): Promise<void> {
     </div>
 
     <div class="flex-1 overflow-y-auto p-6 space-y-4">
-      <div v-if="error" class="max-w-5xl flex items-center gap-1.5 bg-rose-50 border border-rose-500/30 rounded-lg px-3 py-2 text-[11px] text-rose-600">
+      <div v-if="error" class="flex items-center gap-1.5 bg-rose-50 border border-rose-500/30 rounded-lg px-3 py-2 text-[11px] text-rose-600">
         <span v-html="ico('alert')" /> {{ error }}
       </div>
 
       <!-- 配置卡片列表（紧凑小卡） -->
-      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 max-w-5xl">
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
         <div
           v-for="m in models"
           :key="m.id"
@@ -234,7 +234,7 @@ async function clearWebKey(): Promise<void> {
       </div>
 
       <!-- 联网工具：webfetch 内置零配置；websearch 需开启并配置 Tavily API Key -->
-      <div class="max-w-5xl bg-card rounded-xl border border-border shadow-card p-4">
+      <div class="bg-card rounded-xl border border-border shadow-card p-4">
         <div class="flex items-center gap-2.5 mb-3">
           <span class="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/25 flex items-center justify-center text-purple-700" v-html="ico('globe')" />
           <div>
